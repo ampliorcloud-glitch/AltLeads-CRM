@@ -2,6 +2,7 @@
 
 require('dotenv').config();
 
+const path      = require('path');
 const express   = require('express');
 const cors      = require('cors');
 const nodemailer = require('nodemailer');
@@ -10,7 +11,10 @@ const { buildEmail } = require('./email-templates');
 /* ── Config ──────────────────────────────────────────────────────── */
 
 const PORT           = parseInt(process.env.PORT || '8787', 10);
+// When serving from the same origin, ALLOWED_ORIGIN is not needed for same-origin requests.
+// For local dev (web on 5173, server on 8787) set ALLOWED_ORIGIN=http://localhost:5173.
 const ALLOWED_ORIGIN = process.env.ALLOWED_ORIGIN || 'http://localhost:5173';
+const WEB_DIST       = path.join(__dirname, '..', 'web', 'dist');
 const GMAIL_USER     = process.env.GMAIL_USER;
 const GMAIL_PASS     = process.env.GMAIL_APP_PASSWORD;
 
@@ -91,6 +95,18 @@ app.post('/notify', async (req, res) => {
     // Don't expose internal SMTP errors to the caller in production
     return res.status(500).json({ ok: false, error: 'Email send failed' });
   }
+});
+
+/* ── Serve React web app (static + SPA fallback) ─────────────────── */
+// Serve built assets. Must come AFTER all API routes so /health and /notify
+// are handled by the Express routes above, not treated as static file requests.
+
+app.use(express.static(WEB_DIST));
+
+// SPA catch-all: any GET that didn't match an API route or a real static file
+// returns index.html so that client-side routes (React Router) work correctly.
+app.get('*', (_req, res) => {
+  res.sendFile(path.join(WEB_DIST, 'index.html'));
 });
 
 /* ── Start ───────────────────────────────────────────────────────── */

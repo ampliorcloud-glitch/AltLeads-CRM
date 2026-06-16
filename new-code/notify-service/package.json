@@ -4,6 +4,7 @@
   "description": "Email notification service for Amplior CRM",
   "main": "server.js",
   "scripts": {
+    "build": "cd ../web && npm install && npm run build",
     "start": "node server.js"
   },
   "dependencies": {

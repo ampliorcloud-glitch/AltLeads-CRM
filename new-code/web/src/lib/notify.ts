@@ -12,7 +12,9 @@
  *   lead_id (bigint), report_id (bigint), meeting_id (bigint), user_id (bigint)
  */
 
-const NOTIFY_URL = (import.meta as any).env?.VITE_NOTIFY_URL || 'http://localhost:8787';
+// In production (combined server), BASE_URL is empty so fetch hits the same origin.
+// For local dev with separate servers (web=5173, notify=8787), set VITE_NOTIFY_URL=http://localhost:8787.
+const NOTIFY_URL = (import.meta as any).env?.VITE_NOTIFY_URL || '';
 
 /* ── Email (via notify-service) ──────────────────────────────────── */
 
