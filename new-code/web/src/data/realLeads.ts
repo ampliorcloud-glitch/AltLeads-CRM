@@ -1,0 +1,422 @@
+/**
+ * Real data types and fetcher for Supabase lead data.
+ *
+ * ROOT-CAUSE NOTES (why the old version showed missing / mismatched data):
+ *   - "Company" was read from company_master via lead_master.company_id, but that
+ *     column is NULL for 477 of 605 leads. The real client/company for EVERY lead
+ *     lives in client_association.client_name (via lead_master.client_assoc_id,
+ *     populated for all 605 leads).
+ *   - "Agent"/owner was read from lead_master.agent_id, which is NULL for 476 leads
+ *     (only 2 distinct values). The real owner is lead_master.created_by, a varchar
+ *     holding the user_master.user_id (18 distinct salespeople). A few legacy rows
+ *     store a free-text name there instead of an id — we fall back to that string.
+ *   - "Project" was never fetched. It comes from lead_master.project_id -> project.
+ *   - Lookups must cover EVERY referenced row, so we page through all rows with
+ *     .range() (PostgREST caps a single select at 1000 rows) and do NOT filter the
+ *     lookup tables by deleted_date (a soft-deleted lookup row must still resolve).
+ *
+ * Join map:
+ *   lead_master        — core record + created_by (owner), project_id, source_id,
+ *                        client_assoc_id, address_id
+ *   client_association — client_name (the displayed "Company") + industry_id
+ *   industry_master    — industry_name
+ *   address_master     — city_id
+ *   city_master        — city_name
+ *   user_master        — full_name (owner, keyed by created_by)
+ *   project            — project_name
+ *   source_master      — source_name
+ *   lead_report        — latest stage_id per lead
+ *   stage_master       — stage name
+ *   meeting_schedule + meeting_master — latest meeting_date per lead
+ */
+
+import { supabase } from '../lib/supabase';
+
+export interface RealLead {
+  id: string;
+  leadNumber: string;
+  company: string;
+  contactName: string;
+  contactEmail: string;
+  contactPhone: string;
+  industry: string;
+  city: string;
+  agent: string;
+  project: string;
+  source: string;
+  stage: string;
+  meetingDate: string | null;
+  leadGeneratedDate: string;
+  lastUpdated: string;
+}
+
+export interface LeadsResult {
+  leads: RealLead[];
+  industries: string[];
+  cities: string[];
+  agents: string[];
+  projects: string[];
+  sources: string[];
+  stages: string[];
+  error: string | null;
+}
+
+export interface DashboardStats {
+  totalLeads: number;
+  meetingsThisWeek: number;
+  meetingsSuccessful: number;
+  stageBreakdown: { stage: string; count: number }[];
+  recentActivity: {
+    leadId: number;
+    leadName: string;
+    companyName: string;
+    stage: string;
+    lastUpdated: string;
+  }[];
+  error: string | null;
+}
+
+/* ------------------------------------------------------------------
+   Row types
+------------------------------------------------------------------ */
+interface LeadMasterRow {
+  lead_id: number;
+  lead_number: string | null;
+  lead_name: string | null;
+  email: string | null;
+  mobile_no: string | null;
+  company_id: number | null;
+  client_assoc_id: number | null;
+  agent_id: number | null;
+  created_by: string | null;
+  project_id: number | null;
+  source_id: number | null;
+  address_id: number | null;
+  created_date: string | null;
+  updated_date: string | null;
+}
+interface ClientAssocRow { client_assoc_id: number; client_name: string | null; industry_id: number | null; }
+interface IndustryRow { industry_id: number; industry_name: string; }
+interface AddressRow { address_id: number; city_id: number; }
+interface CityRow { city_id: number; city_name: string; }
+interface UserRow { user_id: number; full_name: string | null; }
+interface ProjectRow { project_id: number; project_name: string | null; }
+interface SourceRow { source_id: number; source_name: string | null; }
+interface ReportRow { report_id: number; lead_id: number; stage_id: number; updated_date: string | null; }
+interface StageRow { stage_id: number; stage: string; }
+interface MeetingScheduleRow { report_id: number; meeting_id: number; }
+interface MeetingRow { meeting_id: number; meeting_date: string | null; }
+
+/* ------------------------------------------------------------------
+   Paged fetch — pull ALL rows of a table/select, 1000 at a time.
+   PostgREST/supabase-js caps a single select at 1000 rows; without
+   paging, lookups (and any large table) silently truncate and leads
+   fail to resolve. We loop with .range() until a short page is returned.
+------------------------------------------------------------------ */
+// The supabase client is untyped here, so the query builder is effectively `any`;
+// we keep the tweak callback loosely typed to avoid brittle generic gymnastics.
+type QueryTweak = (query: any) => any;
+
+async function fetchAll<T>(
+  table: string,
+  columns: string,
+  tweak?: QueryTweak,
+): Promise<{ rows: T[]; error: string | null }> {
+  const PAGE = 1000;
+  const out: T[] = [];
+  let from = 0;
+  for (;;) {
+    let query: any = supabase.from(table).select(columns).range(from, from + PAGE - 1);
+    if (tweak) query = tweak(query);
+    const { data, error } = await query;
+    if (error) return { rows: out, error: (error as { message: string }).message };
+    const batch = (data ?? []) as T[];
+    out.push(...batch);
+    if (batch.length < PAGE) break;
+    from += PAGE;
+  }
+  return { rows: out, error: null };
+}
+
+/**
+ * Fetch all data via separate queries and join in JS.
+ * Works whether or not FKs are declared in the DB, and resolves every lead.
+ */
+export async function fetchLeadsFallback(): Promise<LeadsResult> {
+  const empty: LeadsResult = {
+    leads: [], industries: [], cities: [], agents: [], projects: [], sources: [], stages: [], error: null,
+  };
+
+  // 1. ALL leads (not capped) — newest first.
+  const leadsRes = await fetchAll<LeadMasterRow>(
+    'lead_master',
+    'lead_id, lead_number, lead_name, email, mobile_no, company_id, client_assoc_id, agent_id, created_by, project_id, source_id, address_id, created_date, updated_date',
+    (q) => q.is('deleted_date', null).order('updated_date', { ascending: false, nullsFirst: false }),
+  );
+  if (leadsRes.error) return { ...empty, error: leadsRes.error };
+  const leads = leadsRes.rows;
+
+  // 2..N. Lookups — fetch ALL rows (no deleted_date filter so every reference resolves).
+  const [
+    assocsRes, industriesRes, addressesRes, citiesRes,
+    usersRes, projectsRes, sourcesRes, stageRowsRes,
+  ] = await Promise.all([
+    fetchAll<ClientAssocRow>('client_association', 'client_assoc_id, client_name, industry_id'),
+    fetchAll<IndustryRow>('industry_master', 'industry_id, industry_name'),
+    fetchAll<AddressRow>('address_master', 'address_id, city_id'),
+    fetchAll<CityRow>('city_master', 'city_id, city_name'),
+    fetchAll<UserRow>('user_master', 'user_id, full_name'),
+    fetchAll<ProjectRow>('project', 'project_id, project_name'),
+    fetchAll<SourceRow>('source_master', 'source_id, source_name'),
+    fetchAll<StageRow>('stage_master', 'stage_id, stage'),
+  ]);
+
+  // Latest lead_report per lead (for stage). Fetch all reports for our leads.
+  const leadIds = leads.map((l) => l.lead_id);
+  const reportsRes = leadIds.length > 0
+    ? await fetchAll<ReportRow>(
+        'lead_report',
+        'report_id, lead_id, stage_id, updated_date',
+        (q) => q.is('deleted_date', null).in('lead_id', leadIds).order('updated_date', { ascending: false, nullsFirst: false }),
+      )
+    : { rows: [] as ReportRow[], error: null };
+  const reports = reportsRes.rows;
+
+  // Latest meeting per lead via meeting_schedule -> meeting_master.
+  const reportIds = reports.map((r) => r.report_id);
+  const meetingSchedules = reportIds.length > 0
+    ? (await fetchAll<MeetingScheduleRow>(
+        'meeting_schedule',
+        'report_id, meeting_id',
+        (q) => q.is('deleted_date', null).in('report_id', reportIds),
+      )).rows
+    : [];
+  const meetingIds = [...new Set(meetingSchedules.map((ms) => ms.meeting_id).filter(Boolean))];
+  const meetings = meetingIds.length > 0
+    ? (await fetchAll<MeetingRow>(
+        'meeting_master',
+        'meeting_id, meeting_date',
+        (q) => q.is('deleted_date', null).in('meeting_id', meetingIds),
+      )).rows
+    : [];
+
+  /* ---- Build lookup maps keyed by correct PK ---- */
+  const assocMap = new Map<number, ClientAssocRow>();
+  assocsRes.rows.forEach((a) => assocMap.set(a.client_assoc_id, a));
+
+  const industryMap = new Map<number, string>();
+  industriesRes.rows.forEach((i) => industryMap.set(i.industry_id, i.industry_name));
+
+  const addressMap = new Map<number, AddressRow>();
+  addressesRes.rows.forEach((a) => addressMap.set(a.address_id, a));
+
+  const cityMap = new Map<number, string>();
+  citiesRes.rows.forEach((c) => cityMap.set(c.city_id, c.city_name));
+
+  // created_by holds a user_id as text -> resolve to full_name.
+  const userMap = new Map<string, string>();
+  usersRes.rows.forEach((u) => userMap.set(String(u.user_id), u.full_name ?? ''));
+
+  const projectMap = new Map<number, string>();
+  projectsRes.rows.forEach((p) => projectMap.set(p.project_id, p.project_name ?? ''));
+
+  const sourceMap = new Map<number, string>();
+  sourcesRes.rows.forEach((s) => sourceMap.set(s.source_id, s.source_name ?? ''));
+
+  const stageMap = new Map<number, string>();
+  stageRowsRes.rows.forEach((s) => stageMap.set(s.stage_id, s.stage));
+
+  // reports are ordered newest-first; keep the first seen per lead.
+  const latestReportMap = new Map<number, ReportRow>();
+  reports.forEach((r) => {
+    if (!latestReportMap.has(r.lead_id)) latestReportMap.set(r.lead_id, r);
+  });
+
+  const reportMeetingMap = new Map<number, number>();
+  meetingSchedules.forEach((ms) => {
+    if (!reportMeetingMap.has(ms.report_id)) reportMeetingMap.set(ms.report_id, ms.meeting_id);
+  });
+
+  const meetingDateMap = new Map<number, string>();
+  meetings.forEach((m) => { if (m.meeting_date) meetingDateMap.set(m.meeting_id, m.meeting_date); });
+
+  /* ---- Resolve each lead ---- */
+  const mapped: RealLead[] = leads.map((l) => {
+    const assoc = l.client_assoc_id != null ? assocMap.get(l.client_assoc_id) : undefined;
+    const company = assoc?.client_name ?? '';
+    const industryName = assoc?.industry_id != null ? (industryMap.get(assoc.industry_id) ?? '') : '';
+
+    const address = l.address_id != null ? addressMap.get(l.address_id) : undefined;
+    const cityName = address?.city_id != null ? (cityMap.get(address.city_id) ?? '') : '';
+
+    // Owner: created_by is a user_id-as-text. Fall back to the raw value for
+    // legacy free-text entries (e.g. "Mohit Sharma") so it never shows blank.
+    let agentName = '';
+    if (l.created_by != null && l.created_by !== '') {
+      agentName = userMap.get(l.created_by) ?? l.created_by;
+    }
+
+    const projectName = l.project_id != null ? (projectMap.get(l.project_id) ?? '') : '';
+    const sourceName = l.source_id != null ? (sourceMap.get(l.source_id) ?? '') : '';
+
+    const report = latestReportMap.get(l.lead_id);
+    const stageName = report?.stage_id != null ? (stageMap.get(report.stage_id) ?? '') : '';
+
+    let meetingDate: string | null = null;
+    if (report) {
+      const meetingId = reportMeetingMap.get(report.report_id);
+      if (meetingId) meetingDate = meetingDateMap.get(meetingId) ?? null;
+    }
+
+    const leadDate = l.created_date ? l.created_date.substring(0, 10) : '';
+    const lastUpdated = l.updated_date ? l.updated_date.substring(0, 10) : leadDate;
+
+    return {
+      id: String(l.lead_id),
+      leadNumber: l.lead_number ?? '',
+      company,
+      contactName: l.lead_name ?? '',
+      contactEmail: l.email ?? '',
+      contactPhone: l.mobile_no ?? '',
+      industry: industryName,
+      city: cityName,
+      agent: agentName,
+      project: projectName,
+      source: sourceName,
+      stage: stageName,
+      meetingDate,
+      leadGeneratedDate: leadDate,
+      lastUpdated,
+    };
+  });
+
+  const uniq = (vals: string[]) => [...new Set(vals.filter(Boolean))].sort();
+
+  return {
+    leads: mapped,
+    industries: uniq(mapped.map((l) => l.industry)),
+    cities: uniq(mapped.map((l) => l.city)),
+    agents: uniq(mapped.map((l) => l.agent)),
+    projects: uniq(mapped.map((l) => l.project)),
+    sources: uniq(mapped.map((l) => l.source)),
+    stages: uniq(mapped.map((l) => l.stage)),
+    error: null,
+  };
+}
+
+export async function fetchDashboardStats(): Promise<DashboardStats> {
+  const [leadsRes, meetingsWeekRes, successfulRes, stageDistRes, recentRes] = await Promise.all([
+    // Total leads
+    supabase.from('lead_master').select('lead_id', { count: 'exact', head: true }).is('deleted_date', null),
+
+    // Meetings this week
+    supabase
+      .from('meeting_master')
+      .select('meeting_id', { count: 'exact', head: true })
+      .is('deleted_date', null)
+      .gte('meeting_date', getWeekStart())
+      .lt('meeting_date', getWeekEnd()),
+
+    // Meetings Successful (stage_id=8 in stage_master)
+    supabase
+      .from('lead_report')
+      .select('lead_id', { count: 'exact', head: true })
+      .is('deleted_date', null)
+      .eq('stage_id', 8),
+
+    // Stage distribution from lead_report
+    supabase
+      .from('lead_report')
+      .select('stage_id')
+      .is('deleted_date', null),
+
+    // Recent activity: last 5 leads updated
+    supabase
+      .from('lead_master')
+      .select('lead_id, lead_name, updated_date, client_assoc_id')
+      .is('deleted_date', null)
+      .order('updated_date', { ascending: false, nullsFirst: false })
+      .limit(5),
+  ]);
+
+  // Stage names for distribution
+  const { data: stageNamesRaw } = await supabase.from('stage_master').select('stage_id, stage');
+  const stageNameMap = new Map<number, string>();
+  ((stageNamesRaw ?? []) as unknown as StageRow[]).forEach((s) => stageNameMap.set(s.stage_id, s.stage));
+
+  const stageCounts = new Map<string, number>();
+  ((stageDistRes.data ?? []) as unknown as { stage_id: number }[]).forEach((row) => {
+    const stageName = row.stage_id ? (stageNameMap.get(row.stage_id) ?? 'Unknown') : 'Unknown';
+    stageCounts.set(stageName, (stageCounts.get(stageName) ?? 0) + 1);
+  });
+  const stageBreakdown = [...stageCounts.entries()]
+    .map(([stage, count]) => ({ stage, count }))
+    .sort((a, b) => b.count - a.count);
+
+  // Recent activity: resolve company (client) names and stages
+  interface RecentRaw { lead_id: number; lead_name: string | null; updated_date: string | null; client_assoc_id: number | null; }
+  const recentLeads = (recentRes.data ?? []) as unknown as RecentRaw[];
+  const recentLeadIds = recentLeads.map((l) => l.lead_id);
+  const recentAssocIds = [...new Set(recentLeads.map((l) => l.client_assoc_id).filter((id): id is number => id !== null))];
+
+  const [recentReportsRes, recentAssocsRes] = await Promise.all([
+    recentLeadIds.length > 0
+      ? supabase
+          .from('lead_report')
+          .select('lead_id, stage_id')
+          .in('lead_id', recentLeadIds)
+          .is('deleted_date', null)
+          .order('updated_date', { ascending: false, nullsFirst: false })
+      : Promise.resolve({ data: [] }),
+    recentAssocIds.length > 0
+      ? supabase
+          .from('client_association')
+          .select('client_assoc_id, client_name')
+          .in('client_assoc_id', recentAssocIds)
+      : Promise.resolve({ data: [] }),
+  ]);
+
+  const recentStageMap = new Map<number, string>();
+  ((recentReportsRes.data ?? []) as unknown as { lead_id: number; stage_id: number }[]).forEach((r) => {
+    if (!recentStageMap.has(r.lead_id)) {
+      recentStageMap.set(r.lead_id, r.stage_id ? (stageNameMap.get(r.stage_id) ?? '') : '');
+    }
+  });
+
+  const recentCompanyMap = new Map<number, string>();
+  ((recentAssocsRes.data ?? []) as unknown as { client_assoc_id: number; client_name: string | null }[]).forEach((c) => {
+    recentCompanyMap.set(c.client_assoc_id, c.client_name ?? '');
+  });
+
+  const recentActivity = recentLeads.map((l) => ({
+    leadId: l.lead_id,
+    leadName: l.lead_name ?? '',
+    companyName: l.client_assoc_id ? (recentCompanyMap.get(l.client_assoc_id) ?? '') : '',
+    stage: recentStageMap.get(l.lead_id) ?? '',
+    lastUpdated: l.updated_date ? l.updated_date.substring(0, 10) : '',
+  }));
+
+  return {
+    totalLeads: leadsRes.count ?? 0,
+    meetingsThisWeek: meetingsWeekRes.count ?? 0,
+    meetingsSuccessful: successfulRes.count ?? 0,
+    stageBreakdown,
+    recentActivity,
+    error: leadsRes.error?.message ?? null,
+  };
+}
+
+function getWeekStart(): string {
+  const now = new Date();
+  const day = now.getDay();
+  const diff = now.getDate() - day + (day === 0 ? -6 : 1); // Monday
+  const mon = new Date(now);
+  mon.setDate(diff);
+  return mon.toISOString().substring(0, 10);
+}
+
+function getWeekEnd(): string {
+  const start = new Date(getWeekStart());
+  start.setDate(start.getDate() + 7);
+  return start.toISOString().substring(0, 10);
+}

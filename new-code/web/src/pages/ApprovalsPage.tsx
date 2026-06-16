@@ -1,0 +1,618 @@
+/**
+ * ApprovalsPage — Lead Report Approval queue.
+ *
+ * Accessible only to ADMIN and TEAM_LEAD. Shows all lead_reports with
+ * report_approval = 'Pending'. Each row has VIEW (modal), APPROVE, REJECT.
+ *
+ * Approve → stage 4 (Meeting Scheduled), notify agent + SP.
+ * Reject  → mandatory reason required → stage 6 (Meeting Droped By Amplior),
+ *           store reason, notify agent.
+ */
+import React, { useEffect, useState, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { Eye, ThumbsUp, ThumbsDown, X, Loader2, ShieldOff, ChevronRight } from 'lucide-react';
+import { AppShell } from '../components/layout/AppShell';
+import { useAuth } from '../contexts/AuthContext';
+import {
+  fetchPendingApprovals,
+  fetchReportDetail,
+  approveReport,
+  rejectReport,
+  type PendingApprovalRow,
+  type ReportDetail,
+} from '../data/approvals';
+import { fmtDate } from '../data/leadWorkspace';
+
+/* ─────────────── Small primitives ───────────────────────────── */
+
+function Cell({ children, muted }: { children: React.ReactNode; muted?: boolean }) {
+  return (
+    <td className="px-4 py-3 align-middle" style={{ fontSize: 13, color: muted ? '#71717a' : '#18181b' }}>
+      {children}
+    </td>
+  );
+}
+
+function StatusBadge({ status }: { status: string | null }) {
+  const s = (status ?? '').toLowerCase();
+  let bg = '#f4f4f5', color = '#52525b';
+  if (s.includes('pending')) { bg = '#fffbeb'; color = '#92400e'; }
+  else if (s.includes('meeting scheduled')) { bg = '#f0fdf4'; color = '#15803d'; }
+  return (
+    <span className="rounded px-2 py-0.5 font-medium" style={{ fontSize: 11, background: bg, color, border: `1px solid ${bg === '#f4f4f5' ? '#d4d4d8' : 'transparent'}` }}>
+      {status ?? '—'}
+    </span>
+  );
+}
+
+/* ─────────────── Report preview modal ───────────────────────── */
+
+function ReportPreviewModal({
+  reportId,
+  leadName,
+  onClose,
+}: {
+  reportId: number;
+  leadName: string;
+  onClose: () => void;
+}) {
+  const [loading, setLoading] = useState(true);
+  const [detail, setDetail] = useState<ReportDetail | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetchReportDetail(reportId).then((d) => {
+      if (!cancelled) { setDetail(d); setLoading(false); }
+    });
+    return () => { cancelled = true; };
+  }, [reportId]);
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center p-4"
+      style={{ background: 'rgba(0,0,0,0.4)' }}
+      onClick={onClose}
+    >
+      <div
+        className="bg-white rounded-lg border border-zinc-200 w-full max-w-2xl max-h-[90vh] overflow-y-auto"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-between px-5 py-4 border-b border-zinc-100 sticky top-0 bg-white z-10">
+          <div>
+            <h3 className="font-semibold text-zinc-800" style={{ fontSize: 14 }}>
+              Lead Report Preview
+            </h3>
+            <p className="text-zinc-500 mt-0.5" style={{ fontSize: 12 }}>{leadName}</p>
+          </div>
+          <button onClick={onClose} className="text-zinc-400 hover:text-zinc-700 transition-colors">
+            <X size={16} />
+          </button>
+        </div>
+
+        <div className="p-5">
+          {loading ? (
+            <div className="flex items-center justify-center py-12 gap-2 text-zinc-400">
+              <Loader2 size={16} className="animate-spin" />
+              <span style={{ fontSize: 13 }}>Loading report...</span>
+            </div>
+          ) : !detail ? (
+            <p className="text-zinc-400 text-center py-8" style={{ fontSize: 13 }}>Could not load report.</p>
+          ) : (
+            <div className="space-y-5">
+              {/* Assigned SP */}
+              <Section title="Assigned Salesperson / Sales Head">
+                <p style={{ fontSize: 13, color: '#18181b' }}>{detail.assigned_sp_name || '—'}</p>
+              </Section>
+
+              {/* Pre-sales Q&A */}
+              {detail.pre_sales_answers.length > 0 && (
+                <Section title="Pre-Sales Q&A">
+                  <div className="space-y-3">
+                    {detail.pre_sales_answers.map((a, i) => (
+                      <div key={i}>
+                        <p className="font-medium text-zinc-600" style={{ fontSize: 12 }}>
+                          {a.short_question || a.question || `Question ${i + 1}`}
+                        </p>
+                        <p style={{ fontSize: 13, color: '#18181b' }}>{a.answer || '—'}</p>
+                      </div>
+                    ))}
+                  </div>
+                </Section>
+              )}
+
+              {/* Custom questions */}
+              {detail.new_questions.length > 0 && (
+                <Section title="Custom Questions">
+                  <div className="space-y-3">
+                    {detail.new_questions.map((n, i) => (
+                      <div key={i}>
+                        <p className="font-medium text-zinc-600" style={{ fontSize: 12 }}>{n.question}</p>
+                        <p style={{ fontSize: 13, color: '#18181b' }}>{n.answer || '—'}</p>
+                      </div>
+                    ))}
+                  </div>
+                </Section>
+              )}
+
+              {/* Sales intelligence */}
+              {detail.sales_intelligence && (
+                <Section title="Sales Intelligence">
+                  <p style={{ fontSize: 13, color: '#18181b', whiteSpace: 'pre-wrap' }}>{detail.sales_intelligence}</p>
+                </Section>
+              )}
+
+              {/* Proposed meeting */}
+              {detail.meeting ? (
+                <Section title="Proposed Meeting">
+                  <div className="grid grid-cols-2 gap-3">
+                    <MField label="Name" value={detail.meeting.meeting_name} />
+                    <MField label="Mode" value={detail.meeting.meeting_mode} />
+                    <MField label="Date" value={fmtDate(detail.meeting.meeting_date)} />
+                    <MField label="Time" value={detail.meeting.meeting_time} />
+                    <MField label="Duration" value={detail.meeting.duration} />
+                    <div className="col-span-2">
+                      <MField label="Agenda" value={detail.meeting.description} />
+                    </div>
+                    {detail.meeting.participants.length > 0 && (
+                      <div className="col-span-2">
+                        <p style={{ fontSize: 11, color: '#71717a', fontWeight: 500, marginBottom: 4 }}>Participants</p>
+                        <div className="flex flex-wrap gap-1">
+                          {detail.meeting.participants.map((p) => (
+                            <span key={p} className="rounded px-2 py-0.5" style={{ fontSize: 12, background: '#EBF4FD', color: '#1568C8' }}>
+                              {p}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </Section>
+              ) : (
+                <Section title="Proposed Meeting">
+                  <p className="text-zinc-400" style={{ fontSize: 13 }}>No meeting proposed yet.</p>
+                </Section>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function Section({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <div>
+      <h4 className="font-semibold text-zinc-600 mb-2 pb-1 border-b border-zinc-100" style={{ fontSize: 12 }}>
+        {title}
+      </h4>
+      {children}
+    </div>
+  );
+}
+
+function MField({ label, value }: { label: string; value?: string | null }) {
+  return (
+    <div>
+      <p style={{ fontSize: 11, color: '#71717a', fontWeight: 500, marginBottom: 2 }}>{label}</p>
+      <p style={{ fontSize: 13, color: value ? '#18181b' : '#d4d4d8' }}>{value || '—'}</p>
+    </div>
+  );
+}
+
+/* ─────────────── Reject modal ───────────────────────────────── */
+
+function RejectModal({
+  row,
+  actor,
+  onClose,
+  onRejected,
+}: {
+  row: PendingApprovalRow;
+  actor: string;
+  onClose: () => void;
+  onRejected: () => void;
+}) {
+  const [reason, setReason] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [err, setErr] = useState('');
+
+  const handleSubmit = async () => {
+    if (!reason.trim()) { setErr('A rejection reason is required.'); return; }
+    setSaving(true);
+    setErr('');
+    const res = await rejectReport(
+      row.report_id,
+      row.lead_id,
+      row.lead_name,
+      row.lead_number,
+      row.requesting_agent_id,
+      reason,
+      actor
+    );
+    setSaving(false);
+    if (res?.error) { setErr(res.error); return; }
+    onRejected();
+  };
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center p-4"
+      style={{ background: 'rgba(0,0,0,0.4)' }}
+      onClick={onClose}
+    >
+      <div
+        className="bg-white rounded-lg border border-zinc-200 w-full max-w-md"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-between px-5 py-4 border-b border-zinc-100">
+          <h3 className="font-semibold text-zinc-800" style={{ fontSize: 14 }}>
+            Reject Report — {row.lead_name}
+          </h3>
+          <button onClick={onClose} className="text-zinc-400 hover:text-zinc-700 transition-colors">
+            <X size={16} />
+          </button>
+        </div>
+        <div className="p-5 space-y-3">
+          <p className="text-zinc-600" style={{ fontSize: 13 }}>
+            The agent will be notified of the rejection with your reason and prompted to edit and resubmit.
+          </p>
+          <div>
+            <label style={{ display: 'block', fontSize: 12, fontWeight: 500, color: '#71717a', marginBottom: 5 }}>
+              Rejection reason <span style={{ color: '#b91c1c' }}>*</span>
+            </label>
+            <textarea
+              value={reason}
+              onChange={(e) => setReason(e.target.value)}
+              rows={4}
+              placeholder="Explain why this report is being rejected..."
+              style={{
+                width: '100%',
+                border: '1px solid #d4d4d8',
+                borderRadius: 6,
+                padding: '8px 12px',
+                fontSize: 13,
+                resize: 'vertical',
+                outline: 'none',
+              }}
+            />
+          </div>
+          {err && <p style={{ fontSize: 12, color: '#b91c1c', margin: '4px 0 0' }}>{err}</p>}
+        </div>
+        <div className="flex items-center justify-end gap-2 px-5 py-4 border-t border-zinc-100">
+          <button
+            type="button"
+            onClick={onClose}
+            style={{
+              fontSize: 13,
+              fontWeight: 500,
+              padding: '7px 16px',
+              border: '1px solid #d4d4d8',
+              borderRadius: 6,
+              background: '#fff',
+              color: '#52525b',
+              cursor: 'pointer',
+            }}
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            onClick={handleSubmit}
+            disabled={saving || !reason.trim()}
+            style={{
+              fontSize: 13,
+              fontWeight: 500,
+              padding: '7px 16px',
+              border: 'none',
+              borderRadius: 6,
+              background: saving || !reason.trim() ? '#d4d4d8' : '#b91c1c',
+              color: '#fff',
+              cursor: saving || !reason.trim() ? 'not-allowed' : 'pointer',
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 6,
+            }}
+          >
+            {saving && <Loader2 size={13} className="animate-spin" />}
+            <X size={13} />
+            Reject
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ─────────────── Page ───────────────────────────────────────── */
+
+export function ApprovalsPage() {
+  const { profile } = useAuth();
+  const navigate = useNavigate();
+
+  // Audit identifier must ALWAYS be the current user's user_id (never a name),
+  // since created_by/updated_by are keyed on user_id for ownership/RLS.
+  const actor = profile?.user_id != null ? String(profile.user_id) : null;
+
+  const isApprover = profile?.role === 'ADMIN' || profile?.role === 'TEAM_LEAD';
+
+  const [loading, setLoading] = useState(true);
+  const [rows, setRows] = useState<PendingApprovalRow[]>([]);
+
+  // modals
+  const [viewRow, setViewRow] = useState<PendingApprovalRow | null>(null);
+  const [approving, setApproving] = useState<number | null>(null); // report_id being approved
+  const [rejectRow, setRejectRow] = useState<PendingApprovalRow | null>(null);
+
+  const [err, setErr] = useState('');
+  const [success, setSuccess] = useState('');
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    const data = await fetchPendingApprovals();
+    setRows(data);
+    setLoading(false);
+  }, []);
+
+  useEffect(() => { load(); }, [load]);
+
+  const handleApprove = async (row: PendingApprovalRow) => {
+    if (actor == null) {
+      setErr('Your account is still loading. Please try again in a moment.');
+      return;
+    }
+    setApproving(row.report_id);
+    setErr('');
+    setSuccess('');
+    const res = await approveReport(
+      row.report_id,
+      row.lead_id,
+      row.lead_name,
+      row.lead_number,
+      row.requesting_agent_id,
+      row.assigned_sp_id,
+      actor
+    );
+    setApproving(null);
+    if (res?.error) { setErr(res.error); return; }
+    setSuccess(`Report for "${row.lead_name}" approved — meeting scheduled.`);
+    load();
+  };
+
+  if (!isApprover) {
+    return (
+      <AppShell title="Approvals">
+        <div className="flex flex-col items-center justify-center h-64 gap-4 text-zinc-400">
+          <ShieldOff size={32} />
+          <div className="text-center">
+            <p className="font-medium text-zinc-600" style={{ fontSize: 15 }}>Access Restricted</p>
+            <p style={{ fontSize: 13, marginTop: 4 }}>Only Team Leads and Admins can access the approvals queue.</p>
+          </div>
+          <button
+            onClick={() => navigate('/dashboard')}
+            className="text-blue-600 hover:text-blue-700 font-medium transition-colors"
+            style={{ fontSize: 13 }}
+          >
+            Go to Dashboard
+          </button>
+        </div>
+      </AppShell>
+    );
+  }
+
+  return (
+    <AppShell title="Approvals">
+      <div className="space-y-4 max-w-[1400px]">
+        {/* Header */}
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="font-semibold text-zinc-900" style={{ fontSize: 20 }}>
+              Lead Report Approvals
+            </h1>
+            <p className="text-zinc-500 mt-0.5" style={{ fontSize: 13 }}>
+              Review and approve or reject pending lead reports.
+            </p>
+          </div>
+          <button
+            onClick={load}
+            disabled={loading}
+            className="text-blue-600 hover:text-blue-700 font-medium transition-colors disabled:opacity-50"
+            style={{ fontSize: 13 }}
+          >
+            {loading ? 'Refreshing...' : 'Refresh'}
+          </button>
+        </div>
+
+        {err && (
+          <div className="rounded-lg px-4 py-3" style={{ background: '#fef2f2', border: '1px solid #fecaca', color: '#b91c1c', fontSize: 13 }}>
+            {err}
+          </div>
+        )}
+        {success && (
+          <div className="rounded-lg px-4 py-3" style={{ background: '#f0fdf4', border: '1px solid #bbf7d0', color: '#15803d', fontSize: 13 }}>
+            {success}
+          </div>
+        )}
+
+        {/* Table */}
+        <div className="bg-white border border-zinc-200 rounded-lg overflow-hidden">
+          {loading ? (
+            <div className="flex items-center justify-center py-16 gap-2 text-zinc-400">
+              <Loader2 size={18} className="animate-spin" />
+              <span style={{ fontSize: 14 }}>Loading pending approvals...</span>
+            </div>
+          ) : rows.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-16 gap-3 text-zinc-400">
+              <ThumbsUp size={28} />
+              <p style={{ fontSize: 14 }}>No pending approvals.</p>
+              <p style={{ fontSize: 12, color: '#a1a1aa' }}>All lead reports have been reviewed.</p>
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[780px] border-collapse">
+                <thead>
+                  <tr style={{ borderBottom: '1px solid #e4e4e7', background: '#fafafa' }}>
+                    {['Lead', 'Company', 'Requesting Agent', 'Assigned SP', 'Requested', 'Actions'].map((h) => (
+                      <th
+                        key={h}
+                        className="px-4 py-2.5 text-left font-semibold text-zinc-500"
+                        style={{ fontSize: 11 }}
+                      >
+                        {h}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {rows.map((row) => (
+                    <tr
+                      key={row.report_id}
+                      className="hover:bg-zinc-50 transition-colors"
+                      style={{ borderBottom: '1px solid #f4f4f5' }}
+                    >
+                      <Cell>
+                        <button
+                          onClick={() => navigate(`/leads/${row.lead_id}`)}
+                          className="flex flex-col gap-0.5 text-left hover:text-blue-600 transition-colors"
+                        >
+                          <span className="font-medium">{row.lead_name || '—'}</span>
+                          {row.lead_number && (
+                            <span className="font-mono text-zinc-400" style={{ fontSize: 11 }}>
+                              {row.lead_number}
+                            </span>
+                          )}
+                        </button>
+                      </Cell>
+                      <Cell muted>{row.client_name || '—'}</Cell>
+                      <Cell muted>{row.requesting_agent_name || '—'}</Cell>
+                      <Cell muted>{row.assigned_sp_name || '—'}</Cell>
+                      <Cell muted>
+                        {row.updated_date
+                          ? fmtDate(row.updated_date)
+                          : row.created_date
+                          ? fmtDate(row.created_date)
+                          : '—'}
+                      </Cell>
+                      <td className="px-4 py-3 align-middle">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          {/* VIEW */}
+                          <button
+                            type="button"
+                            onClick={() => setViewRow(row)}
+                            title="Preview report"
+                            className="inline-flex items-center gap-1 font-medium rounded-md transition-colors"
+                            style={{
+                              fontSize: 12,
+                              padding: '4px 10px',
+                              border: '1px solid #d4d4d8',
+                              background: '#fff',
+                              color: '#1A7EE8',
+                              cursor: 'pointer',
+                            }}
+                          >
+                            <Eye size={12} />
+                            View
+                          </button>
+
+                          {/* APPROVE */}
+                          <button
+                            type="button"
+                            onClick={() => handleApprove(row)}
+                            disabled={approving === row.report_id}
+                            title="Approve report"
+                            className="inline-flex items-center gap-1 font-medium rounded-md transition-colors"
+                            style={{
+                              fontSize: 12,
+                              padding: '4px 10px',
+                              border: 'none',
+                              background: '#15803d',
+                              color: '#fff',
+                              cursor: approving === row.report_id ? 'not-allowed' : 'pointer',
+                              opacity: approving === row.report_id ? 0.7 : 1,
+                            }}
+                          >
+                            {approving === row.report_id
+                              ? <Loader2 size={12} className="animate-spin" />
+                              : <ThumbsUp size={12} />}
+                            Approve
+                          </button>
+
+                          {/* REJECT */}
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (actor == null) {
+                                setErr('Your account is still loading. Please try again in a moment.');
+                                return;
+                              }
+                              setRejectRow(row);
+                            }}
+                            title="Reject report"
+                            className="inline-flex items-center gap-1 font-medium rounded-md transition-colors"
+                            style={{
+                              fontSize: 12,
+                              padding: '4px 10px',
+                              border: 'none',
+                              background: '#b91c1c',
+                              color: '#fff',
+                              cursor: 'pointer',
+                            }}
+                          >
+                            <ThumbsDown size={12} />
+                            Reject
+                          </button>
+
+                          {/* Quick link to lead */}
+                          <button
+                            type="button"
+                            onClick={() => navigate(`/leads/${row.lead_id}`)}
+                            title="Open lead detail"
+                            style={{
+                              fontSize: 12,
+                              background: 'none',
+                              border: 'none',
+                              color: '#a1a1aa',
+                              cursor: 'pointer',
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              padding: 4,
+                            }}
+                          >
+                            <ChevronRight size={14} />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Report preview modal */}
+      {viewRow && (
+        <ReportPreviewModal
+          reportId={viewRow.report_id}
+          leadName={viewRow.lead_name}
+          onClose={() => setViewRow(null)}
+        />
+      )}
+
+      {/* Reject modal */}
+      {rejectRow && actor != null && (
+        <RejectModal
+          row={rejectRow}
+          actor={actor}
+          onClose={() => setRejectRow(null)}
+          onRejected={() => {
+            setRejectRow(null);
+            setSuccess(`Report for "${rejectRow.lead_name}" rejected.`);
+            load();
+          }}
+        />
+      )}
+    </AppShell>
+  );
+}

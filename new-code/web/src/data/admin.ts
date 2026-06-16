@@ -1,0 +1,652 @@
+/**
+ * Admin panel data layer — real Supabase reads + writes.
+ *
+ * Tables used:
+ *   user_master(user_id pk identity, full_name, email, enabled, designation_id, audit cols)
+ *   user_role(user_id+role_id composite pk, audit cols) -> role_master(role_id, name)
+ *   role_master(role_id, name, priority, is_web)
+ *   project(project_id pk identity, project_name, enabled, client_assoc_id, audit cols)
+ *   project_user(project_user_id pk identity, project_id, user_id, role_name, audit cols)
+ *   client_association(client_assoc_id pk identity, client_name, full_name, email,
+ *      mobile_number, enabled, cin_number, location, website, industry_id, domain_id,
+ *      address_id, country_code_id, audit cols)
+ *   source_master(source_id pk identity, source_name, audit cols)
+ *   industry_master(industry_id, industry_name, short_industry_name)
+ *   designation_master(designation_id pk identity, designation_name, audit cols)
+ *   domain_master(domain_id, domain_name)
+ *
+ * Notes:
+ *   - audit columns created_by / updated_by store the acting user's user_id as text (e.g. "1").
+ *   - soft-deletes use deleted_date / deleted_by; all reads filter deleted_date is null.
+ *   - RLS is off in this preview; the authenticated client reads/writes all tables.
+ */
+
+import { supabase } from '../lib/supabase';
+
+/* ------------------------------------------------------------------ */
+/*  Types                                                              */
+/* ------------------------------------------------------------------ */
+
+export interface RoleRow {
+  role_id: number;
+  name: string;
+  priority: number | null;
+  is_web: boolean | null;
+}
+
+export interface AdminUser {
+  user_id: number;
+  full_name: string;
+  email: string;
+  enabled: boolean;
+  designation_id: number | null;
+  designation: string;
+  roleIds: number[];
+  roleNames: string[];
+}
+
+export interface AdminProject {
+  project_id: number;
+  project_name: string;
+  enabled: boolean;
+  client_assoc_id: number | null;
+  clientName: string;
+  members: ProjectMember[];
+}
+
+export interface ProjectMember {
+  project_user_id: number;
+  user_id: number;
+  full_name: string;
+  role_name: string;
+}
+
+export interface AdminClient {
+  client_assoc_id: number;
+  client_name: string;
+  full_name: string;
+  email: string;
+  mobile_number: string;
+  enabled: boolean;
+  cin_number: string;
+  location: string | null;
+  website: string | null;
+  industry_id: number | null;
+  domain_id: number | null;
+  industryName: string;
+  domainName: string;
+  address_id: number | null;
+  country_code_id: number | null;
+}
+
+export interface RefRow {
+  id: number;
+  name: string;
+}
+
+export interface LookupOption {
+  id: number;
+  name: string;
+}
+
+/* ------------------------------------------------------------------ */
+/*  Internal row shapes                                                */
+/* ------------------------------------------------------------------ */
+
+interface UserMasterRow {
+  user_id: number;
+  full_name: string | null;
+  email: string | null;
+  enabled: boolean;
+  designation_id: number | null;
+}
+interface UserRoleRow { user_id: number; role_id: number; }
+interface ProjectRow { project_id: number; project_name: string; enabled: boolean; client_assoc_id: number | null; }
+interface ProjectUserRow { project_user_id: number; project_id: number; user_id: number; role_name: string; }
+interface ClientRow {
+  client_assoc_id: number;
+  client_name: string;
+  full_name: string;
+  email: string;
+  mobile_number: string;
+  enabled: boolean;
+  cin_number: string;
+  location: string | null;
+  website: string | null;
+  industry_id: number | null;
+  domain_id: number | null;
+  address_id: number | null;
+  country_code_id: number | null;
+}
+
+/* ------------------------------------------------------------------ */
+/*  Shared lookups                                                     */
+/* ------------------------------------------------------------------ */
+
+export interface AdminLookups {
+  roles: RoleRow[];
+  designations: LookupOption[];
+  industries: LookupOption[];
+  domains: LookupOption[];
+  projectRoleNames: string[];
+}
+
+/** Role names assignable to a user within a project (project_user.role_name). */
+export const PROJECT_ROLE_NAMES = ['SALES_HEAD', 'TEAM_LEAD', 'SALES_PERSON', 'AGENT'];
+
+export async function fetchLookups(): Promise<AdminLookups> {
+  const [rolesRes, desigRes, indRes, domRes] = await Promise.all([
+    supabase.from('role_master').select('role_id, name, priority, is_web').is('deleted_date', null).order('priority', { ascending: true, nullsFirst: false }),
+    supabase.from('designation_master').select('designation_id, designation_name').is('deleted_date', null).order('designation_name'),
+    supabase.from('industry_master').select('industry_id, industry_name').is('deleted_date', null).order('industry_name'),
+    supabase.from('domain_master').select('domain_id, domain_name').is('deleted_date', null).order('domain_name'),
+  ]);
+
+  const roles = ((rolesRes.data ?? []) as unknown as RoleRow[]);
+  const designations = ((desigRes.data ?? []) as unknown as { designation_id: number; designation_name: string }[])
+    .map((d) => ({ id: d.designation_id, name: (d.designation_name ?? '').trim() }));
+  const industries = ((indRes.data ?? []) as unknown as { industry_id: number; industry_name: string }[])
+    .map((i) => ({ id: i.industry_id, name: i.industry_name }));
+  const domains = ((domRes.data ?? []) as unknown as { domain_id: number; domain_name: string }[])
+    .map((d) => ({ id: d.domain_id, name: d.domain_name }));
+
+  return { roles, designations, industries, domains, projectRoleNames: PROJECT_ROLE_NAMES };
+}
+
+/* ------------------------------------------------------------------ */
+/*  Users                                                              */
+/* ------------------------------------------------------------------ */
+
+export async function fetchUsers(roles: RoleRow[]): Promise<{ users: AdminUser[]; error: string | null }> {
+  const { data: usersRaw, error } = await supabase
+    .from('user_master')
+    .select('user_id, full_name, email, enabled, designation_id')
+    .is('deleted_date', null)
+    .order('user_id', { ascending: false });
+
+  if (error) return { users: [], error: error.message };
+
+  const users = (usersRaw ?? []) as unknown as UserMasterRow[];
+
+  const { data: rolesRaw } = await supabase
+    .from('user_role')
+    .select('user_id, role_id')
+    .is('deleted_date', null);
+  const userRoles = (rolesRaw ?? []) as unknown as UserRoleRow[];
+
+  const { data: desigRaw } = await supabase
+    .from('designation_master')
+    .select('designation_id, designation_name')
+    .is('deleted_date', null);
+  const desigMap = new Map<number, string>();
+  ((desigRaw ?? []) as unknown as { designation_id: number; designation_name: string }[])
+    .forEach((d) => desigMap.set(d.designation_id, (d.designation_name ?? '').trim()));
+
+  const roleNameMap = new Map<number, string>();
+  roles.forEach((r) => roleNameMap.set(r.role_id, r.name));
+
+  const rolesByUser = new Map<number, number[]>();
+  userRoles.forEach((ur) => {
+    const arr = rolesByUser.get(ur.user_id) ?? [];
+    arr.push(ur.role_id);
+    rolesByUser.set(ur.user_id, arr);
+  });
+
+  const mapped: AdminUser[] = users.map((u) => {
+    const roleIds = rolesByUser.get(u.user_id) ?? [];
+    return {
+      user_id: u.user_id,
+      full_name: u.full_name ?? '',
+      email: u.email ?? '',
+      enabled: u.enabled,
+      designation_id: u.designation_id,
+      designation: u.designation_id ? (desigMap.get(u.designation_id) ?? '') : '',
+      roleIds,
+      roleNames: roleIds.map((id) => roleNameMap.get(id) ?? '').filter(Boolean),
+    };
+  });
+
+  return { users: mapped, error: null };
+}
+
+export async function setUserEnabled(userId: number, enabled: boolean, actorId: string): Promise<string | null> {
+  const { error } = await supabase
+    .from('user_master')
+    .update({ enabled, updated_by: actorId, updated_date: new Date().toISOString() })
+    .eq('user_id', userId);
+  return error?.message ?? null;
+}
+
+/**
+ * Add a single (user_id, role_id) assignment without touching the user's other
+ * roles. The user_role PK is (user_id, role_id) and rows are soft-deleted, so a
+ * previously-removed assignment must be REVIVED (clear deleted_* + restamp) to
+ * avoid a duplicate-key violation; only a truly-absent pair is inserted fresh.
+ */
+async function addUserRole(userId: number, roleId: number, actorId: string): Promise<string | null> {
+  const nowIso = new Date().toISOString();
+
+  // Is there ANY existing row for this (user_id, role_id) — active or soft-deleted?
+  const { data: existingRaw, error: selErr } = await supabase
+    .from('user_role')
+    .select('user_id, role_id, deleted_date')
+    .eq('user_id', userId)
+    .eq('role_id', roleId)
+    .limit(1);
+  if (selErr) return selErr.message;
+
+  const existing = ((existingRaw ?? []) as unknown as { deleted_date: string | null }[])[0];
+
+  if (existing) {
+    // Already active — nothing to do.
+    if (existing.deleted_date == null) return null;
+    // Revive the soft-deleted assignment in place (respects the composite PK).
+    const { error: revErr } = await supabase
+      .from('user_role')
+      .update({ deleted_by: null, deleted_date: null, updated_by: actorId, updated_date: nowIso })
+      .eq('user_id', userId)
+      .eq('role_id', roleId);
+    return revErr?.message ?? null;
+  }
+
+  const { error: insErr } = await supabase
+    .from('user_role')
+    .insert({
+      user_id: userId,
+      role_id: roleId,
+      created_by: actorId,
+      created_date: nowIso,
+    });
+  return insErr?.message ?? null;
+}
+
+/** Soft-delete a single active (user_id, role_id) assignment (audited, scoped). */
+async function removeUserRole(userId: number, roleId: number, actorId: string): Promise<string | null> {
+  const { error } = await supabase
+    .from('user_role')
+    .update({ deleted_by: actorId, deleted_date: new Date().toISOString() })
+    .eq('user_id', userId)
+    .eq('role_id', roleId)
+    .is('deleted_date', null);
+  return error?.message ?? null;
+}
+
+/**
+ * Set the user's COMPLETE set of active roles to `nextRoleIds`, preserving every
+ * role the admin kept and only writing the delta:
+ *   - roles in next but not current  -> add (revive-or-insert)
+ *   - roles in current but not next  -> soft-delete (audited)
+ * Other users' rows are never touched. Multi-role users no longer lose roles.
+ */
+export async function setUserRoles(userId: number, nextRoleIds: number[], actorId: string): Promise<string | null> {
+  // Read the user's current ACTIVE roles fresh so the diff is authoritative.
+  const { data: currentRaw, error: curErr } = await supabase
+    .from('user_role')
+    .select('role_id')
+    .eq('user_id', userId)
+    .is('deleted_date', null);
+  if (curErr) return curErr.message;
+
+  const current = new Set(((currentRaw ?? []) as unknown as { role_id: number }[]).map((r) => r.role_id));
+  const next = new Set(nextRoleIds);
+
+  const toAdd = [...next].filter((id) => !current.has(id));
+  const toRemove = [...current].filter((id) => !next.has(id));
+
+  for (const roleId of toAdd) {
+    const err = await addUserRole(userId, roleId, actorId);
+    if (err) return err;
+  }
+  for (const roleId of toRemove) {
+    const err = await removeUserRole(userId, roleId, actorId);
+    if (err) return err;
+  }
+  return null;
+}
+
+/**
+ * Backward-compatible single-role setter — now NON-destructive. Ensures the given
+ * role is present without removing the user's other roles. Prefer `setUserRoles`
+ * for the full multi-role editor.
+ */
+export async function setUserRole(userId: number, roleId: number, actorId: string): Promise<string | null> {
+  return addUserRole(userId, roleId, actorId);
+}
+
+/* ------------------------------------------------------------------ */
+/*  Projects                                                           */
+/* ------------------------------------------------------------------ */
+
+export async function fetchProjects(): Promise<{ projects: AdminProject[]; error: string | null }> {
+  const { data: projRaw, error } = await supabase
+    .from('project')
+    .select('project_id, project_name, enabled, client_assoc_id')
+    .is('deleted_date', null)
+    .order('project_id', { ascending: false });
+  if (error) return { projects: [], error: error.message };
+
+  const projects = (projRaw ?? []) as unknown as ProjectRow[];
+
+  const { data: puRaw } = await supabase
+    .from('project_user')
+    .select('project_user_id, project_id, user_id, role_name')
+    .is('deleted_date', null);
+  const projectUsers = (puRaw ?? []) as unknown as ProjectUserRow[];
+
+  const { data: clientsRaw } = await supabase
+    .from('client_association')
+    .select('client_assoc_id, client_name')
+    .is('deleted_date', null);
+  const clientMap = new Map<number, string>();
+  ((clientsRaw ?? []) as unknown as { client_assoc_id: number; client_name: string }[])
+    .forEach((c) => clientMap.set(c.client_assoc_id, c.client_name));
+
+  const { data: usersRaw } = await supabase
+    .from('user_master')
+    .select('user_id, full_name')
+    .is('deleted_date', null);
+  const userMap = new Map<number, string>();
+  ((usersRaw ?? []) as unknown as { user_id: number; full_name: string | null }[])
+    .forEach((u) => userMap.set(u.user_id, u.full_name ?? ''));
+
+  const membersByProject = new Map<number, ProjectMember[]>();
+  projectUsers.forEach((pu) => {
+    const arr = membersByProject.get(pu.project_id) ?? [];
+    arr.push({
+      project_user_id: pu.project_user_id,
+      user_id: pu.user_id,
+      full_name: userMap.get(pu.user_id) ?? `User #${pu.user_id}`,
+      role_name: pu.role_name,
+    });
+    membersByProject.set(pu.project_id, arr);
+  });
+
+  const mapped: AdminProject[] = projects.map((p) => ({
+    project_id: p.project_id,
+    project_name: p.project_name,
+    enabled: p.enabled,
+    client_assoc_id: p.client_assoc_id,
+    clientName: p.client_assoc_id ? (clientMap.get(p.client_assoc_id) ?? '') : '',
+    members: (membersByProject.get(p.project_id) ?? []).sort((a, b) => a.full_name.localeCompare(b.full_name)),
+  }));
+
+  return { projects: mapped, error: null };
+}
+
+export async function createProject(
+  projectName: string,
+  clientAssocId: number,
+  actorId: string
+): Promise<string | null> {
+  const { error } = await supabase.from('project').insert({
+    project_name: projectName,
+    client_assoc_id: clientAssocId,
+    enabled: true,
+    created_by: actorId,
+    created_date: new Date().toISOString(),
+  });
+  return error?.message ?? null;
+}
+
+export async function setProjectEnabled(projectId: number, enabled: boolean, actorId: string): Promise<string | null> {
+  const { error } = await supabase
+    .from('project')
+    .update({ enabled, updated_by: actorId, updated_date: new Date().toISOString() })
+    .eq('project_id', projectId);
+  return error?.message ?? null;
+}
+
+export async function assignUserToProject(
+  projectId: number,
+  userId: number,
+  roleName: string,
+  actorId: string
+): Promise<string | null> {
+  // project_user has no UNIQUE(project_id, user_id); guard against duplicate
+  // active assignments so the same user can't be added to a project twice.
+  const { data: existingRaw, error: chkErr } = await supabase
+    .from('project_user')
+    .select('project_user_id')
+    .eq('project_id', projectId)
+    .eq('user_id', userId)
+    .is('deleted_date', null)
+    .limit(1);
+  if (chkErr) return chkErr.message;
+  if ((existingRaw ?? []).length > 0) return 'This user is already assigned to the project.';
+
+  const { error } = await supabase.from('project_user').insert({
+    project_id: projectId,
+    user_id: userId,
+    role_name: roleName,
+    created_by: actorId,
+    created_date: new Date().toISOString(),
+  });
+  return error?.message ?? null;
+}
+
+export async function unassignProjectUser(projectUserId: number, actorId: string): Promise<string | null> {
+  const { error } = await supabase
+    .from('project_user')
+    .update({ deleted_by: actorId, deleted_date: new Date().toISOString() })
+    .eq('project_user_id', projectUserId);
+  return error?.message ?? null;
+}
+
+/* ------------------------------------------------------------------ */
+/*  Clients                                                            */
+/* ------------------------------------------------------------------ */
+
+export async function fetchClients(): Promise<{ clients: AdminClient[]; error: string | null }> {
+  const { data: clientsRaw, error } = await supabase
+    .from('client_association')
+    .select('client_assoc_id, client_name, full_name, email, mobile_number, enabled, cin_number, location, website, industry_id, domain_id, address_id, country_code_id')
+    .is('deleted_date', null)
+    .order('client_assoc_id', { ascending: false });
+  if (error) return { clients: [], error: error.message };
+
+  const clients = (clientsRaw ?? []) as unknown as ClientRow[];
+
+  const { data: indRaw } = await supabase.from('industry_master').select('industry_id, industry_name').is('deleted_date', null);
+  const indMap = new Map<number, string>();
+  ((indRaw ?? []) as unknown as { industry_id: number; industry_name: string }[]).forEach((i) => indMap.set(i.industry_id, i.industry_name));
+
+  const { data: domRaw } = await supabase.from('domain_master').select('domain_id, domain_name').is('deleted_date', null);
+  const domMap = new Map<number, string>();
+  ((domRaw ?? []) as unknown as { domain_id: number; domain_name: string }[]).forEach((d) => domMap.set(d.domain_id, d.domain_name));
+
+  const mapped: AdminClient[] = clients.map((c) => ({
+    client_assoc_id: c.client_assoc_id,
+    client_name: c.client_name,
+    full_name: c.full_name,
+    email: c.email,
+    mobile_number: c.mobile_number,
+    enabled: c.enabled,
+    cin_number: c.cin_number,
+    location: c.location,
+    website: c.website,
+    industry_id: c.industry_id,
+    domain_id: c.domain_id,
+    industryName: c.industry_id ? (indMap.get(c.industry_id) ?? '') : '',
+    domainName: c.domain_id ? (domMap.get(c.domain_id) ?? '') : '',
+    address_id: c.address_id,
+    country_code_id: c.country_code_id,
+  }));
+
+  return { clients: mapped, error: null };
+}
+
+export interface ClientEditInput {
+  client_name: string;
+  full_name: string;
+  email: string;
+  mobile_number: string;
+  cin_number: string;
+  location: string;
+  website: string;
+  industry_id: number;
+  domain_id: number;
+  enabled: boolean;
+}
+
+/**
+ * Pre-check the UNIQUE(email) and UNIQUE(cin_number) constraints on
+ * client_association against active rows, returning a friendly field error
+ * before we hit a raw Postgres 23505. `excludeId` skips the row being edited.
+ */
+async function checkClientUniqueness(
+  email: string,
+  cin: string,
+  excludeId: number | null
+): Promise<string | null> {
+  const trimmedEmail = email.trim();
+  const trimmedCin = cin.trim();
+
+  if (trimmedEmail) {
+    let q = supabase
+      .from('client_association')
+      .select('client_assoc_id')
+      .is('deleted_date', null)
+      .eq('email', trimmedEmail);
+    if (excludeId != null) q = q.neq('client_assoc_id', excludeId);
+    const { data, error } = await q.limit(1);
+    if (error) return error.message;
+    if ((data ?? []).length > 0) return 'A client with this email already exists.';
+  }
+
+  if (trimmedCin) {
+    let q = supabase
+      .from('client_association')
+      .select('client_assoc_id')
+      .is('deleted_date', null)
+      .eq('cin_number', trimmedCin);
+    if (excludeId != null) q = q.neq('client_assoc_id', excludeId);
+    const { data, error } = await q.limit(1);
+    if (error) return error.message;
+    if ((data ?? []).length > 0) return 'A client with this CIN number already exists.';
+  }
+
+  return null;
+}
+
+/** Map a Postgres unique-violation (23505) to readable copy; pass others through. */
+function friendlyWriteError(error: { code?: string; message: string } | null): string | null {
+  if (!error) return null;
+  if (error.code === '23505') {
+    if (/email/i.test(error.message)) return 'A client with this email already exists.';
+    if (/cin/i.test(error.message)) return 'A client with this CIN number already exists.';
+    return 'A record with these details already exists.';
+  }
+  return error.message;
+}
+
+export async function updateClient(
+  clientAssocId: number,
+  input: ClientEditInput,
+  actorId: string
+): Promise<string | null> {
+  const dupErr = await checkClientUniqueness(input.email, input.cin_number, clientAssocId);
+  if (dupErr) return dupErr;
+
+  const { error } = await supabase
+    .from('client_association')
+    .update({
+      client_name: input.client_name,
+      full_name: input.full_name,
+      email: input.email,
+      mobile_number: input.mobile_number,
+      cin_number: input.cin_number,
+      location: input.location || null,
+      website: input.website || null,
+      industry_id: input.industry_id,
+      domain_id: input.domain_id,
+      enabled: input.enabled,
+      updated_by: actorId,
+      updated_date: new Date().toISOString(),
+    })
+    .eq('client_assoc_id', clientAssocId);
+  return friendlyWriteError(error);
+}
+
+/**
+ * Create a new client. address_id and country_code_id are NOT NULL FKs with no
+ * dedicated editor here, so we reuse an existing client's values (country_code_id
+ * is always 1 in this DB; address_id is borrowed from the most recent client).
+ */
+export async function createClient(input: ClientEditInput, actorId: string): Promise<string | null> {
+  const dupErr = await checkClientUniqueness(input.email, input.cin_number, null);
+  if (dupErr) return dupErr;
+
+  const { data: refRaw } = await supabase
+    .from('client_association')
+    .select('address_id, country_code_id')
+    .is('deleted_date', null)
+    .order('client_assoc_id', { ascending: false })
+    .limit(1);
+  const ref = ((refRaw ?? []) as unknown as { address_id: number; country_code_id: number }[])[0];
+  if (!ref) return 'Cannot create client: no reference address available.';
+
+  const { error } = await supabase.from('client_association').insert({
+    client_name: input.client_name,
+    full_name: input.full_name,
+    email: input.email,
+    mobile_number: input.mobile_number,
+    cin_number: input.cin_number,
+    location: input.location || null,
+    website: input.website || null,
+    industry_id: input.industry_id,
+    domain_id: input.domain_id,
+    enabled: input.enabled,
+    address_id: ref.address_id,
+    country_code_id: ref.country_code_id,
+    created_by: actorId,
+    created_date: new Date().toISOString(),
+  });
+  return friendlyWriteError(error);
+}
+
+/* ------------------------------------------------------------------ */
+/*  Reference data                                                     */
+/* ------------------------------------------------------------------ */
+
+export async function fetchReferenceData(): Promise<{
+  sources: RefRow[];
+  industries: RefRow[];
+  designations: RefRow[];
+  domains: RefRow[];
+  error: string | null;
+}> {
+  const [srcRes, indRes, desigRes, domRes] = await Promise.all([
+    supabase.from('source_master').select('source_id, source_name').is('deleted_date', null).order('source_name'),
+    supabase.from('industry_master').select('industry_id, industry_name').is('deleted_date', null).order('industry_name'),
+    supabase.from('designation_master').select('designation_id, designation_name').is('deleted_date', null).order('designation_name'),
+    supabase.from('domain_master').select('domain_id, domain_name').is('deleted_date', null).order('domain_name'),
+  ]);
+
+  const firstError = srcRes.error ?? indRes.error ?? desigRes.error ?? domRes.error ?? null;
+
+  return {
+    sources: ((srcRes.data ?? []) as unknown as { source_id: number; source_name: string }[]).map((s) => ({ id: s.source_id, name: s.source_name })),
+    industries: ((indRes.data ?? []) as unknown as { industry_id: number; industry_name: string }[]).map((i) => ({ id: i.industry_id, name: i.industry_name })),
+    designations: ((desigRes.data ?? []) as unknown as { designation_id: number; designation_name: string }[]).map((d) => ({ id: d.designation_id, name: (d.designation_name ?? '').trim() })),
+    domains: ((domRes.data ?? []) as unknown as { domain_id: number; domain_name: string }[]).map((d) => ({ id: d.domain_id, name: d.domain_name })),
+    error: firstError?.message ?? null,
+  };
+}
+
+export async function addSource(name: string, actorId: string): Promise<string | null> {
+  const { error } = await supabase.from('source_master').insert({
+    source_name: name,
+    created_by: actorId,
+    created_date: new Date().toISOString(),
+  });
+  return error?.message ?? null;
+}
+
+export async function addDesignation(name: string, actorId: string): Promise<string | null> {
+  const { error } = await supabase.from('designation_master').insert({
+    designation_name: name,
+    created_by: actorId,
+    created_date: new Date().toISOString(),
+  });
+  return error?.message ?? null;
+}

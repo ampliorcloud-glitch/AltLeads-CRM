@@ -1,0 +1,501 @@
+﻿import React, { useEffect, useState, useCallback } from 'react';
+import { useParams, useNavigate, useLocation } from 'react-router-dom';
+import {
+  ArrowLeft,
+  Loader2,
+  ChevronRight,
+  AlertCircle,
+  Building2,
+  MapPin,
+  Award,
+  CheckCircle2,
+} from 'lucide-react';
+import { AppShell } from '../components/layout/AppShell';
+import { StageBadge } from '../components/ui/Badge';
+import {
+  fetchLeadDetail,
+  fetchLookups,
+  updateLeadStage,
+  type LeadDetail,
+  type LookupOption,
+} from '../lib/leadsApi';
+import {
+  fetchCompanyInfo,
+  clinchLead,
+  initials,
+  type CompanyInfo,
+} from '../data/leadWorkspace';
+import { LeadInfoPanel } from '../components/lead/LeadInfoPanel';
+import { ActivityTab } from '../components/lead/ActivityTab';
+import { ReportTab } from '../components/lead/ReportTab';
+import { MeetingTab } from '../components/lead/MeetingTab';
+import { useAuth } from '../contexts/AuthContext';
+
+/* ── Progress stepper: Pre-Sales → Meeting → Closing ─────────────────────── */
+
+const PRESALES_STAGES = new Set(['Warm', 'Hot Prospect', 'New Meeting']);
+const CLOSED_STAGES = new Set(['Meeting Successful']);
+
+function phaseFor(stage: string, isClosed: boolean): 0 | 1 | 2 {
+  if (isClosed || CLOSED_STAGES.has(stage)) return 2;
+  if (!stage || PRESALES_STAGES.has(stage)) return 0;
+  return 1; // any "Meeting *" stage
+}
+
+/**
+ * Three-step progress stepper matching Figma frames 012 / 003:
+ * full-width steps, check-circle markers, hairline connector lines, and a
+ * brand-blue underline beneath every completed/active step.
+ */
+function ProgressStepper({ stage, isClosed }: { stage: string; isClosed: boolean }) {
+  const phase = phaseFor(stage, isClosed);
+  const steps = ['Pre-Sales', 'Meeting', 'Closing'];
+  return (
+    <div className="flex items-stretch w-full">
+      {steps.map((label, i) => {
+        const active = i <= phase;
+        return (
+          <React.Fragment key={label}>
+            <div className="flex flex-col items-center" style={{ flex: '0 0 auto' }}>
+              <div className="flex items-center justify-center gap-2" style={{ height: 28 }}>
+                <CheckCircle2
+                  size={17}
+                  strokeWidth={2}
+                  color={active ? '#1A7EE8' : '#9CA3AF'}
+                  fill={active ? 'rgba(26,126,232,0.10)' : 'transparent'}
+                />
+                <span
+                  style={{
+                    fontSize: 13,
+                    fontWeight: active ? 600 : 500,
+                    color: active ? '#111827' : '#9CA3AF',
+                    whiteSpace: 'nowrap',
+                  }}
+                >
+                  {label}
+                </span>
+              </div>
+              <span
+                style={{
+                  marginTop: 8,
+                  width: '100%',
+                  height: 3,
+                  borderRadius: 2,
+                  background: active ? '#1A7EE8' : 'transparent',
+                }}
+              />
+            </div>
+            {i < steps.length - 1 && (
+              <span
+                aria-hidden
+                style={{
+                  flex: 1,
+                  alignSelf: 'center',
+                  marginTop: -11,
+                  height: 1,
+                  background: '#E5E7EB',
+                  minWidth: 24,
+                }}
+              />
+            )}
+          </React.Fragment>
+        );
+      })}
+    </div>
+  );
+}
+
+/* ── Header stage selector ───────────────────────────────────────────────── */
+
+function StageSelect({
+  currentStageId,
+  stages,
+  disabled,
+  saving,
+  onChange,
+}: {
+  currentStageId: number | null;
+  stages: LookupOption[];
+  disabled: boolean;
+  saving: boolean;
+  onChange: (id: number) => void;
+}) {
+  return (
+    <div className="flex items-center gap-2">
+      <select
+        value={currentStageId ?? ''}
+        onChange={(e) => e.target.value && onChange(Number(e.target.value))}
+        disabled={disabled || saving}
+        style={{
+          fontSize: 12,
+          padding: '4px 8px',
+          border: '1px solid #d4d4d8',
+          borderRadius: 6,
+          background: '#fff',
+          color: '#18181b',
+          cursor: disabled ? 'not-allowed' : 'pointer',
+          height: 30,
+        }}
+      >
+        <option value="">Select stage</option>
+        {stages.map((s) => (
+          <option key={s.id} value={s.id}>
+            {s.label}
+          </option>
+        ))}
+      </select>
+      {saving && <Loader2 size={13} className="animate-spin text-zinc-400" />}
+    </div>
+  );
+}
+
+/* ── Tabs ────────────────────────────────────────────────────────────────── */
+
+type TabKey = 'activity' | 'report' | 'meeting';
+const TABS: { key: TabKey; label: string }[] = [
+  { key: 'activity', label: 'Activity' },
+  { key: 'report', label: 'Lead Report' },
+  { key: 'meeting', label: 'Meeting' },
+];
+
+/* ── Page ────────────────────────────────────────────────────────────────── */
+
+export function LeadDetailPage() {
+  const { id } = useParams<{ id: string }>();
+  const navigate = useNavigate();
+  const location = useLocation();
+  const { profile } = useAuth();
+  const leadId = Number(id);
+
+  const [lead, setLead] = useState<LeadDetail | null>(null);
+  const [company, setCompany] = useState<CompanyInfo | null>(null);
+  const [stages, setStages] = useState<LookupOption[]>([]);
+
+  const [loadingLead, setLoadingLead] = useState(true);
+  const [loadingCompany, setLoadingCompany] = useState(true);
+  const [leadError, setLeadError] = useState('');
+
+  const [tab, setTab] = useState<TabKey>('activity');
+  const [stageSaving, setStageSaving] = useState(false);
+  const [clinching, setClinching] = useState(false);
+
+  // lead_master.created_by / lead_report audit fields MUST be the numeric user_id
+  // (ownership / RLS keys on created_by = user_id). NEVER fall back to full_name or
+  // email — a name can't resolve to a user and corrupts ownership (see lead_id=1).
+  // When the profile isn't loaded yet, actor is '' and write actions are blocked.
+  const actor = profile?.user_id != null ? String(profile.user_id) : '';
+  const hasActor = actor !== '';
+
+  const loadLead = useCallback(async () => {
+    if (!leadId) return;
+    setLoadingLead(true);
+    const [leadData, lookupData] = await Promise.all([fetchLeadDetail(leadId), fetchLookups()]);
+    if (!leadData) {
+      setLeadError('Lead not found.');
+      setLoadingLead(false);
+      return;
+    }
+    setLead(leadData);
+    setStages(lookupData.stages);
+    setLoadingLead(false);
+
+    // company (drives the domain for pre-sales questions too)
+    setLoadingCompany(true);
+    const co = await fetchCompanyInfo(leadData.client_assoc_id);
+    setCompany(co);
+    setLoadingCompany(false);
+  }, [leadId]);
+
+  useEffect(() => {
+    loadLead();
+  }, [loadLead, location.key]);
+
+  // Lightweight refresh of just the lead row (header/stage) after a tab action.
+  const refreshLead = useCallback(async () => {
+    const leadData = await fetchLeadDetail(leadId);
+    if (leadData) setLead(leadData);
+  }, [leadId]);
+
+  const handleStageChange = async (stageId: number) => {
+    if (!lead?.report_id || !hasActor) return;
+    setStageSaving(true);
+    const res = await updateLeadStage(lead.report_id, stageId, actor);
+    setStageSaving(false);
+    if (!res?.error) {
+      const found = stages.find((s) => s.id === stageId);
+      setLead((prev) => (prev ? { ...prev, stage_id: stageId, stage_name: found?.label ?? prev.stage_name } : prev));
+    }
+  };
+
+  const handleClinch = async () => {
+    if (!lead || !hasActor) return;
+    setClinching(true);
+    const res = await clinchLead(lead.lead_id, actor);
+    setClinching(false);
+    if (!res?.error) {
+      setLead((prev) => (prev ? { ...prev, is_closed: true } : prev));
+    }
+  };
+
+  if (loadingLead) {
+    return (
+      <AppShell title="Lead Detail">
+        <div className="flex items-center justify-center h-64 gap-2 text-zinc-400">
+          <Loader2 size={18} className="animate-spin" />
+          <span style={{ fontSize: 14 }}>Loading lead...</span>
+        </div>
+      </AppShell>
+    );
+  }
+
+  if (leadError || !lead) {
+    return (
+      <AppShell title="Lead Detail">
+        <div className="flex flex-col items-center justify-center h-64 gap-3 text-zinc-400">
+          <AlertCircle size={24} />
+          <p style={{ fontSize: 14 }}>{leadError || 'Lead not found.'}</p>
+          <button
+            onClick={() => navigate('/leads')}
+            className="text-blue-600 hover:text-blue-700 font-medium transition-colors"
+            style={{ fontSize: 13 }}
+          >
+            Back to Leads
+          </button>
+        </div>
+      </AppShell>
+    );
+  }
+
+  const canClinch = lead.stage_name === 'Meeting Successful' && !lead.is_closed && hasActor;
+  const companyLocation = company?.location || lead.city_name;
+
+  return (
+    <AppShell title="Lead Detail">
+      <div className="space-y-4 max-w-[1400px]">
+        {/* Breadcrumb */}
+        <div className="flex items-center gap-2 text-zinc-400" style={{ fontSize: 12 }}>
+          <button
+            onClick={() => navigate('/leads')}
+            className="flex items-center gap-1 hover:text-zinc-700 transition-colors"
+          >
+            <ArrowLeft size={13} />
+            Leads
+          </button>
+          <ChevronRight size={11} />
+          <span className="text-zinc-600">{lead.lead_name}</span>
+        </div>
+
+        {/* Header */}
+        <div className="bg-white border border-zinc-200 rounded-lg px-5 py-4">
+          {/* Lead ID — top-right, matches Figma "Lead ID : XXXXXX" */}
+          {lead.lead_number && (
+            <div
+              className="flex justify-end font-mono text-zinc-400"
+              style={{ fontSize: 11, marginBottom: 4 }}
+            >
+              Lead ID&nbsp;:&nbsp;{lead.lead_number}
+            </div>
+          )}
+
+          <div className="flex items-start justify-between gap-4 flex-wrap">
+            {/* Avatar + identity */}
+            <div className="flex items-center gap-3 min-w-0">
+              <span
+                aria-hidden
+                style={{
+                  width: 48,
+                  height: 48,
+                  borderRadius: 8,
+                  flexShrink: 0,
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  fontSize: 16,
+                  fontWeight: 700,
+                  background: 'var(--color-brand-light)',
+                  color: 'var(--color-brand)',
+                  border: '1px solid rgba(26,126,232,0.20)',
+                }}
+              >
+                {initials(company?.client_name || lead.company_name || lead.lead_name)}
+              </span>
+
+              <div className="flex flex-col gap-1 min-w-0">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <h1 className="font-semibold text-zinc-900 truncate" style={{ fontSize: 18, lineHeight: 1.2 }}>
+                    {company?.client_name || lead.company_name || lead.lead_name}
+                  </h1>
+                  {lead.is_closed && (
+                    <span
+                      style={{
+                        fontSize: 11,
+                        fontWeight: 500,
+                        padding: '2px 8px',
+                        borderRadius: 4,
+                        background: '#f0fdf4',
+                        color: '#15803d',
+                        border: '1px solid #bbf7d0',
+                      }}
+                    >
+                      Closed
+                    </span>
+                  )}
+                </div>
+                <div className="flex items-center gap-2 text-zinc-500 flex-wrap" style={{ fontSize: 13 }}>
+                  <span className="flex items-center gap-1">
+                    <Building2 size={13} className="text-zinc-400" />
+                    {lead.lead_name}
+                  </span>
+                  {companyLocation && (
+                    <>
+                      <span className="text-zinc-300">·</span>
+                      <span className="flex items-center gap-1">
+                        <MapPin size={13} className="text-zinc-400" />
+                        {companyLocation}
+                      </span>
+                    </>
+                  )}
+                  {lead.project_name && (
+                    <>
+                      <span className="text-zinc-300">·</span>
+                      <span>{lead.project_name}</span>
+                    </>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {/* Status block */}
+            <div className="flex flex-col items-end gap-1.5">
+              <span style={{ fontSize: 11, fontWeight: 500 }} className="text-zinc-400">
+                Status
+              </span>
+              <StageBadge stage={lead.stage_name} />
+              {lead.report_id ? (
+                <StageSelect
+                  currentStageId={lead.stage_id}
+                  stages={stages}
+                  disabled={lead.is_closed || !hasActor}
+                  saving={stageSaving}
+                  onChange={handleStageChange}
+                />
+              ) : (
+                <span className="text-zinc-400" style={{ fontSize: 11 }}>
+                  No report yet — fill the Lead Report tab.
+                </span>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* Progress stepper card (Pre-Sales → Meeting → Closing) */}
+        <div className="bg-white border border-zinc-200 rounded-lg px-6 py-4">
+          <div className="flex items-center gap-6 flex-wrap">
+            <div className="flex-1 min-w-[280px]">
+              <ProgressStepper stage={lead.stage_name} isClosed={lead.is_closed} />
+            </div>
+            {canClinch && (
+              <button
+                type="button"
+                onClick={handleClinch}
+                disabled={clinching}
+                className="inline-flex items-center gap-1.5 bg-green-600 hover:bg-green-700 disabled:opacity-50 text-white font-medium rounded-md transition-colors shrink-0"
+                style={{ fontSize: 13, padding: '6px 14px', height: 32 }}
+              >
+                {clinching ? <Loader2 size={14} className="animate-spin" /> : <Award size={14} />}
+                Clinch / Close
+              </button>
+            )}
+          </div>
+        </div>
+
+        {/* No linked profile → block writes (audit fields must be a real user_id) */}
+        {!hasActor && (
+          <div
+            className="rounded-lg px-4 py-3 flex items-start gap-2"
+            style={{ background: '#fffbeb', border: '1px solid #fde68a', color: '#92400e', fontSize: 13 }}
+          >
+            <AlertCircle size={14} className="mt-0.5 shrink-0" />
+            <span>
+              Your account isn't linked to a user profile yet, so changes can't be saved. Please sign out and back in,
+              or contact an administrator.
+            </span>
+          </div>
+        )}
+
+        {/* Two-column: tabs (main) + right info panel */}
+        <div className="grid grid-cols-1 lg:grid-cols-[1fr_360px] gap-4 items-start">
+          {/* Main area */}
+          <div className="min-w-0 bg-white border border-zinc-200 rounded-lg">
+            {/* Tab bar */}
+            <div className="flex items-center px-3 border-b border-zinc-200">
+              {TABS.map((t) => {
+                const isActive = tab === t.key;
+                return (
+                  <button
+                    key={t.key}
+                    type="button"
+                    onClick={() => setTab(t.key)}
+                    className="relative font-medium transition-colors"
+                    style={{
+                      fontSize: 13,
+                      padding: '12px 14px',
+                      color: isActive ? '#1A7EE8' : '#6B7280',
+                    }}
+                    onMouseEnter={(e) => {
+                      if (!isActive) (e.currentTarget as HTMLElement).style.color = '#374151';
+                    }}
+                    onMouseLeave={(e) => {
+                      if (!isActive) (e.currentTarget as HTMLElement).style.color = '#6B7280';
+                    }}
+                  >
+                    {t.label}
+                    {isActive && (
+                      <span
+                        style={{
+                          position: 'absolute',
+                          left: 8,
+                          right: 8,
+                          bottom: -1,
+                          height: 2,
+                          background: '#1A7EE8',
+                          borderRadius: '2px 2px 0 0',
+                        }}
+                      />
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* Tab content */}
+            <div className="p-4">
+            {tab === 'activity' && <ActivityTab leadId={lead.lead_id} actor={actor} />}
+            {tab === 'report' && (
+              <ReportTab
+                lead={lead}
+                domainId={company?.domain_id ?? null}
+                actor={actor}
+                userRole={profile?.role ?? undefined}
+                onReportSaved={refreshLead}
+              />
+            )}
+            {tab === 'meeting' && (
+              <MeetingTab
+                reportId={lead.report_id}
+                leadId={lead.lead_id}
+                stageName={lead.stage_name}
+                actor={actor}
+                onChanged={refreshLead}
+              />
+            )}
+            </div>
+          </div>
+
+          {/* Right info panel */}
+          <LeadInfoPanel lead={lead} company={company} loadingCompany={loadingCompany} />
+        </div>
+      </div>
+    </AppShell>
+  );
+}

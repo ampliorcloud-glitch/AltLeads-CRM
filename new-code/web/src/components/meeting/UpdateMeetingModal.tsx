@@ -1,0 +1,210 @@
+﻿/**
+ * UpdateMeetingModal — reschedule or cancel a meeting from the Meetings module.
+ *
+ * Mirrors the Lead workspace's UpdateMeetingModal (src/components/lead/MeetingTab.tsx)
+ * for behaviour and copy, but calls meetings.updateMeetingStatus() which writes the
+ * displayed `meeting_status`, journals a meeting_reschedule history row, and updates
+ * the lead_report stage with the same id mapping.
+ */
+import React, { useState } from 'react';
+import { CheckCircle2, X } from 'lucide-react';
+import {
+  POSTPONED_BY,
+  CANCELLED_BY,
+  updateMeetingStatus,
+  type MeetingDetail,
+} from '../../data/meetings';
+import {
+  inputCls,
+  FieldLabel,
+  PrimaryButton,
+  SecondaryButton,
+  InlineNote,
+} from '../lead/primitives';
+
+export function UpdateMeetingModal({
+  meeting,
+  actor,
+  onClose,
+  onSaved,
+}: {
+  meeting: MeetingDetail;
+  actor: string;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const [action, setAction] = useState<'reschedule' | 'cancel'>('reschedule');
+  const [by, setBy] = useState(POSTPONED_BY[0].value);
+  const [reason, setReason] = useState('');
+  const [newDate, setNewDate] = useState('');
+  const [newTime, setNewTime] = useState('');
+  const [newDuration, setNewDuration] = useState(meeting.duration || '00:30');
+  const [saving, setSaving] = useState(false);
+  const [err, setErr] = useState('');
+
+  const today = new Date().toISOString().slice(0, 10);
+  const byOptions = action === 'reschedule' ? POSTPONED_BY : CANCELLED_BY;
+
+  const switchAction = (a: 'reschedule' | 'cancel') => {
+    setAction(a);
+    setBy((a === 'reschedule' ? POSTPONED_BY : CANCELLED_BY)[0].value);
+    setErr('');
+  };
+
+  const handleSave = async () => {
+    if (!reason.trim()) {
+      setErr('Please provide a reason.');
+      return;
+    }
+    if (action === 'reschedule' && !newDate) {
+      setErr('Please choose a new date.');
+      return;
+    }
+    setSaving(true);
+    setErr('');
+    const res = await updateMeetingStatus({
+      meetingId: Number(meeting.id),
+      reportId: meeting.reportId,
+      action,
+      by,
+      reason,
+      newDate: action === 'reschedule' ? newDate : undefined,
+      newTime: action === 'reschedule' ? newTime : undefined,
+      newDuration: action === 'reschedule' ? newDuration : undefined,
+      actor,
+    });
+    setSaving(false);
+    if (res?.error) {
+      setErr(res.error);
+      return;
+    }
+    onSaved();
+  };
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center p-4"
+      style={{ background: 'rgba(0,0,0,0.35)' }}
+      onClick={onClose}
+    >
+      <div
+        className="bg-white rounded-lg border border-zinc-200 w-full max-w-md max-h-[90vh] overflow-y-auto"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-between px-5 py-4 border-b border-zinc-100">
+          <h3 className="font-semibold text-zinc-800" style={{ fontSize: 14 }}>
+            Update Meeting
+          </h3>
+          <button onClick={onClose} className="text-zinc-400 hover:text-zinc-700 transition-colors">
+            <X size={16} />
+          </button>
+        </div>
+
+        <div className="p-5 space-y-4">
+          {/* action toggle */}
+          <div className="flex gap-2">
+            {(['reschedule', 'cancel'] as const).map((a) => (
+              <button
+                key={a}
+                type="button"
+                onClick={() => switchAction(a)}
+                className="flex-1 rounded-md py-2 font-medium transition-colors capitalize"
+                style={{
+                  fontSize: 13,
+                  border: '1px solid',
+                  borderColor: action === a ? '#1A7EE8' : '#d4d4d8',
+                  background: action === a ? '#EBF4FD' : '#fff',
+                  color: action === a ? '#1568C8' : '#52525b',
+                }}
+              >
+                {a}
+              </button>
+            ))}
+          </div>
+
+          <div>
+            <FieldLabel required>{action === 'reschedule' ? 'Postponed by' : 'Cancelled by'}</FieldLabel>
+            <select value={by} onChange={(e) => setBy(e.target.value)} className={inputCls} style={{ fontSize: 13 }}>
+              {byOptions.map((o) => (
+                <option key={o.value} value={o.value}>
+                  {o.label}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {action === 'reschedule' && (
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <div>
+                <FieldLabel required>New date</FieldLabel>
+                <input
+                  type="date"
+                  value={newDate}
+                  min={today}
+                  onChange={(e) => setNewDate(e.target.value)}
+                  className={inputCls}
+                  style={{ fontSize: 13 }}
+                />
+              </div>
+              <div>
+                <FieldLabel>New time</FieldLabel>
+                <input
+                  type="time"
+                  value={newTime}
+                  onChange={(e) => setNewTime(e.target.value)}
+                  className={inputCls}
+                  style={{ fontSize: 13 }}
+                />
+              </div>
+              <div>
+                <FieldLabel>Duration</FieldLabel>
+                <input
+                  type="time"
+                  value={newDuration}
+                  onChange={(e) => setNewDuration(e.target.value)}
+                  className={inputCls}
+                  style={{ fontSize: 13 }}
+                />
+              </div>
+            </div>
+          )}
+
+          <div>
+            <FieldLabel required>Reason</FieldLabel>
+            <textarea
+              value={reason}
+              onChange={(e) => setReason(e.target.value)}
+              rows={3}
+              placeholder={
+                action === 'reschedule'
+                  ? 'Why is the meeting being rescheduled?'
+                  : 'Why is the meeting being cancelled?'
+              }
+              className={`${inputCls} resize-y`}
+              style={{ fontSize: 13 }}
+            />
+          </div>
+
+          {err && <InlineNote kind="error">{err}</InlineNote>}
+        </div>
+
+        <div className="flex items-center justify-end gap-2 px-5 py-4 border-t border-zinc-100">
+          <SecondaryButton onClick={onClose}>Cancel</SecondaryButton>
+          <PrimaryButton onClick={handleSave} loading={saving}>
+            {action === 'reschedule' ? (
+              <>
+                <CheckCircle2 size={14} /> Reschedule
+              </>
+            ) : (
+              <>
+                <X size={14} /> Cancel Meeting
+              </>
+            )}
+          </PrimaryButton>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+export default UpdateMeetingModal;

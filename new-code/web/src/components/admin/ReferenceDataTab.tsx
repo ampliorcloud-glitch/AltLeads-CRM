@@ -1,0 +1,268 @@
+import React, { useEffect, useState } from 'react';
+import { Loader2 } from 'lucide-react';
+import {
+  fetchReferenceData,
+  addSource,
+  addDesignation,
+  type RefRow,
+} from '../../data/admin';
+import {
+  Card,
+  FigmaTableHead,
+  LoadingRow,
+  EmptyRow,
+  AddButton,
+  EditIconButton,
+} from './primitives';
+import { Modal, Field, TextInput, PrimaryButton, GhostButton } from './Modal';
+
+type AddKind = 'source' | 'designation';
+
+/** Figma-style reference table: Sr. No. | Name | Edit */
+function FigmaRefTable({
+  title,
+  rows,
+  loading,
+  emptyLabel,
+  onAdd,
+}: {
+  title: string;
+  rows: RefRow[];
+  loading: boolean;
+  emptyLabel: string;
+  onAdd?: () => void;
+}) {
+  const columns = [
+    { key: 'sr',   label: 'Sr. No.', width: 72 },
+    { key: 'name', label: `${title} Name` },
+    ...(onAdd ? [{ key: 'edit', label: 'Edit', align: 'right' as const, width: 60 }] : []),
+  ];
+
+  return (
+    <div>
+      {/* Table toolbar */}
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          marginBottom: 8,
+        }}
+      >
+        <h3 style={{ fontSize: 18, fontWeight: 700, color: '#111827', margin: 0 }}>
+          {title}
+        </h3>
+        {onAdd && <AddButton label={`Add ${title}`} onClick={onAdd} />}
+      </div>
+
+      <Card>
+        <div style={{ maxHeight: 380, overflowY: 'auto' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+            <FigmaTableHead columns={columns} />
+            <tbody>
+              {loading ? (
+                <LoadingRow colSpan={columns.length} />
+              ) : rows.length === 0 ? (
+                <EmptyRow colSpan={columns.length} label={emptyLabel} />
+              ) : (
+                rows.map((r, idx) => (
+                  <tr
+                    key={r.id}
+                    style={{
+                      borderBottom: '1px solid #F3F4F6',
+                      height: 44,
+                      transition: 'background 0.12s',
+                    }}
+                    onMouseEnter={(e) => {
+                      (e.currentTarget as HTMLTableRowElement).style.background = '#F9FAFB';
+                    }}
+                    onMouseLeave={(e) => {
+                      (e.currentTarget as HTMLTableRowElement).style.background = '';
+                    }}
+                  >
+                    {/* Sr. No. */}
+                    <td
+                      style={{
+                        padding: '0 12px',
+                        fontSize: 13,
+                        color: '#6B7280',
+                        textAlign: 'center',
+                        verticalAlign: 'middle',
+                        width: 72,
+                      }}
+                    >
+                      {idx + 1}
+                    </td>
+
+                    {/* Name */}
+                    <td
+                      style={{
+                        padding: '0 16px',
+                        fontSize: 13,
+                        color: '#374151',
+                        verticalAlign: 'middle',
+                      }}
+                    >
+                      {r.name}
+                    </td>
+
+                    {/* Edit icon (only for editable tables) */}
+                    {onAdd && (
+                      <td
+                        style={{
+                          padding: '0 16px',
+                          verticalAlign: 'middle',
+                          textAlign: 'right',
+                          width: 60,
+                        }}
+                      >
+                        {/* Pencil is display-only here (no edit form yet) */}
+                        <EditIconButton onClick={() => {}} />
+                      </td>
+                    )}
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+      </Card>
+    </div>
+  );
+}
+
+export function ReferenceDataTab({ actorId }: { actorId: string }) {
+  const [sources, setSources] = useState<RefRow[]>([]);
+  const [industries, setIndustries] = useState<RefRow[]>([]);
+  const [designations, setDesignations] = useState<RefRow[]>([]);
+  const [domains, setDomains] = useState<RefRow[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  const [addKind, setAddKind] = useState<AddKind | null>(null);
+  const [addName, setAddName] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
+
+  const load = async () => {
+    setLoading(true);
+    const res = await fetchReferenceData();
+    setSources(res.sources);
+    setIndustries(res.industries);
+    setDesignations(res.designations);
+    setDomains(res.domains);
+    setError(res.error);
+    setLoading(false);
+  };
+
+  useEffect(() => {
+    load();
+  }, []);
+
+  const openAdd = (kind: AddKind) => {
+    setAddKind(kind);
+    setAddName('');
+    setSaveError(null);
+  };
+
+  const handleAdd = async () => {
+    if (!addKind || !addName.trim()) return;
+    setSaving(true);
+    setSaveError(null);
+    const err =
+      addKind === 'source'
+        ? await addSource(addName.trim(), actorId)
+        : await addDesignation(addName.trim(), actorId);
+    if (err) {
+      setSaveError(err);
+      setSaving(false);
+      return;
+    }
+    setSaving(false);
+    setAddKind(null);
+    await load();
+  };
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 28 }}>
+      {error && (
+        <div
+          style={{
+            background: '#FEF2F2',
+            border: '1px solid #FECACA',
+            borderRadius: 8,
+            padding: '10px 16px',
+          }}
+        >
+          <p style={{ color: '#DC2626', fontSize: 12, margin: 0 }}>{error}</p>
+        </div>
+      )}
+
+      {/* Two-column grid for the four tables */}
+      <div
+        style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(auto-fit, minmax(360px, 1fr))',
+          gap: 28,
+        }}
+      >
+        <FigmaRefTable
+          title="Designation"
+          rows={designations}
+          loading={loading}
+          emptyLabel="No designations."
+          onAdd={() => openAdd('designation')}
+        />
+        <FigmaRefTable
+          title="Domain"
+          rows={domains}
+          loading={loading}
+          emptyLabel="No domains."
+        />
+        <FigmaRefTable
+          title="Source"
+          rows={sources}
+          loading={loading}
+          emptyLabel="No sources."
+          onAdd={() => openAdd('source')}
+        />
+        <FigmaRefTable
+          title="Industry"
+          rows={industries}
+          loading={loading}
+          emptyLabel="No industries."
+        />
+      </div>
+
+      {/* Add modal */}
+      <Modal
+        open={addKind !== null}
+        title={addKind === 'source' ? 'Add Source' : 'Add Designation'}
+        onClose={() => setAddKind(null)}
+        footer={
+          <>
+            <GhostButton onClick={() => setAddKind(null)} disabled={saving}>
+              Cancel
+            </GhostButton>
+            <PrimaryButton onClick={handleAdd} disabled={saving || !addName.trim()}>
+              {saving && <Loader2 size={13} className="animate-spin" />} Add
+            </PrimaryButton>
+          </>
+        }
+      >
+        <Field label="Name *">
+          <TextInput
+            value={addName}
+            onChange={setAddName}
+            placeholder={
+              addKind === 'source' ? 'e.g. Referral' : 'e.g. Account Executive'
+            }
+          />
+        </Field>
+        {saveError && (
+          <p style={{ fontSize: 12, color: '#EF4444', margin: '10px 0 0' }}>{saveError}</p>
+        )}
+      </Modal>
+    </div>
+  );
+}

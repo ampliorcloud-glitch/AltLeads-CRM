@@ -1,0 +1,109 @@
+@import "tailwindcss";
+
+/* ============================================================
+   AMPLIOR CRM — GLOBAL THEME FOUNDATION
+   Extracted from Figma "New UI" web frames (2026-06-13)
+   Primary brand: #1A7EE8 (blue), not indigo
+   ============================================================ */
+
+/* ---------- CSS tokens ---------- */
+:root {
+  /* Brand */
+  --color-brand:        #1A7EE8;
+  --color-brand-dark:   #1568C8;
+  --color-brand-light:  #EBF4FD;
+
+  /* Neutrals */
+  --color-gray-50:   #F9FAFB;
+  --color-gray-100:  #F3F4F6;
+  --color-gray-200:  #E5E7EB;
+  --color-gray-300:  #D1D5DB;
+  --color-gray-400:  #9CA3AF;
+  --color-gray-500:  #6B7280;
+  --color-gray-700:  #374151;
+  --color-gray-900:  #111827;
+
+  /* Surface */
+  --color-surface:   #FFFFFF;
+  --color-page-bg:   #F8F9FA;
+
+  /* Status */
+  --color-success:   #16A34A;
+  --color-danger:    #DC2626;
+  --color-warning:   #D97706;
+
+  /* Borders */
+  --border-color:    #E5E7EB;
+  --border-input:    #D1D5DB;
+
+  /* Radius */
+  --radius-card:   8px;
+  --radius-btn:    6px;
+  --radius-input:  6px;
+  --radius-badge:  4px;
+
+  /* Shell dimensions */
+  --sidebar-width:  240px;
+  --topbar-height:  56px;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  font-feature-settings: 'cv02', 'cv03', 'cv04', 'cv11';
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  background: var(--color-page-bg);
+  font-size: 14px;
+  color: var(--color-gray-900);
+  line-height: 1.5;
+}
+
+#root {
+  width: 100%;
+  min-height: 100vh;
+  text-align: left;
+}
+
+/* ---------- Focus resets ---------- */
+input:focus,
+select:focus,
+textarea:focus,
+button:focus-visible {
+  outline: none;
+}
+
+/* ---------- Link defaults ---------- */
+a {
+  color: var(--color-brand);
+  text-decoration: none;
+}
+a:hover {
+  color: var(--color-brand-dark);
+}
+
+/* ---------- Scrollbar (subtle) ---------- */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--color-gray-200);
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--color-gray-300);
+}
+
+/* ---------- Utility: brand-focus ring for inputs ---------- */
+.input-brand-focus:focus {
+  border-color: var(--color-brand) !important;
+  box-shadow: 0 0 0 3px rgba(26, 126, 232, 0.12);
+}
