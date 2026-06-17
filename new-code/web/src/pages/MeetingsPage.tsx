@@ -9,19 +9,26 @@ import {
   createColumnHelper,
   type SortingState,
 } from '@tanstack/react-table';
-import * as XLSX from 'xlsx';
 import { AppShell } from '../components/layout/AppShell';
 import { MeetingStatusBadge } from '../components/meeting/MeetingStatusBadge';
 import {
   fetchMeetings,
-  buildMeetingExportRows,
   formatDate,
   formatTime,
   type MeetingRow,
 } from '../data/meetings';
+import { useAuth } from '../contexts/AuthContext';
+import { useRowSelection } from '../components/ui/useRowSelection';
+import { ExportButton } from '../components/ui/ExportButton';
+import {
+  ColumnCustomizer,
+  defaultColumnPrefs,
+  reconcileColumns,
+} from '../components/ui/ColumnCustomizer';
+import type { ColumnDef as ColDef, ExportColumn } from '../components/ui/columns';
+import type { ColumnPref } from '../data/views';
 import {
   Search,
-  Download,
   ChevronUp,
   ChevronDown,
   ChevronsUpDown,
@@ -34,6 +41,42 @@ import {
 
 const columnHelper = createColumnHelper<MeetingRow>();
 const PAGE_SIZE = 25;
+
+/* ------------------------------------------------------------------ */
+/* Column catalogue (used by ColumnCustomizer + ExportButton)          */
+/* ------------------------------------------------------------------ */
+
+// ColDef is parameterised on Row but ColumnCustomizer only needs key/header/defaultVisible.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const ALL_COLUMNS: ColDef<any>[] = [
+  { key: 'company',     header: 'Company / Lead',  defaultVisible: true },
+  { key: 'client',      header: 'Client',           defaultVisible: true },
+  { key: 'meetingDate', header: 'Meeting',          defaultVisible: true },
+  { key: 'mode',        header: 'Mode',             defaultVisible: true },
+  { key: 'salesperson', header: 'Salesperson',      defaultVisible: true },
+  { key: 'agent',       header: 'Agent',            defaultVisible: true },
+  { key: 'confirmed',   header: 'Confirmed',        defaultVisible: true },
+  { key: 'status',      header: 'Status',           defaultVisible: true },
+];
+
+const EXPORT_COLUMNS: ExportColumn<MeetingRow>[] = [
+  { key: 'leadNumber',  header: 'Lead #' },
+  { key: 'leadName',    header: 'Lead Name' },
+  { key: 'company',     header: 'Company' },
+  { key: 'client',      header: 'Client' },
+  { key: 'industry',    header: 'Industry' },
+  { key: 'city',        header: 'City' },
+  { key: 'meetingDate', header: 'Meeting Date', accessor: (r) => r.meetingDate ? formatDate(r.meetingDate) : '' },
+  { key: 'meetingTime', header: 'Meeting Time', accessor: (r) => r.meetingTime ? formatTime(r.meetingTime) : '' },
+  { key: 'mode',        header: 'Mode' },
+  { key: 'status',      header: 'Status' },
+  { key: 'leadStage',   header: 'Lead Stage' },
+  { key: 'confirmed',   header: 'Confirmed', accessor: (r) => r.confirmed ? 'Yes' : 'No' },
+  { key: 'salesperson', header: 'Salesperson' },
+  { key: 'agent',       header: 'Agent' },
+  { key: 'contact',     header: 'Contact Number' },
+  { key: 'leadGenDate', header: 'Lead Generated', accessor: (r) => r.leadGenDate ? formatDate(r.leadGenDate) : '' },
+];
 
 /* ------------------------------------------------------------------ */
 /* Company avatar — deterministic tinted initials                      */
@@ -205,9 +248,17 @@ function DateRangeFilter({
 
 export function MeetingsPage() {
   const navigate = useNavigate();
+  const { profile } = useAuth();
+  const userId = profile?.user_id ?? null;
+
   const [filters, setFilters] = useState<Filters>(defaultFilters);
   const [sorting, setSorting] = useState<SortingState>([]);
   const [pageIndex, setPageIndex] = useState(0);
+
+  // Column visibility/order — seeded from defaults; ColumnCustomizer loads saved view on mount.
+  const [colPrefs, setColPrefs] = useState<ColumnPref[]>(() => defaultColumnPrefs(ALL_COLUMNS));
+
+  const sel = useRowSelection<string>();
 
   const [allMeetings, setAllMeetings] = useState<MeetingRow[]>([]);
   const [agents, setAgents] = useState<string[]>([]);
@@ -217,7 +268,6 @@ export function MeetingsPage() {
   const [cities, setCities] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
-  const [exporting, setExporting] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -275,9 +325,29 @@ export function MeetingsPage() {
     });
   }, [filters, allMeetings]);
 
-  const columns = useMemo(
-    () => [
-      columnHelper.accessor('company', {
+  // Visible column keys in display order (driven by colPrefs).
+  const visibleKeys = useMemo(
+    () => colPrefs.filter((p) => p.visible).map((p) => p.key),
+    [colPrefs],
+  );
+
+  // Export columns: never leak a column the user has hidden in the customizer.
+  // Keys present in the column catalogue must be visible to be exported;
+  // export-only extras (Lead #, Industry, City, etc.) that are not
+  // customizer-controlled are always included.
+  const customizerKeys = useMemo(() => new Set(ALL_COLUMNS.map((c) => c.key)), []);
+  const activeExportColumns = useMemo<ExportColumn<MeetingRow>[]>(() => {
+    const visible = new Set(visibleKeys);
+    return EXPORT_COLUMNS.filter(
+      (c) => !customizerKeys.has(c.key) || visible.has(c.key),
+    );
+  }, [visibleKeys, customizerKeys]);
+
+  // Full column map (key -> TanStack column definition).
+  const allColumnDefs = useMemo(
+    () => ({
+      company: columnHelper.accessor('company', {
+        id: 'company',
         header: 'Company / Lead',
         cell: (info) => {
           const company = info.getValue() || info.row.original.leadName || info.row.original.name || '';
@@ -296,7 +366,8 @@ export function MeetingsPage() {
           );
         },
       }),
-      columnHelper.accessor('client', {
+      client: columnHelper.accessor('client', {
+        id: 'client',
         header: 'Client',
         cell: (info) => (
           <span className="text-zinc-600 truncate" style={{ fontSize: 13 }}>
@@ -304,7 +375,8 @@ export function MeetingsPage() {
           </span>
         ),
       }),
-      columnHelper.accessor('meetingDate', {
+      meetingDate: columnHelper.accessor('meetingDate', {
+        id: 'meetingDate',
         header: 'Meeting',
         cell: (info) => (
           <div className="whitespace-nowrap">
@@ -317,7 +389,8 @@ export function MeetingsPage() {
           </div>
         ),
       }),
-      columnHelper.accessor('mode', {
+      mode: columnHelper.accessor('mode', {
+        id: 'mode',
         header: 'Mode',
         cell: (info) => (
           <span className="text-zinc-600" style={{ fontSize: 13 }}>
@@ -325,7 +398,8 @@ export function MeetingsPage() {
           </span>
         ),
       }),
-      columnHelper.accessor('salesperson', {
+      salesperson: columnHelper.accessor('salesperson', {
+        id: 'salesperson',
         header: 'Salesperson',
         cell: (info) => (
           <span className="text-zinc-700 truncate" style={{ fontSize: 13 }}>
@@ -333,7 +407,8 @@ export function MeetingsPage() {
           </span>
         ),
       }),
-      columnHelper.accessor('agent', {
+      agent: columnHelper.accessor('agent', {
+        id: 'agent',
         header: 'Agent',
         cell: (info) => (
           <span className="text-zinc-700" style={{ fontSize: 13 }}>
@@ -341,7 +416,8 @@ export function MeetingsPage() {
           </span>
         ),
       }),
-      columnHelper.accessor('confirmed', {
+      confirmed: columnHelper.accessor('confirmed', {
+        id: 'confirmed',
         header: 'Confirmed',
         cell: (info) =>
           info.getValue() ? (
@@ -365,13 +441,50 @@ export function MeetingsPage() {
             <span className="text-zinc-400" style={{ fontSize: 13 }}>—</span>
           ),
       }),
-      columnHelper.accessor('status', {
+      status: columnHelper.accessor('status', {
+        id: 'status',
         header: 'Status',
         cell: (info) => <MeetingStatusBadge status={info.getValue()} />,
       }),
-    ],
-    []
+    }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [],
   );
+
+  // Checkbox column is built inside the table columns memo (needs sel, not table ref).
+  const columns = useMemo(() => {
+    const checkboxCol = columnHelper.display({
+      id: '__select',
+      header: ({ table: t }) => {
+        const pageIds = t.getRowModel().rows.map((r) => r.original.id);
+        const allSel = sel.allSelected(pageIds);
+        return (
+          <input
+            type="checkbox"
+            checked={allSel}
+            onChange={() => sel.toggleAll(pageIds)}
+            style={{ cursor: 'pointer', accentColor: '#1A7EE8' }}
+            aria-label="Select all on page"
+          />
+        );
+      },
+      cell: ({ row }) => (
+        <input
+          type="checkbox"
+          checked={sel.isSelected(row.original.id)}
+          onChange={(e) => { e.stopPropagation(); sel.toggle(row.original.id); }}
+          onClick={(e) => e.stopPropagation()}
+          style={{ cursor: 'pointer', accentColor: '#1A7EE8' }}
+          aria-label="Select row"
+        />
+      ),
+      size: 36,
+    });
+    const dataCols = visibleKeys
+      .map((key) => allColumnDefs[key as keyof typeof allColumnDefs])
+      .filter(Boolean);
+    return [checkboxCol, ...dataCols];
+  }, [visibleKeys, allColumnDefs, sel]);
 
   const table = useReactTable({
     data: filteredData,
@@ -394,19 +507,6 @@ export function MeetingsPage() {
   const firstRow = filteredData.length === 0 ? 0 : pageIndex * PAGE_SIZE + 1;
   const lastRow = Math.min((pageIndex + 1) * PAGE_SIZE, filteredData.length);
 
-  const handleExport = async () => {
-    setExporting(true);
-    try {
-      // Exports the FULL filtered set (every matching row), not just the visible page.
-      const rows = await buildMeetingExportRows(filteredData);
-      const ws = XLSX.utils.json_to_sheet(rows);
-      const wb = XLSX.utils.book_new();
-      XLSX.utils.book_append_sheet(wb, ws, 'Meetings');
-      XLSX.writeFile(wb, 'amplior-crm-meetings.xlsx');
-    } finally {
-      setExporting(false);
-    }
-  };
 
   return (
     <AppShell title="Meetings">
@@ -491,6 +591,9 @@ export function MeetingsPage() {
               <span className="text-red-500">{loadError}</span>
             ) : (
               <>
+                {sel.count > 0 && (
+                  <span className="font-medium text-zinc-700 mr-2">{sel.count} selected ·</span>
+                )}
                 <span className="font-medium text-zinc-700">{filteredData.length}</span> of{' '}
                 <span className="font-medium text-zinc-700">{allMeetings.length}</span> meetings
                 {hasActiveFilters && (
@@ -505,15 +608,25 @@ export function MeetingsPage() {
               </>
             )}
           </p>
-          <button
-            onClick={handleExport}
-            disabled={loading || exporting || filteredData.length === 0}
-            className="flex items-center gap-1.5 border border-zinc-300 hover:border-zinc-400 bg-white hover:bg-zinc-50 text-zinc-700 font-medium rounded-lg transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-            style={{ fontSize: 12, padding: '5px 12px', height: 30 }}
-          >
-            {exporting ? <Loader2 size={13} className="animate-spin" /> : <Download size={13} strokeWidth={1.75} />}
-            {exporting ? 'Preparing...' : 'Export to Excel'}
-          </button>
+          <div className="flex items-center gap-2">
+            <ColumnCustomizer
+              entity="meetings"
+              userId={userId}
+              allColumns={ALL_COLUMNS}
+              value={colPrefs}
+              onChange={(next) => setColPrefs(reconcileColumns(next, ALL_COLUMNS))}
+            />
+            <ExportButton
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any
+              rows={filteredData as any[]}
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any
+              columns={activeExportColumns as any[]}
+              filename="amplior-crm-meetings"
+              selectedIds={sel.selectedIds}
+              idKey="id"
+              disabled={loading || filteredData.length === 0}
+            />
+          </div>
         </div>
 
         {/* Table */}
@@ -578,20 +691,23 @@ export function MeetingsPage() {
                     </td>
                   </tr>
                 ) : (
-                  rowsOnPage.map((row) => (
-                    <tr
-                      key={row.id}
-                      onClick={() => navigate(`/meetings/${row.original.id}`)}
-                      className="border-b border-zinc-100 hover:bg-zinc-50 transition-colors last:border-0 cursor-pointer"
-                      style={{ height: 40 }}
-                    >
-                      {row.getVisibleCells().map((cell) => (
-                        <td key={cell.id} className="px-4 align-middle whitespace-nowrap">
-                          {flexRender(cell.column.columnDef.cell, cell.getContext())}
-                        </td>
-                      ))}
-                    </tr>
-                  ))
+                  rowsOnPage.map((row) => {
+                    const isSelected = sel.isSelected(row.original.id);
+                    return (
+                      <tr
+                        key={row.id}
+                        onClick={() => navigate(`/meetings/${row.original.id}`)}
+                        className="border-b border-zinc-100 hover:bg-zinc-50 transition-colors last:border-0 cursor-pointer"
+                        style={{ height: 40, background: isSelected ? '#EBF4FD' : undefined }}
+                      >
+                        {row.getVisibleCells().map((cell) => (
+                          <td key={cell.id} className="px-4 align-middle whitespace-nowrap">
+                            {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                          </td>
+                        ))}
+                      </tr>
+                    );
+                  })
                 )}
               </tbody>
             </table>

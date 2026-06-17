@@ -1,9 +1,11 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Search, Loader2 } from 'lucide-react';
+import { Search, Loader2, Copy, Check } from 'lucide-react';
 import {
   fetchUsers,
   setUserEnabled,
   setUserRoles,
+  createUser,
+  resetUserPassword,
   type AdminUser,
   type AdminLookups,
 } from '../../data/admin';
@@ -19,7 +21,16 @@ import {
   AddButton,
   EditIconButton,
 } from './primitives';
-import { Modal, Field, PrimaryButton, GhostButton } from './Modal';
+import { Modal, Field, TextInput, SelectInput, PrimaryButton, GhostButton } from './Modal';
+
+const ROLES = [
+  { id: 1, label: 'Admin' },
+  { id: 2, label: 'Team Lead' },
+  { id: 3, label: 'Agent' },
+  { id: 4, label: 'Sales Head' },
+  { id: 5, label: 'Sales Person' },
+  { id: 6, label: 'QC' },
+];
 
 const PAGE_SIZE = 20;
 
@@ -35,6 +46,24 @@ export function UsersTab({ lookups, actorId }: { lookups: AdminLookups; actorId:
   const [editRoleIds, setEditRoleIds] = useState<Set<number>>(new Set());
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
+
+  // Add User modal state
+  const [addModalOpen, setAddModalOpen] = useState(false);
+  const [addFullName, setAddFullName] = useState('');
+  const [addEmail, setAddEmail] = useState('');
+  const [addRoleId, setAddRoleId] = useState('1');
+  const [addMobile, setAddMobile] = useState('');
+  const [addLoading, setAddLoading] = useState(false);
+  const [addError, setAddError] = useState<string | null>(null);
+  const [addSuccess, setAddSuccess] = useState<{ user_id: number; tempPassword: string } | null>(null);
+  const [pwCopied, setPwCopied] = useState(false);
+
+  // Reset Password modal state
+  const [resetUser, setResetUser] = useState<AdminUser | null>(null);
+  const [resetLoading, setResetLoading] = useState(false);
+  const [resetError, setResetError] = useState<string | null>(null);
+  const [resetSuccess, setResetSuccess] = useState<{ tempPassword: string } | null>(null);
+  const [resetPwCopied, setResetPwCopied] = useState(false);
 
   // Web-assignable roles only (is_web). Non-web roles (SALES_HEAD, SALES_PERSON)
   // are kept out of the picker but still shown if a user already has them.
@@ -113,6 +142,71 @@ export function UsersTab({ lookups, actorId }: { lookups: AdminLookups; actorId:
     setEditUser(null);
   };
 
+  const resetAddModal = () => {
+    setAddFullName('');
+    setAddEmail('');
+    setAddRoleId('1');
+    setAddMobile('');
+    setAddError(null);
+    setAddSuccess(null);
+    setPwCopied(false);
+  };
+
+  const handleAddUser = async () => {
+    setAddError(null);
+    setAddLoading(true);
+    try {
+      const result = await createUser({
+        full_name: addFullName.trim(),
+        email: addEmail.trim(),
+        role_id: parseInt(addRoleId, 10),
+        mobile_number: addMobile.trim() || undefined,
+        created_by: actorId || undefined,
+      });
+      setAddSuccess({ user_id: result.user_id, tempPassword: result.tempPassword });
+      await load();
+    } catch (err) {
+      setAddError(err instanceof Error ? err.message : 'Failed to create user');
+    } finally {
+      setAddLoading(false);
+    }
+  };
+
+  const handleCopyPassword = (pw: string) => {
+    navigator.clipboard.writeText(pw).then(() => {
+      setPwCopied(true);
+      setTimeout(() => setPwCopied(false), 2000);
+    });
+  };
+
+  const openResetModal = (u: AdminUser) => {
+    setResetUser(u);
+    setResetError(null);
+    setResetSuccess(null);
+    setResetPwCopied(false);
+  };
+
+  const handleResetPassword = async () => {
+    if (!resetUser) return;
+    setResetError(null);
+    setResetLoading(true);
+    try {
+      const result = await resetUserPassword(resetUser.user_id);
+      setResetSuccess({ tempPassword: result.tempPassword });
+    } catch (err) {
+      setResetError(err instanceof Error ? err.message : 'Failed to reset password');
+    } finally {
+      setResetLoading(false);
+    }
+  };
+
+  const handleCopyResetPassword = (pw: string) => {
+    navigator.clipboard.writeText(pw).then(() => {
+      setResetPwCopied(true);
+      setTimeout(() => setResetPwCopied(false), 2000);
+    });
+  };
+
   const columns = [
     { key: 'sr',          label: 'Sr. No.',    width: 64 },
     { key: 'name',        label: 'Name' },
@@ -120,7 +214,7 @@ export function UsersTab({ lookups, actorId }: { lookups: AdminLookups; actorId:
     { key: 'designation', label: 'Designation' },
     { key: 'roles',       label: 'Roles' },
     { key: 'status',      label: 'Status',      width: 120 },
-    { key: 'actions',     label: 'Edit',        align: 'right' as const, width: 60 },
+    { key: 'actions',     label: 'Actions',     align: 'right' as const, width: 140 },
   ];
 
   return (
@@ -157,7 +251,7 @@ export function UsersTab({ lookups, actorId }: { lookups: AdminLookups; actorId:
           />
         </div>
 
-        <AddButton label="Add User" onClick={() => {}} />
+        <AddButton label="Add User" onClick={() => { resetAddModal(); setAddModalOpen(true); }} />
       </div>
 
       {/* Table */}
@@ -237,9 +331,30 @@ export function UsersTab({ lookups, actorId }: { lookups: AdminLookups; actorId:
                       />
                     </td>
 
-                    {/* Edit */}
+                    {/* Actions */}
                     <td style={{ padding: '0 16px', verticalAlign: 'middle', textAlign: 'right' }}>
-                      <EditIconButton onClick={() => openEdit(u)} />
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 6 }}>
+                        <button
+                          onClick={() => openResetModal(u)}
+                          title="Reset password"
+                          style={{
+                            fontSize: 11,
+                            fontWeight: 500,
+                            padding: '3px 8px',
+                            borderRadius: 4,
+                            border: '1px solid #D1D5DB',
+                            background: '#fff',
+                            color: '#374151',
+                            cursor: 'pointer',
+                            whiteSpace: 'nowrap',
+                          }}
+                          onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.background = '#F9FAFB'; }}
+                          onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.background = '#fff'; }}
+                        >
+                          Reset pw
+                        </button>
+                        <EditIconButton onClick={() => openEdit(u)} />
+                      </div>
                     </td>
                   </tr>
                 ))
@@ -278,6 +393,223 @@ export function UsersTab({ lookups, actorId }: { lookups: AdminLookups; actorId:
           </div>
         </div>
       )}
+
+      {/* Add User modal */}
+      <Modal
+        open={addModalOpen}
+        title="Add New User"
+        onClose={() => { setAddModalOpen(false); resetAddModal(); }}
+        width={480}
+        footer={
+          addSuccess ? (
+            <GhostButton onClick={() => { setAddModalOpen(false); resetAddModal(); }}>
+              Close
+            </GhostButton>
+          ) : (
+            <>
+              <GhostButton onClick={() => { setAddModalOpen(false); resetAddModal(); }} disabled={addLoading}>
+                Cancel
+              </GhostButton>
+              <PrimaryButton onClick={handleAddUser} disabled={addLoading || !addFullName.trim() || !addEmail.trim()}>
+                {addLoading && <Loader2 size={13} className="animate-spin" />}
+                Create User
+              </PrimaryButton>
+            </>
+          )
+        }
+      >
+        {addSuccess ? (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+            <div
+              style={{
+                padding: '12px 14px',
+                background: '#F0FDF4',
+                border: '1px solid #BBF7D0',
+                borderRadius: 8,
+              }}
+            >
+              <p style={{ fontSize: 13, fontWeight: 600, color: '#15803D', margin: '0 0 6px' }}>
+                User created successfully!
+              </p>
+              <p style={{ fontSize: 12, color: '#374151', margin: '0 0 10px' }}>
+                Share this temporary password with the new user — they can change it in Settings.
+              </p>
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 8,
+                  padding: '8px 10px',
+                  background: '#fff',
+                  border: '1px solid #D1D5DB',
+                  borderRadius: 6,
+                }}
+              >
+                <code style={{ flex: 1, fontSize: 14, fontFamily: 'monospace', color: '#111827', letterSpacing: '0.05em' }}>
+                  {addSuccess.tempPassword}
+                </code>
+                <button
+                  onClick={() => handleCopyPassword(addSuccess!.tempPassword)}
+                  style={{
+                    background: 'none',
+                    border: 'none',
+                    cursor: 'pointer',
+                    color: pwCopied ? '#16A34A' : '#6B7280',
+                    padding: 4,
+                    display: 'flex',
+                    alignItems: 'center',
+                  }}
+                  title="Copy password"
+                >
+                  {pwCopied ? <Check size={15} /> : <Copy size={15} />}
+                </button>
+              </div>
+            </div>
+          </div>
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+            <Field label="Full Name *">
+              <TextInput
+                value={addFullName}
+                onChange={setAddFullName}
+                placeholder="e.g. Jane Smith"
+              />
+            </Field>
+            <Field label="Email *">
+              <TextInput
+                type="email"
+                value={addEmail}
+                onChange={setAddEmail}
+                placeholder="jane@company.com"
+              />
+            </Field>
+            <Field label="Role *">
+              <SelectInput value={addRoleId} onChange={setAddRoleId}>
+                {ROLES.map((r) => (
+                  <option key={r.id} value={String(r.id)}>
+                    {r.label}
+                  </option>
+                ))}
+              </SelectInput>
+            </Field>
+            <Field label="Mobile (optional)">
+              <TextInput
+                value={addMobile}
+                onChange={setAddMobile}
+                placeholder="+91 98765 43210"
+              />
+            </Field>
+            {addError && (
+              <p style={{ fontSize: 12, color: '#EF4444', margin: 0 }}>{addError}</p>
+            )}
+          </div>
+        )}
+      </Modal>
+
+      {/* Reset Password modal */}
+      <Modal
+        open={!!resetUser}
+        title={resetUser ? `Reset password — ${resetUser.full_name}` : 'Reset password'}
+        onClose={() => setResetUser(null)}
+        width={440}
+        footer={
+          resetSuccess ? (
+            <GhostButton onClick={() => setResetUser(null)}>
+              Close
+            </GhostButton>
+          ) : (
+            <>
+              <GhostButton onClick={() => setResetUser(null)} disabled={resetLoading}>
+                Cancel
+              </GhostButton>
+              <PrimaryButton onClick={handleResetPassword} disabled={resetLoading}>
+                {resetLoading && <Loader2 size={13} className="animate-spin" />}
+                Reset password
+              </PrimaryButton>
+            </>
+          )
+        }
+      >
+        {resetUser && (
+          resetSuccess ? (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+              <div
+                style={{
+                  padding: '12px 14px',
+                  background: '#F0FDF4',
+                  border: '1px solid #BBF7D0',
+                  borderRadius: 8,
+                }}
+              >
+                <p style={{ fontSize: 13, fontWeight: 600, color: '#15803D', margin: '0 0 6px' }}>
+                  Password reset successfully!
+                </p>
+                <p style={{ fontSize: 12, color: '#374151', margin: '0 0 10px' }}>
+                  Share this temporary password with {resetUser.full_name} — they can change it in Settings.
+                </p>
+                <div
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 8,
+                    padding: '8px 10px',
+                    background: '#fff',
+                    border: '1px solid #D1D5DB',
+                    borderRadius: 6,
+                  }}
+                >
+                  <code style={{ flex: 1, fontSize: 14, fontFamily: 'monospace', color: '#111827', letterSpacing: '0.05em' }}>
+                    {resetSuccess.tempPassword}
+                  </code>
+                  <button
+                    onClick={() => handleCopyResetPassword(resetSuccess!.tempPassword)}
+                    style={{
+                      background: 'none',
+                      border: 'none',
+                      cursor: 'pointer',
+                      color: resetPwCopied ? '#16A34A' : '#6B7280',
+                      padding: 4,
+                      display: 'flex',
+                      alignItems: 'center',
+                    }}
+                    title="Copy password"
+                  >
+                    {resetPwCopied ? <Check size={15} /> : <Copy size={15} />}
+                  </button>
+                </div>
+              </div>
+            </div>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 10,
+                  padding: '10px 12px',
+                  background: '#F9FAFB',
+                  borderRadius: 6,
+                  border: '1px solid #F3F4F6',
+                }}
+              >
+                <Avatar name={resetUser.full_name} size={32} />
+                <div>
+                  <p style={{ fontSize: 13, fontWeight: 600, color: '#111827', margin: 0 }}>
+                    {resetUser.full_name}
+                  </p>
+                  <p style={{ fontSize: 12, color: '#6B7280', margin: 0 }}>{resetUser.email}</p>
+                </div>
+              </div>
+              <p style={{ fontSize: 13, color: '#374151', margin: 0 }}>
+                This will generate a new temporary password for this user. Their current password will stop working immediately.
+              </p>
+              {resetError && (
+                <p style={{ fontSize: 12, color: '#EF4444', margin: 0 }}>{resetError}</p>
+              )}
+            </div>
+          )
+        )}
+      </Modal>
 
       {/* Edit roles modal */}
       <Modal

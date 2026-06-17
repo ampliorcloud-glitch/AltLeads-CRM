@@ -50,9 +50,12 @@ export interface CompanyContact {
   id: string;
   fullName: string;
   designation: string;
-  email: string;
-  phone: string;
-  linkedin: string;
+  /** null when masked (caller does not own this contact) */
+  email: string | null;
+  /** null when masked */
+  phone: string | null;
+  /** null when masked */
+  linkedin: string | null;
   city: string;
 }
 
@@ -95,7 +98,7 @@ interface ContactRow {
   email: string | null;
   mobile_no: string | null;
   linkedin_url: string | null;
-  city_id: number | null;
+  city_name: string | null; // from masked view
   company_id: number | null;
 }
 interface LeadRow {
@@ -255,34 +258,25 @@ export async function fetchCompanyById(companyId: number): Promise<Company | nul
 
 /* ------------------------------------------------------------------
    Contacts for a company (for the CONTACTS tab).
+   Reads from contact_master_masked — detail columns (email, mobile_no,
+   linkedin_url) are NULL for contacts the caller does not own.
 ------------------------------------------------------------------ */
 export async function fetchCompanyContacts(companyId: number): Promise<CompanyContact[]> {
   const { rows, error } = await fetchAll<ContactRow>(
-    'contact_master',
-    'contact_id, full_name, designation, email, mobile_no, linkedin_url, city_id, company_id',
-    (q) => q.eq('company_id', companyId).is('deleted_date', null).order('full_name', { ascending: true, nullsFirst: false }),
+    'contact_master_masked',
+    'contact_id, full_name, designation, email, mobile_no, linkedin_url, city_name, company_id',
+    (q) => q.eq('company_id', companyId).order('full_name', { ascending: true, nullsFirst: false }),
   );
   if (error) return [];
-
-  const cityIds = [...new Set(rows.map((r) => r.city_id).filter((v): v is number => v != null))];
-  const cityMap = new Map<number, string>();
-  if (cityIds.length > 0) {
-    const { rows: cityRows } = await fetchAll<CityRow>(
-      'city_master',
-      'city_id, city_name',
-      (q) => q.in('city_id', cityIds),
-    );
-    cityRows.forEach((c) => cityMap.set(c.city_id, c.city_name));
-  }
 
   return rows.map((r) => ({
     id: String(r.contact_id),
     fullName: r.full_name ?? '',
     designation: r.designation ?? '',
-    email: r.email ?? '',
-    phone: r.mobile_no ?? '',
-    linkedin: r.linkedin_url ?? '',
-    city: r.city_id != null ? (cityMap.get(r.city_id) ?? '') : '',
+    email: r.email ?? null,
+    phone: r.mobile_no ?? null,
+    linkedin: r.linkedin_url ?? null,
+    city: r.city_name ?? '',
   }));
 }
 

@@ -27,6 +27,8 @@ import {
 } from '../lib/leadsApi';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
+import { SearchSelect, type SearchSelectOption } from '../components/ui/SearchSelect';
+import { fetchAllContacts, type Contact } from '../data/contacts';
 
 /* ── Shared styles ───────────────────────────────────────────────────────── */
 
@@ -207,6 +209,7 @@ const emptyForm: LeadFormData = {
   description: '',
   linkedin_url: '',
   role_and_resp: '',
+  contact_id: null,
 };
 
 type Errors = Partial<Record<keyof LeadFormData | 'submit', string>>;
@@ -235,6 +238,10 @@ export function LeadFormPage() {
   const [submitting, setSubmitting] = useState(false);
   const [submitSuccess, setSubmitSuccess] = useState(false);
 
+  // Existing-contact picker (Fix #4)
+  const [allContacts, setAllContacts] = useState<Contact[]>([]);
+  const [pickedContact, setPickedContact] = useState<Contact | null>(null);
+
   // For edit: keep existing address_id and resolved city_id
   const [existingAddressId, setExistingAddressId] = useState<number | null>(null);
   const [existingCityId, setExistingCityId] = useState<number | null>(null);
@@ -253,10 +260,12 @@ export function LeadFormPage() {
 
   const load = useCallback(async () => {
     setLoading(true);
-    const [lookupsData, leadData] = await Promise.all([
+    const [lookupsData, leadData, contactsResult] = await Promise.all([
       fetchLookups(),
       isEdit && leadId ? fetchLeadDetail(leadId) : Promise.resolve(null),
+      fetchAllContacts(),
     ]);
+    setAllContacts(contactsResult.contacts);
 
     setLookups(lookupsData);
 
@@ -302,6 +311,7 @@ export function LeadFormPage() {
         description: leadData.description,
         linkedin_url: leadData.linkedin_url,
         role_and_resp: leadData.role_and_resp,
+        contact_id: null, // will be set if lead has contact_id in the future
       });
     } else if (!isEdit) {
       // Default the Agent (Owner) to the current user. Match by user_id (the lookup
@@ -411,6 +421,37 @@ export function LeadFormPage() {
   const clients = lookups?.clients ?? [];
   const cities = lookups?.cities ?? [];
 
+  // Build SearchSelect options for existing contacts
+  const contactOptions: SearchSelectOption[] = allContacts.map((c) => ({
+    id: c.contact_id,
+    label: c.full_name,
+    sublabel: [c.company_name, c.email].filter(Boolean).join(' · ') || undefined,
+  }));
+
+  // When user picks an existing contact, prefill person fields
+  function handleContactPick(id: number | null) {
+    if (id == null) {
+      // Clear: reset contact_id and leave fields editable
+      set('contact_id', null);
+      setPickedContact(null);
+      return;
+    }
+    const c = allContacts.find((x) => x.contact_id === id);
+    if (!c) return;
+    setPickedContact(c);
+    set('contact_id', c.contact_id);
+    set('lead_name', c.full_name || '');
+    set('email', c.email || '');
+    set('mobile_no', c.mobile_no || '');
+    set('designation', c.designation || '');
+    set('linkedin_url', c.linkedin_url || '');
+    // If contact has a company, pre-select it too
+    if (c.company_id) {
+      set('company_id', c.company_id);
+      set('new_company_name', '');
+    }
+  }
+
   return (
     <AppShell title={pageTitle}>
       <div className="max-w-2xl">
@@ -440,6 +481,33 @@ export function LeadFormPage() {
           {/* --- Contact section --- */}
           <div className="space-y-4">
             <SectionHeading title="Contact Information" />
+
+            {/* Existing-contact picker (Fix #4) */}
+            <div
+              style={{
+                background: pickedContact ? '#EBF4FD' : '#f9fafb',
+                border: `1px solid ${pickedContact ? '#1A7EE8' : '#e4e4e7'}`,
+                borderRadius: 8,
+                padding: '12px 14px',
+              }}
+            >
+              <div style={{ fontSize: 12, fontWeight: 500, color: '#6b7280', marginBottom: 6 }}>
+                Link to existing contact{' '}
+                <span style={{ fontWeight: 400, color: '#a1a1aa' }}>(optional — prefills fields below)</span>
+              </div>
+              <SearchSelect
+                options={contactOptions}
+                value={form.contact_id}
+                onChange={handleContactPick}
+                placeholder="Search by name, email or company…"
+              />
+              {pickedContact && (
+                <p style={{ fontSize: 11, color: '#1A7EE8', marginTop: 6 }}>
+                  Fields prefilled from contact #{pickedContact.contact_id}. You can still edit them below.
+                </p>
+              )}
+            </div>
+
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <FieldGroup label="Contact Name" required error={errors.lead_name}>
                 <TextInput

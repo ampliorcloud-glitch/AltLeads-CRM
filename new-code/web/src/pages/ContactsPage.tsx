@@ -1,26 +1,28 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import {
-  useReactTable,
-  getCoreRowModel,
-  getSortedRowModel,
-  getPaginationRowModel,
-  flexRender,
-  createColumnHelper,
-  type SortingState,
-  type PaginationState,
-} from '@tanstack/react-table';
 import * as XLSX from 'xlsx';
 import { AppShell } from '../components/layout/AppShell';
 import { fetchAllContacts, type Contact } from '../data/contacts';
 import {
+  fetchContactStatuses,
+  upsertContactStatus,
+  type ContactStatusLite,
+} from '../data/projectStatus';
+import { fetchOptions, type DropdownOption } from '../data/dropdowns';
+import { useAuth } from '../contexts/AuthContext';
+import { ProjectSelect } from '../components/ui/ProjectSelect';
+import { useRowSelection } from '../components/ui/useRowSelection';
+import { ExportButton } from '../components/ui/ExportButton';
+import { ColumnCustomizer, defaultColumnPrefs } from '../components/ui/ColumnCustomizer';
+import { StatusBadge } from '../components/ui/StatusBadge';
+import type { ColumnDef, ExportColumn } from '../components/ui/columns';
+import type { ColumnPref } from '../data/views';
+import {
   Search,
-  Download,
   ChevronLeft,
   ChevronRight,
   ChevronUp,
   ChevronDown,
-  ChevronsUpDown,
   Loader2,
   Plus,
   Link2,
@@ -116,12 +118,125 @@ const defaultFilters: Filters = {
 };
 
 /* ------------------------------------------------------------------ */
-/*  Column helper                                                        */
+/*  Column catalogue                                                    */
 /* ------------------------------------------------------------------ */
 
-const columnHelper = createColumnHelper<Contact>();
+// ContactRow is a Contact enriched with per-project status fields.
+// The index signature lets it satisfy Record<string,unknown> for the shared
+// generic components (ColumnCustomizer, ExportButton).
+interface ContactRow extends Contact, ContactStatusLite {
+  [key: string]: unknown;
+}
+
+const ALL_COLUMNS: ColumnDef[] = [
+  { key: 'full_name',       header: 'Name',           defaultVisible: true },
+  { key: 'company_name',    header: 'Company',        defaultVisible: true },
+  { key: 'city_name',       header: 'City',           defaultVisible: true },
+  { key: 'email',           header: 'Email',          defaultVisible: true },
+  { key: 'linkedin_url',    header: 'LinkedIn',       defaultVisible: true },
+  { key: 'phone_combined',  header: 'Phone',          defaultVisible: true },
+  { key: 'contact_status',  header: 'Contact Status', defaultVisible: true },
+  { key: 'description',     header: 'Description',    defaultVisible: true },
+  { key: 'comments',        header: 'Comments',       defaultVisible: true },
+  // Hidden by default — reachable via customizer
+  { key: 'designation',     header: 'Designation',    defaultVisible: false },
+  { key: 'mobile_no',       header: 'Mobile',         defaultVisible: false },
+  { key: 'alt_mobile_no',   header: 'Alt Phone',      defaultVisible: false },
+];
+
+// Export columns for the ExportButton — use accessors for computed/enriched cells.
+const EXPORT_COLUMNS: ExportColumn[] = [
+  { key: 'full_name',      header: 'Name' },
+  { key: 'company_name',   header: 'Company' },
+  { key: 'city_name',      header: 'City' },
+  { key: 'email',          header: 'Email' },
+  { key: 'linkedin_url',   header: 'LinkedIn' },
+  { key: 'mobile_no',      header: 'Mobile' },
+  { key: 'alt_mobile_no',  header: 'Alt Phone' },
+  { key: 'designation',    header: 'Designation' },
+  { key: 'contact_status', header: 'Contact Status' },
+  { key: 'description',    header: 'Description' },
+  { key: 'comments',       header: 'Comments' },
+];
 
 const PAGE_SIZE_OPTIONS = [25, 50, 100];
+
+/* ------------------------------------------------------------------ */
+/*  Inline status cell                                                  */
+/* ------------------------------------------------------------------ */
+
+interface InlineStatusCellProps {
+  contactId: number;
+  projectId: number | null;
+  current: string | null;
+  options: DropdownOption[];
+  actorId: string | null;
+  onUpdated: (contactId: number, newStatus: string | null) => void;
+}
+
+function InlineStatusCell({
+  contactId, projectId, current, options, actorId, onUpdated,
+}: InlineStatusCellProps) {
+  const [editing, setEditing] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  // Close on outside click
+  useEffect(() => {
+    if (!editing) return;
+    function handler(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) setEditing(false);
+    }
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [editing]);
+
+  async function handleChange(value: string) {
+    if (!projectId) return;
+    setBusy(true);
+    const newStatus = value === '' ? null : value;
+    await upsertContactStatus(contactId, projectId, { contact_status: newStatus }, actorId);
+    onUpdated(contactId, newStatus);
+    setBusy(false);
+    setEditing(false);
+  }
+
+  if (!editing) {
+    return (
+      <span
+        onClick={(e) => { e.stopPropagation(); if (projectId) setEditing(true); }}
+        title={projectId ? 'Click to change status' : 'Select a project first'}
+        style={{ cursor: projectId ? 'pointer' : 'default', display: 'inline-block' }}
+      >
+        <StatusBadge value={current} category="contact_status" />
+      </span>
+    );
+  }
+
+  return (
+    <div ref={ref} onClick={(e) => e.stopPropagation()} style={{ position: 'relative', display: 'inline-block' }}>
+      <select
+        autoFocus
+        value={current ?? ''}
+        disabled={busy}
+        onChange={(e) => void handleChange(e.target.value)}
+        style={{ ...inputBase, height: 26, fontSize: 12, paddingRight: 24, cursor: 'pointer' }}
+      >
+        <option value="">— none —</option>
+        {options.map((o) => (
+          <option key={o.option_id} value={o.value}>{o.label}</option>
+        ))}
+      </select>
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/*  Sort state                                                          */
+/* ------------------------------------------------------------------ */
+
+type SortKey = keyof ContactRow | 'phone_combined' | null;
+interface SortState { key: SortKey; dir: 'asc' | 'desc' }
 
 /* ------------------------------------------------------------------ */
 /*  Page                                                                */
@@ -129,13 +244,33 @@ const PAGE_SIZE_OPTIONS = [25, 50, 100];
 
 export function ContactsPage() {
   const navigate = useNavigate();
+  const { profile } = useAuth();
+  const userId = profile?.user_id ?? null;
+  // actorId is numeric user_id as text for audit columns
+  const actorId = userId != null ? String(userId) : null;
+
   const [allContacts, setAllContacts] = useState<Contact[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [filters, setFilters] = useState<Filters>(defaultFilters);
-  const [sorting, setSorting] = useState<SortingState>([]);
-  const [pagination, setPagination] = useState<PaginationState>({ pageIndex: 0, pageSize: 25 });
+  const [sort, setSort] = useState<SortState>({ key: 'full_name', dir: 'asc' });
+  const [pageIndex, setPageIndex] = useState(0);
+  const [pageSize, setPageSize] = useState(25);
 
+  // Per-project status map: contact_id -> ContactStatusLite
+  const [projectId, setProjectId] = useState<number | null>(null);
+  const [statusMap, setStatusMap] = useState<Record<number, ContactStatusLite>>({});
+  const [statusLoading, setStatusLoading] = useState(false);
+  // contact_status dropdown options
+  const [statusOptions, setStatusOptions] = useState<DropdownOption[]>([]);
+
+  // Column customizer state
+  const [columnPrefs, setColumnPrefs] = useState<ColumnPref[]>(() => defaultColumnPrefs(ALL_COLUMNS));
+
+  // Row selection
+  const sel = useRowSelection<number>();
+
+  // Load contacts
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
@@ -148,9 +283,33 @@ export function ContactsPage() {
     return () => { cancelled = true; };
   }, []);
 
+  // Load contact_status dropdown options once
+  useEffect(() => {
+    fetchOptions('contact_status').then(setStatusOptions);
+  }, []);
+
+  // Load per-project statuses whenever project or contacts change
+  useEffect(() => {
+    if (!projectId || allContacts.length === 0) {
+      setStatusMap({});
+      return;
+    }
+    let cancelled = false;
+    setStatusLoading(true);
+    const ids = allContacts.map((c) => c.contact_id);
+    fetchContactStatuses(projectId, ids).then((map) => {
+      if (cancelled) return;
+      setStatusMap(map);
+      setStatusLoading(false);
+    });
+    return () => { cancelled = true; };
+  }, [projectId, allContacts]);
+
+  // TODO visibility: per-project status/notes are owner + admin only (security pass).
+
   const setFilter = <K extends keyof Filters>(key: K, value: Filters[K]) => {
     setFilters((prev) => ({ ...prev, [key]: value }));
-    setPagination((p) => ({ ...p, pageIndex: 0 }));
+    setPageIndex(0);
   };
 
   // Unique companies and cities for filter dropdowns
@@ -166,13 +325,12 @@ export function ContactsPage() {
     return Array.from(set).sort();
   }, [allContacts]);
 
-  const filteredData = useMemo(() => {
-    return allContacts.filter((c) => {
-      // Demo filter
+  // Filtered data
+  const filteredData = useMemo<ContactRow[]>(() => {
+    const filtered = allContacts.filter((c) => {
       if (filters.showDemo === 'real' && c.is_demo) return false;
       if (filters.showDemo === 'demo' && !c.is_demo) return false;
 
-      // Search
       if (filters.search) {
         const q = filters.search.toLowerCase();
         const searchable = [
@@ -181,142 +339,142 @@ export function ContactsPage() {
         if (!searchable.includes(q)) return false;
       }
 
-      // Company
       if (filters.company && c.company_name !== filters.company) return false;
-
-      // City
       if (filters.city && c.city_name !== filters.city) return false;
-
-      // Has LinkedIn
       if (filters.hasLinkedin === 'yes' && !c.linkedin_url) return false;
       if (filters.hasLinkedin === 'no' && c.linkedin_url) return false;
 
       return true;
     });
-  }, [allContacts, filters]);
+
+    // Merge per-project status
+    const enriched: ContactRow[] = filtered.map((c) => {
+      const ps = statusMap[c.contact_id];
+      return {
+        ...c,
+        contact_status: ps?.contact_status ?? null,
+        description: ps?.description ?? null,
+        comments: ps?.comments ?? null,
+      };
+    });
+
+    // Sort
+    if (sort.key) {
+      const key = sort.key;
+      enriched.sort((a, b) => {
+        let av: unknown;
+        let bv: unknown;
+        if (key === 'phone_combined') {
+          av = a.mobile_no ?? a.alt_mobile_no ?? '';
+          bv = b.mobile_no ?? b.alt_mobile_no ?? '';
+        } else {
+          av = (a as Record<string, unknown>)[key as string];
+          bv = (b as Record<string, unknown>)[key as string];
+        }
+        const as = (av ?? '').toString().toLowerCase();
+        const bs = (bv ?? '').toString().toLowerCase();
+        if (as < bs) return sort.dir === 'asc' ? -1 : 1;
+        if (as > bs) return sort.dir === 'asc' ? 1 : -1;
+        return 0;
+      });
+    }
+
+    return enriched;
+  }, [allContacts, filters, statusMap, sort]);
+
+  // Pagination
+  const totalRows = filteredData.length;
+  const pageCount = Math.max(1, Math.ceil(totalRows / pageSize));
+  const safePage = Math.min(pageIndex, pageCount - 1);
+  const pageRows = filteredData.slice(safePage * pageSize, (safePage + 1) * pageSize);
+  const firstRow = totalRows === 0 ? 0 : safePage * pageSize + 1;
+  const lastRow = Math.min((safePage + 1) * pageSize, totalRows);
 
   const hasActiveFilters = filters.search !== '' || filters.company !== '' ||
     filters.city !== '' || filters.hasLinkedin !== '' || filters.showDemo !== 'real';
 
-  const columns = useMemo(() => [
-    columnHelper.accessor('full_name', {
-      header: 'Contact',
-      cell: (info) => {
-        const name = info.getValue() ?? '';
-        const isDemo = info.row.original.is_demo;
-        return (
-          <div className="flex items-center gap-2.5">
-            <ContactAvatar name={name} />
-            <div className="min-w-0">
-              <div className="flex items-center gap-1.5">
-                <p className="font-medium text-zinc-900 truncate" style={{ fontSize: 13, maxWidth: 180 }}>
-                  {name || <span className="text-zinc-400">—</span>}
-                </p>
-                {isDemo && (
-                  <span style={{
-                    fontSize: 9, fontWeight: 600, letterSpacing: 0.4,
-                    background: '#F3F4F6', color: '#9CA3AF',
-                    borderRadius: 3, padding: '1px 5px',
-                  }}>DEMO</span>
-                )}
-              </div>
-            </div>
-          </div>
-        );
-      },
-    }),
-    columnHelper.accessor('designation', {
-      header: 'Designation',
-      cell: (info) => (
-        <span className="text-zinc-600 truncate" style={{ fontSize: 13, display: 'block', maxWidth: 160 }}>
-          {info.getValue() || <span className="text-zinc-300">—</span>}
-        </span>
-      ),
-    }),
-    columnHelper.accessor('company_name', {
-      header: 'Company',
-      cell: (info) => (
-        <span className="text-zinc-700 truncate" style={{ fontSize: 13, display: 'block', maxWidth: 180 }}>
-          {info.getValue() || <span className="text-zinc-300">—</span>}
-        </span>
-      ),
-    }),
-    columnHelper.accessor('email', {
-      header: 'Email',
-      cell: (info) => (
-        <span className="text-zinc-600 truncate" style={{ fontSize: 13, display: 'block', maxWidth: 200 }}>
-          {info.getValue() || <span className="text-zinc-300">—</span>}
-        </span>
-      ),
-    }),
-    columnHelper.accessor('mobile_no', {
-      header: 'Phone',
-      cell: (info) => (
-        <span className="text-zinc-600" style={{ fontSize: 13 }}>
-          {info.getValue() || <span className="text-zinc-300">—</span>}
-        </span>
-      ),
-    }),
-    columnHelper.accessor('linkedin_url', {
-      header: 'LinkedIn',
-      enableSorting: false,
-      cell: (info) => {
-        const url = info.getValue();
-        if (!url) return <span className="text-zinc-200" style={{ fontSize: 13 }}>—</span>;
-        const href = url.startsWith('http') ? url : `https://linkedin.com/in/${url}`;
-        return (
-          <a
-            href={href}
-            target="_blank"
-            rel="noopener noreferrer"
-            onClick={(e) => e.stopPropagation()}
-            style={{ color: '#0A66C2', display: 'inline-flex', alignItems: 'center', gap: 4 }}
-          >
-            <Link2 size={14} />
-          </a>
-        );
-      },
-    }),
-  ], []);
+  // Visible page contact ids (for select-all on current page)
+  const pageIds = pageRows.map((r) => r.contact_id);
 
-  const table = useReactTable({
-    data: filteredData,
-    columns,
-    state: { sorting, pagination },
-    onSortingChange: setSorting,
-    onPaginationChange: setPagination,
-    getCoreRowModel: getCoreRowModel(),
-    getSortedRowModel: getSortedRowModel(),
-    getPaginationRowModel: getPaginationRowModel(),
-  });
-
-  const handleExport = () => {
-    const rows = filteredData.map((c) => ({
-      Name: c.full_name,
-      Designation: c.designation ?? '',
-      Company: c.company_name ?? '',
-      Email: c.email ?? '',
-      Phone: c.mobile_no ?? '',
-      'Alt Phone': c.alt_mobile_no ?? '',
-      City: c.city_name ?? '',
-      LinkedIn: c.linkedin_url ?? '',
-      Demo: c.is_demo ? 'Yes' : 'No',
+  // Inline status update handler
+  function handleStatusUpdated(contactId: number, newStatus: string | null) {
+    setStatusMap((prev) => ({
+      ...prev,
+      [contactId]: {
+        contact_status: newStatus,
+        description: prev[contactId]?.description ?? null,
+        comments: prev[contactId]?.comments ?? null,
+      },
     }));
-    const ws = XLSX.utils.json_to_sheet(rows);
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, 'Contacts');
-    XLSX.writeFile(wb, 'amplior-contacts.xlsx');
+  }
+
+  // Sorting toggle
+  function handleSort(key: SortKey) {
+    setSort((prev) => ({
+      key,
+      dir: prev.key === key && prev.dir === 'asc' ? 'desc' : 'asc',
+    }));
+    setPageIndex(0);
+  }
+
+  // Column visibility lookup
+  const visibleKeys = useMemo(() => {
+    const set = new Set(columnPrefs.filter((c) => c.visible).map((c) => c.key));
+    return set;
+  }, [columnPrefs]);
+
+  // Export columns filtered to currently visible columns (in pref order)
+  const exportColumns = useMemo<ExportColumn<ContactRow>[]>(() => {
+    return columnPrefs
+      .filter((p) => p.visible)
+      .flatMap((p) => {
+        const col = EXPORT_COLUMNS.find((ec) => ec.key === p.key);
+        return col ? [col] : [];
+      });
+  }, [columnPrefs]);
+
+  // Handle legacy Excel export removed — ExportButton handles it
+  // (keeping XLSX import alive for backward compat with the import already in file)
+  void XLSX;
+
+  /* -------------------------------------------------------- render -- */
+
+  const sortIcon = (key: SortKey) => {
+    if (sort.key !== key) return <span style={{ color: '#d1d5db', marginLeft: 2 }}>↕</span>;
+    return sort.dir === 'asc'
+      ? <ChevronUp size={11} style={{ color: '#1A7EE8' }} />
+      : <ChevronDown size={11} style={{ color: '#1A7EE8' }} />;
   };
 
-  const totalRows = filteredData.length;
-  const pageIndex = table.getState().pagination.pageIndex;
-  const pageSize = table.getState().pagination.pageSize;
-  const firstRow = totalRows === 0 ? 0 : pageIndex * pageSize + 1;
-  const lastRow = Math.min((pageIndex + 1) * pageSize, totalRows);
+  const thStyle: React.CSSProperties = {
+    padding: '10px 14px',
+    textAlign: 'left',
+    fontWeight: 600,
+    fontSize: 13,
+    color: '#1A7EE8',
+    whiteSpace: 'nowrap',
+    userSelect: 'none',
+    borderBottom: '2px solid #1A7EE8',
+  };
+
+  const tdStyle: React.CSSProperties = {
+    padding: '0 14px',
+    fontSize: 13,
+    color: 'var(--color-gray-700)',
+    verticalAlign: 'middle',
+    maxWidth: 200,
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
+  };
+
+  // Compute number of visible columns + checkbox col
+  const visibleColCount = columnPrefs.filter((p) => p.visible).length + 1; // +1 for checkbox
 
   return (
     <AppShell title="Contacts">
       <div className="space-y-3">
+
         {/* Filter panel */}
         <div className="rounded-lg p-4" style={{ background: 'var(--color-surface)', border: '1px solid var(--border-color)' }}>
           <div className="flex flex-wrap gap-4 items-end">
@@ -398,6 +556,12 @@ export function ContactsPage() {
                 <option value="all">All</option>
               </select>
             </div>
+
+            {/* Project selector (for per-project status columns) */}
+            <div className="flex flex-col gap-1">
+              <label className="font-medium text-zinc-500" style={{ fontSize: 11 }}>Project</label>
+              <ProjectSelect value={projectId} onChange={setProjectId} />
+            </div>
           </div>
         </div>
 
@@ -413,11 +577,14 @@ export function ContactsPage() {
               <span className="text-red-500">{loadError}</span>
             ) : (
               <>
+                {sel.count > 0 && (
+                  <span className="text-zinc-700 font-medium mr-2">{sel.count} selected</span>
+                )}
                 <span className="font-medium text-zinc-700">{filteredData.length}</span> of{' '}
                 <span className="font-medium text-zinc-700">{allContacts.length}</span> contacts
                 {hasActiveFilters && (
                   <button
-                    onClick={() => { setFilters(defaultFilters); setPagination((p) => ({ ...p, pageIndex: 0 })); }}
+                    onClick={() => { setFilters(defaultFilters); setPageIndex(0); sel.clear(); }}
                     className="ml-3 text-zinc-400 hover:text-zinc-700 transition-colors"
                     style={{ fontSize: 12 }}
                   >
@@ -428,29 +595,25 @@ export function ContactsPage() {
             )}
           </p>
           <div className="flex items-center gap-2">
-            <button
-              onClick={handleExport}
+            {/* Export — uses ExportButton with visible columns */}
+            <ExportButton<ContactRow>
+              rows={filteredData}
+              columns={exportColumns}
+              filename="amplior-contacts"
+              selectedIds={sel.selectedIds}
+              idKey="contact_id"
               disabled={loading || filteredData.length === 0}
-              style={{
-                display: 'flex', alignItems: 'center', gap: 6,
-                border: '1px solid var(--border-input)',
-                background: 'var(--color-surface)',
-                color: 'var(--color-gray-700)',
-                fontWeight: 500,
-                borderRadius: 'var(--radius-btn)',
-                fontSize: 12,
-                padding: '5px 12px',
-                height: 30,
-                cursor: 'pointer',
-                transition: 'border-color 0.15s',
-                opacity: (loading || filteredData.length === 0) ? 0.4 : 1,
-              }}
-              onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.borderColor = 'var(--color-brand)'; }}
-              onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.borderColor = 'var(--border-input)'; }}
-            >
-              <Download size={13} strokeWidth={1.75} />
-              Export to Excel
-            </button>
+            />
+
+            {/* Column customizer */}
+            <ColumnCustomizer
+              entity="contacts"
+              userId={userId}
+              allColumns={ALL_COLUMNS}
+              value={columnPrefs}
+              onChange={setColumnPrefs}
+            />
+
             <button
               onClick={() => navigate('/contacts/new')}
               style={{
@@ -478,78 +641,242 @@ export function ContactsPage() {
         {/* Table */}
         <div className="rounded-lg overflow-hidden" style={{ background: 'var(--color-surface)', border: '1px solid var(--border-color)' }}>
           <div className="overflow-x-auto">
-            <table className="w-full">
+            <table className="w-full" style={{ borderCollapse: 'collapse' }}>
               <thead>
-                {table.getHeaderGroups().map((headerGroup) => (
-                  <tr key={headerGroup.id} style={{ borderBottom: '2px solid #1A7EE8', background: 'var(--color-surface)' }}>
-                    {headerGroup.headers.map((header) => (
+                <tr style={{ borderBottom: '2px solid #1A7EE8', background: 'var(--color-surface)' }}>
+                  {/* Checkbox column */}
+                  <th style={{ ...thStyle, width: 36, paddingLeft: 14, paddingRight: 8 }}>
+                    <input
+                      type="checkbox"
+                      checked={pageIds.length > 0 && sel.allSelected(pageIds)}
+                      onChange={() => sel.toggleAll(pageIds)}
+                      title="Select / deselect page"
+                      style={{ cursor: 'pointer', accentColor: '#1A7EE8' }}
+                    />
+                  </th>
+
+                  {/* Dynamic columns */}
+                  {columnPrefs.filter((p) => p.visible).map((p) => {
+                    const col = ALL_COLUMNS.find((c) => c.key === p.key);
+                    const isSortable = !['linkedin_url', 'phone_combined', 'contact_status', 'description', 'comments'].includes(p.key);
+                    return (
                       <th
-                        key={header.id}
+                        key={p.key}
                         style={{
-                          padding: '10px 16px',
-                          textAlign: 'left',
-                          fontWeight: 600,
-                          fontSize: 13,
-                          color: '#1A7EE8',
-                          whiteSpace: 'nowrap',
-                          userSelect: 'none',
-                          borderBottom: '2px solid #1A7EE8',
-                          cursor: header.column.getCanSort() ? 'pointer' : 'default',
+                          ...thStyle,
+                          cursor: isSortable ? 'pointer' : 'default',
                         }}
-                        onClick={header.column.getToggleSortingHandler()}
+                        onClick={isSortable ? () => handleSort(p.key as SortKey) : undefined}
                       >
-                        <div className="flex items-center gap-1">
-                          {flexRender(header.column.columnDef.header, header.getContext())}
-                          {header.column.getCanSort() &&
-                            ({
-                              asc: <ChevronUp size={11} style={{ color: '#1A7EE8' }} />,
-                              desc: <ChevronDown size={11} style={{ color: '#1A7EE8' }} />,
-                            }[header.column.getIsSorted() as string] ?? (
-                              <ChevronsUpDown size={11} className="text-zinc-300" />
-                            ))}
+                        <div style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                          {col?.header ?? p.key}
+                          {isSortable && sortIcon(p.key as SortKey)}
                         </div>
                       </th>
-                    ))}
-                  </tr>
-                ))}
+                    );
+                  })}
+                </tr>
               </thead>
+
               <tbody>
                 {loading ? (
                   <tr>
-                    <td colSpan={columns.length} className="px-4 py-10 text-center">
+                    <td colSpan={visibleColCount} className="px-4 py-10 text-center">
                       <div className="flex items-center justify-center gap-2 text-zinc-400" style={{ fontSize: 13 }}>
                         <Loader2 size={16} className="animate-spin" />
                         Loading contacts...
                       </div>
                     </td>
                   </tr>
-                ) : table.getRowModel().rows.length === 0 ? (
+                ) : pageRows.length === 0 ? (
                   <tr>
-                    <td colSpan={columns.length} className="px-4 py-8 text-center text-zinc-400" style={{ fontSize: 13 }}>
+                    <td colSpan={visibleColCount} className="px-4 py-8 text-center text-zinc-400" style={{ fontSize: 13 }}>
                       No contacts match the current filters.
                     </td>
                   </tr>
                 ) : (
-                  table.getRowModel().rows.map((row) => (
-                    <tr
-                      key={row.id}
-                      onClick={() => navigate(`/contacts/${row.original.contact_id}`)}
-                      style={{
-                        borderBottom: '1px solid var(--color-gray-100)',
-                        height: 48,
-                        cursor: 'pointer',
-                        transition: 'background 0.1s',
-                      }}
-                      onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = 'var(--color-gray-50)'; }}
-                      onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = ''; }}
-                    >
-                      {row.getVisibleCells().map((cell) => (
-                        <td key={cell.id} style={{ padding: '0 16px' }} className="align-middle whitespace-nowrap">
-                          {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                  pageRows.map((row) => {
+                    const isSelected = sel.isSelected(row.contact_id);
+                    return (
+                      <tr
+                        key={row.contact_id}
+                        onClick={() => navigate(`/contacts/${row.contact_id}`)}
+                        style={{
+                          borderBottom: '1px solid var(--color-gray-100)',
+                          height: 48,
+                          cursor: 'pointer',
+                          transition: 'background 0.1s',
+                          background: isSelected ? '#EBF4FD' : undefined,
+                        }}
+                        onMouseEnter={(e) => {
+                          if (!isSelected) (e.currentTarget as HTMLElement).style.background = 'var(--color-gray-50)';
+                        }}
+                        onMouseLeave={(e) => {
+                          (e.currentTarget as HTMLElement).style.background = isSelected ? '#EBF4FD' : '';
+                        }}
+                      >
+                        {/* Checkbox */}
+                        <td
+                          style={{ padding: '0 8px 0 14px', verticalAlign: 'middle', width: 36 }}
+                          onClick={(e) => { e.stopPropagation(); sel.toggle(row.contact_id); }}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={isSelected}
+                            onChange={() => sel.toggle(row.contact_id)}
+                            style={{ cursor: 'pointer', accentColor: '#1A7EE8' }}
+                          />
                         </td>
-                      ))}
-                    </tr>
-                  ))
+
+                        {/* Dynamic cells */}
+                        {columnPrefs.filter((p) => p.visible).map((p) => {
+                          switch (p.key) {
+                            case 'full_name':
+                              return (
+                                <td key={p.key} style={{ ...tdStyle, maxWidth: 220 }}>
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                                    <ContactAvatar name={row.full_name ?? ''} />
+                                    <div style={{ minWidth: 0 }}>
+                                      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                                        <span style={{ fontWeight: 500, color: '#18181b', fontSize: 13, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 160 }}>
+                                          {row.full_name || <span style={{ color: '#d1d5db' }}>—</span>}
+                                        </span>
+                                        {row.is_demo && (
+                                          <span style={{ fontSize: 9, fontWeight: 600, letterSpacing: 0.4, background: '#F3F4F6', color: '#9CA3AF', borderRadius: 3, padding: '1px 5px' }}>DEMO</span>
+                                        )}
+                                      </div>
+                                    </div>
+                                  </div>
+                                </td>
+                              );
+
+                            case 'company_name':
+                              return (
+                                <td key={p.key} style={tdStyle}>
+                                  {row.company_name || <span style={{ color: '#d1d5db' }}>—</span>}
+                                </td>
+                              );
+
+                            case 'city_name':
+                              return (
+                                <td key={p.key} style={tdStyle}>
+                                  {row.city_name || <span style={{ color: '#d1d5db' }}>—</span>}
+                                </td>
+                              );
+
+                            case 'email':
+                              return (
+                                <td key={p.key} style={{ ...tdStyle, maxWidth: 220 }}>
+                                  {row.email || <span style={{ color: '#d1d5db' }}>—</span>}
+                                </td>
+                              );
+
+                            case 'linkedin_url': {
+                              const url = row.linkedin_url;
+                              return (
+                                <td key={p.key} style={{ ...tdStyle, width: 60, textAlign: 'center' }}>
+                                  {url ? (
+                                    <a
+                                      href={url.startsWith('http') ? url : `https://linkedin.com/in/${url}`}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      onClick={(e) => e.stopPropagation()}
+                                      style={{ color: '#0A66C2', display: 'inline-flex', alignItems: 'center' }}
+                                    >
+                                      <Link2 size={14} />
+                                    </a>
+                                  ) : (
+                                    <span style={{ color: '#e5e7eb' }}>—</span>
+                                  )}
+                                </td>
+                              );
+                            }
+
+                            case 'phone_combined':
+                              return (
+                                <td key={p.key} style={{ ...tdStyle, maxWidth: 160 }}>
+                                  <div style={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+                                    {row.mobile_no && (
+                                      <span style={{ fontSize: 13, color: 'var(--color-gray-700)' }}>{row.mobile_no}</span>
+                                    )}
+                                    {row.alt_mobile_no && (
+                                      <span style={{ fontSize: 11, color: '#9ca3af' }}>{row.alt_mobile_no}</span>
+                                    )}
+                                    {!row.mobile_no && !row.alt_mobile_no && (
+                                      <span style={{ color: '#d1d5db' }}>—</span>
+                                    )}
+                                  </div>
+                                </td>
+                              );
+
+                            case 'contact_status':
+                              return (
+                                <td key={p.key} style={{ ...tdStyle, maxWidth: 160 }}>
+                                  {statusLoading ? (
+                                    <Loader2 size={12} className="animate-spin text-zinc-300" />
+                                  ) : (
+                                    <InlineStatusCell
+                                      contactId={row.contact_id}
+                                      projectId={projectId}
+                                      current={row.contact_status}
+                                      options={statusOptions}
+                                      actorId={actorId}
+                                      onUpdated={handleStatusUpdated}
+                                    />
+                                  )}
+                                </td>
+                              );
+
+                            case 'description':
+                              return (
+                                <td key={p.key} style={{ ...tdStyle, maxWidth: 200 }}>
+                                  {row.description
+                                    ? <span title={row.description}>{row.description}</span>
+                                    : <span style={{ color: '#d1d5db' }}>—</span>}
+                                </td>
+                              );
+
+                            case 'comments':
+                              return (
+                                <td key={p.key} style={{ ...tdStyle, maxWidth: 200 }}>
+                                  {row.comments
+                                    ? <span title={row.comments}>{row.comments}</span>
+                                    : <span style={{ color: '#d1d5db' }}>—</span>}
+                                </td>
+                              );
+
+                            case 'designation':
+                              return (
+                                <td key={p.key} style={{ ...tdStyle, maxWidth: 160 }}>
+                                  {row.designation || <span style={{ color: '#d1d5db' }}>—</span>}
+                                </td>
+                              );
+
+                            case 'mobile_no':
+                              return (
+                                <td key={p.key} style={tdStyle}>
+                                  {row.mobile_no || <span style={{ color: '#d1d5db' }}>—</span>}
+                                </td>
+                              );
+
+                            case 'alt_mobile_no':
+                              return (
+                                <td key={p.key} style={tdStyle}>
+                                  {row.alt_mobile_no || <span style={{ color: '#d1d5db' }}>—</span>}
+                                </td>
+                              );
+
+                            default:
+                              return (
+                                <td key={p.key} style={tdStyle}>
+                                  {String((row as Record<string, unknown>)[p.key] ?? '—')}
+                                </td>
+                              );
+                          }
+                        })}
+                      </tr>
+                    );
+                  })
                 )}
               </tbody>
             </table>
@@ -565,7 +892,7 @@ export function ContactsPage() {
                 <span className="text-zinc-500" style={{ fontSize: 12 }}>Rows per page</span>
                 <select
                   value={pageSize}
-                  onChange={(e) => { table.setPageSize(Number(e.target.value)); table.setPageIndex(0); }}
+                  onChange={(e) => { setPageSize(Number(e.target.value)); setPageIndex(0); }}
                   style={{ ...inputBase, height: 28, paddingRight: 22, cursor: 'pointer', fontSize: 12 }}
                   onFocus={(e) => { e.currentTarget.style.borderColor = '#1A7EE8'; }}
                   onBlur={(e) => { e.currentTarget.style.borderColor = 'var(--border-input)'; }}
@@ -581,8 +908,8 @@ export function ContactsPage() {
                 </span>
                 <div className="flex items-center gap-1.5">
                   <button
-                    onClick={() => table.previousPage()}
-                    disabled={!table.getCanPreviousPage()}
+                    onClick={() => setPageIndex((i) => Math.max(0, i - 1))}
+                    disabled={safePage === 0}
                     style={{
                       display: 'flex', alignItems: 'center', gap: 4,
                       height: 28, padding: '0 10px', fontSize: 12,
@@ -590,8 +917,8 @@ export function ContactsPage() {
                       borderRadius: 'var(--radius-btn)',
                       background: 'var(--color-surface)',
                       color: 'var(--color-gray-600)',
-                      cursor: !table.getCanPreviousPage() ? 'not-allowed' : 'pointer',
-                      opacity: !table.getCanPreviousPage() ? 0.4 : 1,
+                      cursor: safePage === 0 ? 'not-allowed' : 'pointer',
+                      opacity: safePage === 0 ? 0.4 : 1,
                     }}
                     aria-label="Previous page"
                   >
@@ -599,12 +926,12 @@ export function ContactsPage() {
                     Prev
                   </button>
                   <span style={{ fontSize: 12, padding: '0 4px', color: 'var(--color-gray-500)' }}>
-                    Page <span style={{ fontWeight: 600, color: 'var(--color-gray-700)' }}>{pageIndex + 1}</span> of{' '}
-                    <span style={{ fontWeight: 600, color: 'var(--color-gray-700)' }}>{table.getPageCount()}</span>
+                    Page <span style={{ fontWeight: 600, color: 'var(--color-gray-700)' }}>{safePage + 1}</span> of{' '}
+                    <span style={{ fontWeight: 600, color: 'var(--color-gray-700)' }}>{pageCount}</span>
                   </span>
                   <button
-                    onClick={() => table.nextPage()}
-                    disabled={!table.getCanNextPage()}
+                    onClick={() => setPageIndex((i) => Math.min(pageCount - 1, i + 1))}
+                    disabled={safePage >= pageCount - 1}
                     style={{
                       display: 'flex', alignItems: 'center', gap: 4,
                       height: 28, padding: '0 10px', fontSize: 12,
@@ -612,8 +939,8 @@ export function ContactsPage() {
                       borderRadius: 'var(--radius-btn)',
                       background: 'var(--color-surface)',
                       color: 'var(--color-gray-600)',
-                      cursor: !table.getCanNextPage() ? 'not-allowed' : 'pointer',
-                      opacity: !table.getCanNextPage() ? 0.4 : 1,
+                      cursor: safePage >= pageCount - 1 ? 'not-allowed' : 'pointer',
+                      opacity: safePage >= pageCount - 1 ? 0.4 : 1,
                     }}
                     aria-label="Next page"
                   >

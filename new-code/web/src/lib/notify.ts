@@ -16,11 +16,14 @@
 // For local dev with separate servers (web=5173, notify=8787), set VITE_NOTIFY_URL=http://localhost:8787.
 const NOTIFY_URL = (import.meta as any).env?.VITE_NOTIFY_URL || '';
 
+import { supabase } from './supabase';
+
 /* ── Email (via notify-service) ──────────────────────────────────── */
 
 /**
  * Send an email notification via the notify microservice.
  * Fire-and-forget: errors are logged as warnings, never thrown.
+ * Attaches the current Supabase session token if available; skips silently if not.
  */
 export async function notify(
   event: string,
@@ -29,9 +32,17 @@ export async function notify(
 ): Promise<void> {
   if (!toEmail) return;
   try {
+    const { data: sessionData } = await supabase.auth.getSession();
+    const accessToken = sessionData?.session?.access_token;
+
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    if (accessToken) {
+      headers['Authorization'] = `Bearer ${accessToken}`;
+    }
+
     const res = await fetch(`${NOTIFY_URL}/notify`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers,
       body: JSON.stringify({ event, to: toEmail, data }),
     });
     if (!res.ok) {

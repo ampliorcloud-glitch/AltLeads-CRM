@@ -2,7 +2,7 @@
 
 *Purpose: the single prioritized to-do list for the CRM rebuild — what's done, what's in progress, and what's left — organized by module so the owner can see the whole picture at a glance.*
 
-*Last updated 2026-06-13*
+*Last updated 2026-06-17*
 
 > **This is a living draft; reconcile flow details with USER-STORIES-AND-FLOWS.md after owner review.** Where this backlog and the user-stories doc disagree on how a screen should behave, the user-stories doc wins (it is the reviewed spec). This file tracks *work and priority*; that file tracks *exact behaviour*.
 
@@ -34,14 +34,16 @@ Each section below is an **Epic** — a big chunk of work, usually one product m
 
 ---
 
-## Snapshot — where we are today (2026-06-13)
+## Snapshot — where we are today (2026-06-17)
 
 - **Data migration: DONE.** All 65 tables and ~108,000 rows copied into Supabase, row counts matched. Production was never touched (we worked off a fork).
-- **Login & roles: DONE.** Supabase Auth works; the 6 roles (ADMIN, TEAM_LEAD, SALES_HEAD, SALES_PERSON, AGENT, QC) are live; route protection is on.
-- **All modules have a first-pass build.** Leads, Meetings, Wishlist, Dashboard, Notifications, Admin, Settings are all built on real data and the app builds clean.
-- **Leads is the furthest along:** list + the 7 filters + Excel export + pagination + add/edit/detail are working on real data.
-- **In progress now:** the Lead workspace (HubSpot-style detail page — header + right info panel + 3 tabs: Activity / Lead Report / Meeting) and the authoritative USER-STORIES-AND-FLOWS.md spec.
-- **Biggest gates before going live:** the database access rules (RLS) must be applied before *any* public deploy, a design-match pass against Figma, real email notifications, and the mobile app repair.
+- **Login & roles: DONE.** Supabase Auth works; the 6 roles are live; route protection is on.
+- **App is LIVE at crm.altleads.com** — deployed on Hostinger as one combined Node app (React web + email service). Email delivery verified.
+- **All core modules DONE on real data:** Leads (workspace with 3 tabs + approval flow), Meetings, Wishlist, Dashboard, Notifications (email + in-app), Approvals, Companies, Contacts, Admin (add user + reset password + dropdown editor), Settings.
+- **RLS baseline ON** — 70 tables enabled, authenticated broad access, anon denied, self-promote blocked. Fine-grained per-role rules are the next security step.
+- **Legacy password column HIDDEN** from the API (column-level grant revoked).
+- **In progress now (Wave B onwards):** Admin dropdown management UI, per-project status model (contact_project_status / company_project_status tables created), Contact list with multi-select + saved views + status column, Contact detail full edit, Company detail account fields, security audit.
+- **Biggest gates before go-live:** fine-grained RLS (per-role, per-lead ownership), IDOR/RLS audit, Hostinger env vars for add-user/reset-password endpoints.
 
 ---
 
@@ -73,11 +75,13 @@ Each section below is an **Epic** — a big chunk of work, usually one product m
 | A-02 | Link auth users → user records + roles (`profiles` table + auto-onboard trigger) | P0 | Done | Trigger `on_auth_user_created` matches by email. |
 | A-03 | Route protection (block pages when logged out / wrong role) | P0 | Done | Live. Admin nav gated to ADMIN. |
 | A-04 | Decision: don't migrate old plaintext passwords | P0 | Done | At go-live each user gets a one-time "set your password" email. |
-| A-05 | **RLS hardening — one comprehensive pass across all 65 tables** | **P0** | **To Do** | **HARD GATE: must be done before any Netlify deploy.** Model: ADMIN sees all; managers (TEAM_LEAD/SALES_HEAD/QC) all-for-now; AGENT/SALES_PERSON see only their own. **Ownership match is `created_by` (NOT `agent_id`)** — see data lesson in REBUILD_LOG. |
-| A-06 | Refine manager access to true team-scope | P2 | Backlog | Start with managers-see-all; tighten to team-scope after launch. |
-| A-07 | Send one-time password-set emails to all real users at go-live | P0 | To Do | Depends on email provider (see N-04). Part of cutover. |
-| A-08 | Rotate / prune leftover secrets & DB firewall IPs | P1 | To Do | Prune the ~14 individual firewall IPs (likely old vendor devs) at cutover, not before. |
-| A-09 | Security review of RLS policies before launch | P1 | To Do | Confirm no table is left world-readable via the anon key. |
+| A-05 | **RLS baseline — enable RLS on all tables, block anon, block self-promote** | **P0** | **Done** | 70/70 tables enabled; authenticated full access on 68; profiles SELECT-only; anon denied; self-promote blocked. Verified adversarially. SQL: `new-code/migration/rls-policies.sql`. |
+| A-06 | **Fine-grained per-role RLS** (agent sees only own leads; AGENT/SP filter by `created_by`) | **P0** | **To Do** | HARD GATE before go-live. Must confirm ownership model across all modules. |
+| A-07 | **Full IDOR/RLS security audit** — confirm no cross-user data leak in any module | P0 | Planned | Planned as a dedicated sub-agent security pass before cutover. |
+| A-08 | Hide legacy plaintext `password` column from API | P0 | Done | Column-level REVOKE on `user_master` + `user_master_audit` for anon + authenticated. Script: `new-code/migration/hide-password-column.js`. Data intact. |
+| A-09 | Refine manager access to true team-scope | P2 | Backlog | Start with managers-see-all; tighten to team-scope after launch. |
+| A-10 | Send one-time password-set emails to all real users at go-live | P0 | To Do | Part of cutover. Email service is live; add a batch-send script. |
+| A-11 | Rotate / prune leftover secrets & DB firewall IPs | P1 | To Do | Prune the ~14 individual firewall IPs (likely old vendor devs) at cutover, not before. |
 
 ---
 
@@ -96,12 +100,13 @@ Each section below is an **Epic** — a big chunk of work, usually one product m
 | L-07 | Lead Detail page (header, all fields, clickable contacts, related meetings, stage history) | P0 | Done | `/leads/:id`. |
 | L-08 | Fix data accuracy (companies/agents showing blank or "only 2 agents") | P0 | Done | Root cause found: joins used wrong columns. Correct: company = `client_association.client_name` via `client_assoc_id`; owner = `created_by`; project via `project_id`. Now 18 owners, 0 null companies. |
 | L-09 | Simple stage change on a lead | P1 | Done | Updates `lead_report.stage_id`. Simple case only. |
-| L-10 | **Lead workspace: HubSpot-style 3 tabs (Activity / Lead Report / Meeting) + right info panel** | **P0** | **In Progress** | The screen where agents fill in info. Reverse-engineered from old `lead-overview/`. Components to live in `src/components/lead/`, data in `src/data/leadWorkspace.ts`. Building under workflow wf_7a4a706c-3ef. |
-| L-11 | Full stage-change workflow (approval + auto meeting creation) | P1 | To Do | Current stage change is the simple case only; full approval/meeting-creation flow deferred. |
-| L-12 | Fix inline "create new company" placeholder values | P1 | To Do | Creating a brand-new company inline writes placeholder values into required company columns (address/country/domain/industry) — must verify/refine before relying on it. |
-| L-13 | Activity timeline writing (agents log calls/notes) | P1 | To Do | Read works; confirm full create/edit of activity entries in the Activity tab. |
-| L-14 | Lead Report tab data entry | P1 | In Progress | Part of L-10 workspace. |
-| L-15 | Bulk actions on leads (assign / reassign / export selected) | P2 | Backlog | Reconcile with user-stories doc. |
+| L-10 | **Lead workspace: HubSpot-style 3 tabs (Activity / Lead Report / Meeting) + right info panel** | **P0** | **Done** | `src/components/lead/` + `src/data/leadWorkspace.ts`. Meeting tab scoped to current lead (not user's whole calendar). |
+| L-11 | **Approval flow** (request → TL queue → approve/reject with notifications) | **P0** | **Done** | `/approvals` page + sidebar badge + ReportTab inline actions + email+in-app at each step. Stage IDs verified vs `stage_master`. |
+| L-12 | **Pick existing contact when creating a lead** | P1 | Done | `SearchSelect.tsx` combobox on Lead form; saves `lead_master.contact_id` (new column added). |
+| L-13 | Full stage-change workflow (full approval + auto meeting creation) | P2 | Backlog | Current stage change is simple case only. Full workflow with auto-meeting creation is deferred. |
+| L-14 | Fix inline "create new company" placeholder values | P1 | To Do | Creating a company inline writes placeholder values into required columns (address/country/domain/industry) — needs refinement. |
+| L-15 | Multi-select + bulk export on Leads | P1 | Done | Already included in Leads list. |
+| L-16 | Per-user saved views on Leads (show/hide + reorder columns) | P2 | Planned | `user_view_pref` table exists; UI not yet built. |
 
 ---
 
@@ -113,13 +118,14 @@ Each section below is an **Epic** — a big chunk of work, usually one product m
 |---|---|---|---|---|
 | M-01 | Meetings list on real data | P0 | Done | 610 rows. |
 | M-02 | Meeting detail page | P0 | Done | |
-| M-03 | The 7 Meetings filters (CR scope) | P0 | To Do | Mirror of the Leads filters; confirm all 7 are present and working. |
-| M-04 | Excel export of Meetings | P0 | To Do | Second of the two ₹96k CR exports. Confirm present. |
-| M-05 | Create / schedule a meeting | P1 | To Do | Confirm create flow end-to-end (link to lead, assign agent). |
-| M-06 | Edit / reschedule a meeting | P1 | To Do | |
-| M-07 | Assign / reassign a meeting to an agent | P1 | To Do | Trigger point for the notification email (see N-02). |
-| M-08 | Meeting status workflow (scheduled → done / cancelled, QC review) | P1 | To Do | Reconcile with user-stories + QC role. |
-| M-09 | Calendar / day view of meetings | P2 | Backlog | Nice-to-have view; confirm against Figma. |
+| M-03 | The 7 Meetings filters (CR scope) | P0 | Done | Built to FRS-parity. |
+| M-04 | Excel export of Meetings | P0 | Done | Multi-select + export. |
+| M-05 | Create / schedule a meeting | P1 | Done | Linked to lead. |
+| M-06 | Reschedule / cancel a meeting | P1 | Done | `UpdateMeetingModal.tsx` fires email + in-app on reschedule/cancel. |
+| M-07 | Email + in-app notification on meeting scheduled / rescheduled / cancelled | P0 | Done | Fires to the salesperson via Gmail SMTP. |
+| M-08 | Meeting status workflow (QC review) | P1 | To Do | QC role interaction with meetings not yet specified. Reconcile with user-stories + QC role definition. |
+| M-09 | Per-user saved views on Meetings | P2 | Planned | `user_view_pref` table exists; UI not yet built. |
+| M-10 | Calendar / day view of meetings | P3 | Backlog | Nice-to-have. |
 
 ---
 
@@ -129,11 +135,11 @@ Each section below is an **Epic** — a big chunk of work, usually one product m
 
 | ID | Item | Priority | Status | Notes |
 |---|---|---|---|---|
-| W-01 | Wishlist list on real data | P1 | Done | 54 rows. |
-| W-02 | Add to wishlist | P1 | To Do | Confirm create flow. |
-| W-03 | Edit / remove wishlist item | P1 | To Do | |
-| W-04 | Convert wishlist item → lead | P2 | Backlog | Confirm whether this flow exists in FRS / old app. |
-| W-05 | Wishlist filters / search | P2 | Backlog | |
+| W-01 | Wishlist list on real data | P1 | Done | 54 rows. Filters, export, pagination. |
+| W-02 | Add to wishlist | P1 | Done | |
+| W-03 | Edit / assign wishlist item | P1 | Done | Assign notification fires email + in-app. |
+| W-04 | Convert wishlist item → lead | P1 | Done | `convertWishlistToLead` in `wishlist.ts`; shared `insertLeadWithUniqueNumber` helper. |
+| W-05 | Per-user saved views on Wishlist | P2 | Planned | `user_view_pref` table exists; UI not yet built. |
 
 ---
 
@@ -158,12 +164,14 @@ Each section below is an **Epic** — a big chunk of work, usually one product m
 | ID | Item | Priority | Status | Notes |
 |---|---|---|---|---|
 | N-01 | In-app notifications list on real data | P1 | Done | Reads `in_app_notification`. |
-| N-02 | **Email notification on meeting assignment** | **P0** | **To Do** | Core promised behaviour. Needs a Netlify Function + DB trigger. ~100+ emails/day. |
-| N-03 | Email notification on meeting *reassignment* | P1 | To Do | Same mechanism as N-02. |
-| N-04 | Choose & wire an email provider | P0 | To Do | Leaning Resend (free 3k/mo) or owner's own SMTP. Blocks N-02/N-03 and A-07. Decision pending. |
-| N-05 | Mark-as-read / unread state | P2 | To Do | |
-| N-06 | Confirm whether SMS (Twilio) is actually used | P2 | Backlog | Owner to confirm if SMS is live and who owns the account. |
-| N-07 | Notification preferences (per-user opt in/out) | P3 | Backlog | |
+| N-02 | Email + in-app on meeting scheduled / rescheduled / cancelled | P0 | Done | Via Gmail SMTP on Hostinger Node server. |
+| N-03 | Email + in-app on lead assigned / reassigned | P0 | Done | `createLead`/`updateLead` + wishlist assign all wired. |
+| N-04 | Email + in-app on approval requested / approved / rejected | P0 | Done | Fires at each step of the approval flow. |
+| N-05 | Live unread-count bell badge in sidebar | P1 | Done | Polls `fetchUnreadNotifCount` every 60 s. |
+| N-06 | Tune notification recipients per action | P2 | Planned | Currently recipient = salesperson. Each action has a single TODO-commented spot in code. Owner to specify who should receive each event. |
+| N-07 | Mark-as-read / unread state | P2 | To Do | `is_seen` column exists; read-state reconciliation on NotificationsPage not yet built. |
+| N-08 | Confirm whether SMS (Twilio) is actually used | P2 | Backlog | Owner to confirm. |
+| N-09 | Notification preferences (per-user opt in/out) | P3 | Backlog | |
 
 ---
 
@@ -174,14 +182,16 @@ Each section below is an **Epic** — a big chunk of work, usually one product m
 | ID | Item | Priority | Status | Notes |
 |---|---|---|---|---|
 | AD-01 | Admin panel built, ADMIN-gated | P1 | Done | Tabs: Users / Projects / Clients / Reference. Real edits work. |
-| AD-02 | Manage users (add / edit / deactivate) | P1 | Done (first pass) | Confirm full add-user flow incl. sending the set-password invite. |
-| AD-03 | Manage roles / change a user's role | P1 | To Do | Confirm role change updates `profiles` + takes effect immediately. |
-| AD-04 | Manage projects | P1 | Done (first pass) | |
-| AD-05 | Manage clients / companies | P1 | Done (first pass) | |
-| AD-06 | Manage reference / lookup data (designations, stages, etc.) | P2 | Done (first pass) | "Reference" tab. |
-| AD-07 | Match Admin panel to Figma "Admin Panal" page (35 frames) | P2 | To Do | Part of the design pass; separate Figma page from the web UI. |
-| AD-08 | Access-management / permissions screen | P2 | Backlog | Reconcile with FRS + role model. |
-| AD-09 | Audit log view (who changed what) | P3 | Backlog | Vendor added 21 audit tables — surface them if useful. |
+| AD-02 | **Add User** (secure service-role backend endpoint) | P0 | Done | `POST /api/users/create` in notify-service. Creates `user_master` row, `user_role`, and Supabase Auth account. Temp password returned to admin. Verified end-to-end locally. **Needs `SUPABASE_SERVICE_ROLE_KEY` env var on Hostinger to work in production.** |
+| AD-03 | **Reset any user's password** (admin action) | P1 | Done | `POST /api/users/reset-password` → `auth.admin.updateUserById`. Same env-var dependency. |
+| AD-04 | **Admin-editable dropdown option lists** | P1 | In Progress | `dropdown_option` table seeded with starter values (contact_status ×6, call_disposition ×8, account_status ×7, decision_power ×3, feasibility ×3). UI management screen: Planned (Wave B). |
+| AD-05 | Manage roles / change a user's role | P1 | To Do | Confirm role change updates `profiles` + takes effect immediately. |
+| AD-06 | Manage projects | P1 | Done | |
+| AD-07 | Manage clients / companies | P1 | Done | |
+| AD-08 | Manage reference / lookup data (designations, stages, etc.) | P2 | Done | "Reference" tab. |
+| AD-09 | Match Admin panel to Figma "Admin Panal" page (35 frames) | P2 | Done | Admin design pass applied; Figma admin frames could not be exported (rate-limit) so styled from design system. |
+| AD-10 | Access-management / permissions screen | P2 | Backlog | Reconcile with FRS + role model. |
+| AD-11 | Audit log view (who changed what) | P3 | Backlog | Vendor added 21 audit tables — surface if useful. |
 
 ---
 
@@ -214,21 +224,22 @@ Each section below is an **Epic** — a big chunk of work, usually one product m
 
 ---
 
-## EPIC 11 — Deploy & Cutover
+## EPIC 11 — Hosting, Deploy & Cutover
 
 *Going live safely, then retiring the old system.*
 
 | ID | Item | Priority | Status | Notes |
 |---|---|---|---|---|
-| C-01 | **RLS applied (hard gate — see A-05)** | **P0** | **To Do** | No deploy until this is done. |
-| C-02 | First Netlify deploy (Claude does it, only on owner's explicit "go") | P0 | To Do | Then turn auto-deploy OFF; all later deploys are manual by owner. |
-| C-03 | GitHub repo + auto-deploy wired for the first deploy | P0 | To Do | `ampliorcloud-glitch/AL`. |
-| C-04 | Send go-live password-set emails (see A-07) | P0 | To Do | |
-| C-05 | Parallel run — team uses new + old together (1–2 weeks owner testing) | P0 | To Do | Near-zero AI time; owner-led. |
-| C-06 | Cutover — switch fully to new system | P0 | Backlog | After parallel run passes. |
-| C-07 | Prune DB firewall IPs | P1 | To Do | At cutover. |
-| C-08 | Retire DigitalOcean (droplet + MySQL) | P1 | Backlog | After cutover is confirmed stable. |
-| C-09 | Environment / secret hygiene check before public exposure | P1 | To Do | Confirm no anon-key-wide-open tables, no committed secrets. |
+| C-01 | **Combined Node app** (web + email service in one process) | **P0** | **Done** | Root `package.json` + `server.js` → `new-code/notify-service/server.js`. Node 22.x on Hostinger. |
+| C-02 | **Live deploy on Hostinger at crm.altleads.com** | **P0** | **Done** | Git auto-deploy from AltLeads-CRM GitHub repo. HTTP 200, /health OK, email delivery verified. |
+| C-03 | Set Hostinger env vars for add-user / reset-password | P0 | To Do | `SUPABASE_URL` + `SUPABASE_SERVICE_ROLE_KEY` must be added to Hostinger for admin endpoints to work in production. |
+| C-04 | Fine-grained RLS (per-role, agent sees own data) | P0 | Planned | Hard gate before go-live. |
+| C-05 | Full IDOR/RLS security audit | P0 | Planned | Sub-agent audit pass before cutover. |
+| C-06 | Send go-live password-set emails to all users | P0 | To Do | Batch-send script needed. Email service is live. |
+| C-07 | Parallel run — team uses new + old together | P0 | To Do | 1–2 weeks owner-led. |
+| C-08 | Cutover — switch fully to new system | P0 | Backlog | After parallel run passes. |
+| C-09 | Prune DB firewall IPs | P1 | To Do | At cutover (~14 IPs, likely old vendor devs). |
+| C-10 | Retire DigitalOcean (droplet + MySQL) | P1 | Backlog | After cutover is confirmed stable. |
 
 ---
 
@@ -239,12 +250,85 @@ Each section below is an **Epic** — a big chunk of work, usually one product m
 | ID | Item | Priority | Status | Notes |
 |---|---|---|---|---|
 | DP-01 | Set base UI style (Attio/Linear-style: light, Inter font, white sidebar, compact tables) | P1 | Done | Done after "AI generated" feedback. |
-| DP-02 | Export all Figma frames as reference PNGs | P1 | Done | `docs/figma-export/{web,admin,mobile}/`. Web (29) + mobile (23) done; admin may still be finishing. |
-| DP-03 | **Dedicated design-match pass: web app vs Figma "New UI" (29 frames)** | P1 | To Do | Run after the lead workspace + user-stories land. View the PNGs during this pass (frame names are auto-generated). |
-| DP-04 | Design-match pass: Admin vs Figma "Admin Panal" (35 frames) | P2 | To Do | Overlaps AD-07. |
-| DP-05 | Design-match pass: Mobile vs Figma "Mobile UI" (23 frames) | P2 | Backlog | Phase 6, overlaps MO-07. |
-| DP-06 | Empty states, loading states, error states polish | P2 | Backlog | |
-| DP-07 | Accessibility & responsive check | P3 | Backlog | |
+| DP-02 | Export Figma frames as reference PNGs | P1 | Done | Web (29) + mobile (23) exported. Admin (35) hit Figma API rate limit (~73h quota); blocked ~3 days. |
+| DP-03 | Apply brand design system (blue #1A7EE8 palette, tokens, primitives) | P1 | Done | `index.css` tokens, Sidebar/TopBar/AppShell/LoginPage/Badge restyle; indigo → blue swept across ~30 files. `docs/DESIGN-SYSTEM.md` written. |
+| DP-04 | Design-match pass: web app vs Figma "New UI" (29 frames) | P1 | Done | Split login, lead-detail stepper, leads avatars, breadcrumbs, Meetings/Wishlist/Settings/Notifications unified. |
+| DP-05 | Design-match pass: Admin panel | P2 | Done | Admin vertical sub-nav, Figma tables, role chips, toggles. Styled from design system (Figma admin frames unavailable due to rate limit). |
+| DP-06 | Design-match pass: Mobile vs Figma "Mobile UI" (23 frames) | P2 | Backlog | Phase 6. |
+| DP-07 | AltLeads bear-head logo SVG asset | P2 | To Do | Currently "AltLeads" wordmark only. Owner to provide the bear-head SVG or extract from Figma zip. |
+| DP-08 | Empty states, loading states, error states polish | P2 | Backlog | |
+| DP-09 | Accessibility & responsive check | P3 | Backlog | |
+
+---
+
+## EPIC 13 — Companies & Contacts
+
+*The HubSpot-style target-company and contact directory with call-disposition logging.*
+
+| ID | Item | Priority | Status | Notes |
+|---|---|---|---|---|
+| CC-01 | `contact_master` table + migrate all contacts from `lead_master` | P0 | Done | 607 contacts migrated; 130 initially company-linked. |
+| CC-02 | `company_master.domain_clean` + `is_demo` columns | P0 | Done | 525 companies updated. |
+| CC-03 | Email-domain sync: link contacts to companies by work-email domain | P1 | Done | 286 contacts linked (417/608 total now have `company_id`). Script: `new-code/migration/backfill-apply.js`. |
+| CC-04 | `interaction` table for call-disposition / activity log | P1 | Done | RLS on. |
+| CC-05 | Companies list page (search, industry + city filters, export, pagination) | P1 | Done | 525 companies. |
+| CC-06 | Company detail page (contacts by city, project selector, deals tab) | P1 | Done | HubSpot layout. Contacts-by-city + per-project account fields. |
+| CC-07 | New company with dedup (clean domain OR CIN) | P1 | Done | Surfaces existing record if match found; blocks duplicate. |
+| CC-08 | Link existing contact into a company | P1 | Done | "Link existing contact" modal on company detail → sets `contact.company_id`. |
+| CC-09 | Contacts list page (search, status + company filters, export, pagination) | P1 | Done | 607 contacts. Default columns per spec. |
+| CC-10 | Contact detail full edit | P1 | Done | All fields editable; call & disposition panel writes to `interaction`. |
+| CC-11 | Change / clear a contact's company | P1 | Done | Pencil icon on contact detail → `updateContactCompany` in `contacts.ts`. |
+| CC-12 | New contact with dedup (email → LinkedIn → phone) | P1 | Done | Demo mode skips dedup. |
+| CC-13 | Per-project contact status / description / comments on contact detail | P1 | In Progress | `contact_project_status` table created; UI display + edit planned (Wave C). |
+| CC-14 | Per-project account status / feasibility / decision power / desc / comments on company detail | P1 | In Progress | `company_project_status` table created; UI planned (Wave E). |
+| CC-15 | Per-project ownership (company_project_owner table + assign UI) | P2 | Planned | Companies currently show "Unassigned". |
+| CC-16 | Masked visibility (names + city visible to all; contact details to owner + downline only) | P2 | Planned | Depends on per-project ownership + `user_master.manager_id` hierarchy column. |
+| CC-17 | Per-user saved views on Contacts and Companies | P2 | Planned | `user_view_pref` table exists; UI not yet built. |
+| CC-18 | Auto-create companies for the 159 contacts with unmatched work domains | P3 | Backlog | 159 contacts have work-email domains not in the 525-company list. |
+
+---
+
+## EPIC 14 — Per-Project Status Model
+
+*Three-layer status (call disposition / contact status / account status) all scoped per project, with full history.*
+
+| ID | Item | Priority | Status | Notes |
+|---|---|---|---|---|
+| PS-01 | `dropdown_option` table + seed starter values | P0 | Done | contact_status ×6, call_disposition ×8, account_status ×7, decision_power ×3, feasibility ×3. SQL: `new-code/migration/feature-status-schema.sql`. |
+| PS-02 | `contact_project_status` table (unique contact + project) | P0 | Done | Stores contact status, description, comments per project. RLS on. |
+| PS-03 | `company_project_status` table (account status, is_feasible, decision_power, desc, comments) | P0 | Done | Per project per company. RLS on. |
+| PS-04 | `user_view_pref` table (per-user column layouts) | P1 | Done | Schema only; UI not built. |
+| PS-05 | Admin UI to edit dropdown option lists | P1 | Planned | Wave B. Admins can add/edit/reorder options for all dropdowns from the Admin panel. |
+| PS-06 | Surface pre-sales questions in lead workspace (per domain/industry) | P2 | Planned | 45 questions exist in `pre_sales_question`, grouped by `domain_master`. Currently hidden. Wave B/C. |
+| PS-07 | Call Disposition UI in Contact detail + Company contact rows | P1 | Done | Writes to `interaction` table. |
+| PS-08 | Contact Status column in Contacts list | P1 | Planned | Wave C. |
+| PS-09 | Account Status + feasibility + decision power fields on Company detail | P1 | Planned | Wave E. |
+
+---
+
+## EPIC 15 — Security Hardening
+
+*Tightening access controls before go-live.*
+
+| ID | Item | Priority | Status | Notes |
+|---|---|---|---|---|
+| SH-01 | RLS baseline on all 70 tables | P0 | Done | See A-05. |
+| SH-02 | Hide legacy password column from API | P0 | Done | See A-08. |
+| SH-03 | Fine-grained per-role RLS (agent sees own leads via `created_by`) | P0 | Planned | Hard gate before go-live. |
+| SH-04 | Full IDOR/RLS audit (sub-agent pass, all modules) | P0 | Planned | Confirm no cross-user data leak. |
+| SH-05 | Privilege-escalation test: confirm user cannot raise own role | P0 | Done | Verified: `profiles.role` update returns 0 rows for self. |
+
+---
+
+## EPIC 16 — AI / Semantic Search (Future Phase)
+
+*pgvector embeddings for search and intelligence over the activity log and records.*
+
+| ID | Item | Priority | Status | Notes |
+|---|---|---|---|---|
+| AI-01 | Design AI/pgvector plan (sub-agent) | P3 | Backlog | Owner wants semantic search / RAG over activity log and records. Detailed design deferred to after web go-live. |
+| AI-02 | Enable pgvector extension in Supabase | P3 | Backlog | Depends on AI-01 plan. |
+| AI-03 | Embed and index interaction/activity logs | P3 | Backlog | Depends on AI-02. |
 
 ---
 
@@ -264,15 +348,16 @@ Each section below is an **Epic** — a big chunk of work, usually one product m
 
 ## Top of the queue (the short list)
 
-If we only look at the next handful of things, in order:
+As of 2026-06-17, the app is live at crm.altleads.com. The next priorities in order:
 
-1. **Finish the Lead workspace** (L-10) — the 3-tab agent screen that's in progress now.
-2. **Finish & get owner sign-off on USER-STORIES-AND-FLOWS.md** (DOC-01/02) — so we build from a reviewed spec.
-3. **RLS hardening pass** (A-05 / C-01) — the hard gate before any deploy.
-4. **Email provider + meeting-assignment emails** (N-04 / N-02) — a core promised behaviour.
-5. **Design-match pass vs Figma** (DP-03) — make it look right, not just work.
-6. **Meetings module completeness** (M-03/M-04/M-05) — confirm the 7 filters + export + create flow.
-7. **First deploy + parallel run** (C-02 → C-05), then **mobile repair** (Epic 10), then **cutover & retire DigitalOcean** (C-06/C-08).
+1. **Set Hostinger env vars** (C-03) — `SUPABASE_URL` + `SUPABASE_SERVICE_ROLE_KEY` — so Add User and Reset Password work in production.
+2. **Admin dropdown management UI** (AD-04 / PS-05) — Wave B, so admins can edit all pick-lists from the Admin panel.
+3. **Pre-sales questions** (PS-06) — surface in lead workspace per domain (Wave B/C).
+4. **Contact list + saved views** (CC-09 / PS-08 / CC-17) — multi-select, status column, show/hide columns, per-user saved views (Wave C).
+5. **Contact detail full per-project fields** (CC-13 / PS-08) — status, description, comments with history (Wave C/D).
+6. **Company detail account fields** (CC-14 / PS-09) — account status, feasibility, decision power (Wave E).
+7. **Fine-grained RLS** (SH-03) + **IDOR security audit** (SH-04) — hard gate before final go-live.
+8. **Mobile repair** (Epic 10), then **parallel run** (C-07), then **cutover & retire DigitalOcean** (C-08/C-10).
 
 ---
 

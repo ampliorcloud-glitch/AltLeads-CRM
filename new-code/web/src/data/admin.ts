@@ -650,3 +650,208 @@ export async function addDesignation(name: string, actorId: string): Promise<str
   });
   return error?.message ?? null;
 }
+
+/* ------------------------------------------------------------------ */
+/*  Create User (via notify-service backend — uses service-role key)  */
+/* ------------------------------------------------------------------ */
+
+export async function createUser(input: {
+  full_name: string;
+  email: string;
+  role_id: number;
+  mobile_number?: string;
+  created_by?: string | number;
+}): Promise<{ ok: boolean; user_id: number; tempPassword: string }> {
+  const { data: sessionData } = await supabase.auth.getSession();
+  const accessToken = sessionData?.session?.access_token;
+  if (!accessToken) throw new Error('Not authenticated: please log in before creating a user.');
+
+  const base = (import.meta as any).env?.VITE_NOTIFY_URL || '';
+  const res = await fetch(`${base}/api/users/create`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${accessToken}`,
+    },
+    body: JSON.stringify(input),
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || 'Failed to create user');
+  return data as { ok: boolean; user_id: number; tempPassword: string };
+}
+
+export async function resetUserPassword(userId: number): Promise<{ ok: boolean; tempPassword: string }> {
+  const { data: sessionData } = await supabase.auth.getSession();
+  const accessToken = sessionData?.session?.access_token;
+  if (!accessToken) throw new Error('Not authenticated: please log in before resetting a password.');
+
+  const base = (import.meta as any).env?.VITE_NOTIFY_URL || '';
+  const res = await fetch(`${base}/api/users/reset-password`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${accessToken}`,
+    },
+    body: JSON.stringify({ user_id: userId }),
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || 'Failed to reset password');
+  return data as { ok: boolean; tempPassword: string };
+}
+
+/* ------------------------------------------------------------------ */
+/*  Pre-Sales Questions admin                                          */
+/* ------------------------------------------------------------------ */
+
+export interface PreSalesQuestionAdmin {
+  pre_sa_que_id: number;
+  question: string;
+  short_question: string;
+  domain_id: number | null;
+  domain_name: string;
+  /** is_active column; defaults to true if the column doesn't exist yet (graceful). */
+  is_active: boolean;
+  is_discussion: boolean;
+}
+
+/**
+ * Fetch all non-deleted pre-sales questions with their domain name.
+ * Returns rows sorted by domain_id then pre_sa_que_id.
+ *
+ * NOTE: The `is_active` column may not exist in the live DB yet — it needs
+ * an ALTER TABLE migration (see DESIGN §4b). Until the column exists the
+ * select will fail; the function returns an empty list + surfaces the error
+ * so the admin sees a clear message rather than a JS crash.
+ */
+export async function fetchPreSalesQuestionsAdmin(): Promise<{
+  questions: PreSalesQuestionAdmin[];
+  error: string | null;
+}> {
+  const { data, error } = await supabase
+    .from('pre_sales_question')
+    .select('pre_sa_que_id, question, short_question, domain_id, is_active')
+    .is('deleted_date', null)
+    .order('domain_id', { ascending: true, nullsFirst: false })
+    .order('pre_sa_que_id', { ascending: true });
+
+  if (error) return { questions: [], error: error.message };
+
+  const rows = (data ?? []) as {
+    pre_sa_que_id: number;
+    question: string | null;
+    short_question: string | null;
+    domain_id: number | null;
+    is_active: boolean | null;
+  }[];
+
+  // Fetch domains for name resolution
+  const { data: domData } = await supabase
+    .from('domain_master')
+    .select('domain_id, domain_name')
+    .is('deleted_date', null);
+  const domMap = new Map<number, string>();
+  ((domData ?? []) as { domain_id: number; domain_name: string }[]).forEach((d) =>
+    domMap.set(d.domain_id, d.domain_name)
+  );
+
+  const questions: PreSalesQuestionAdmin[] = rows.map((r) => ({
+    pre_sa_que_id: r.pre_sa_que_id,
+    question: r.question ?? '',
+    short_question: r.short_question ?? '',
+    domain_id: r.domain_id ?? null,
+    domain_name: r.domain_id ? (domMap.get(r.domain_id) ?? '') : '(No domain)',
+    // Treat null as true so old rows (before the column was added) show as active.
+    is_active: r.is_active ?? true,
+    is_discussion: (r.short_question ?? '').trim().toLowerCase() === 'discussion',
+  }));
+
+  return { questions, error: null };
+}
+
+/** Add a new pre-sales question for a domain. */
+export async function addPreSalesQuestion(input: {
+  domain_id: number;
+  short_question: string;
+  question: string;
+  actorId: string;
+}): Promise<string | null> {
+  const now = new Date().toISOString();
+  const { error } = await supabase.from('pre_sales_question').insert({
+    domain_id: input.domain_id,
+    short_question: input.short_question.trim(),
+    question: input.question.trim(),
+    is_active: true,
+    created_by: input.actorId,
+    created_date: now,
+  });
+  return error?.message ?? null;
+}
+
+/** Edit the label / full text / domain of an existing question. */
+export async function updatePreSalesQuestion(input: {
+  pre_sa_que_id: number;
+  short_question: string;
+  question: string;
+  domain_id: number;
+  actorId: string;
+}): Promise<string | null> {
+  const { error } = await supabase
+    .from('pre_sales_question')
+    .update({
+      short_question: input.short_question.trim(),
+      question: input.question.trim(),
+      domain_id: input.domain_id,
+      updated_by: input.actorId,
+      updated_date: new Date().toISOString(),
+    })
+    .eq('pre_sa_que_id', input.pre_sa_que_id);
+  return error?.message ?? null;
+}
+
+/**
+ * Toggle `is_active` on a question.
+ * The Discussion question is the anchor for validation — the UI prevents
+ * disabling it (see PreSalesQuestionsTab). This function does not enforce
+ * that guard server-side (no backend change permitted).
+ */
+export async function setPreSalesQuestionActive(
+  pre_sa_que_id: number,
+  isActive: boolean,
+  actorId: string
+): Promise<string | null> {
+  const { error } = await supabase
+    .from('pre_sales_question')
+    .update({
+      is_active: isActive,
+      updated_by: actorId,
+      updated_date: new Date().toISOString(),
+    })
+    .eq('pre_sa_que_id', pre_sa_que_id);
+  return error?.message ?? null;
+}
+
+/**
+ * Soft-delete a question. Blocked in the UI if the question has existing answers
+ * (the UI checks this before calling). The DB does NOT enforce it.
+ */
+export async function deletePreSalesQuestion(
+  pre_sa_que_id: number,
+  actorId: string
+): Promise<string | null> {
+  const now = new Date().toISOString();
+  // Check for existing answers first (best-effort; non-atomic).
+  const { data: ansRows } = await supabase
+    .from('pre_sales_answer')
+    .select('pre_sa_ans_id')
+    .eq('pre_sa_que_id', pre_sa_que_id)
+    .is('deleted_date', null)
+    .limit(1);
+  if ((ansRows ?? []).length > 0) {
+    return 'This question has saved answers and cannot be deleted. Disable it instead.';
+  }
+  const { error } = await supabase
+    .from('pre_sales_question')
+    .update({ deleted_by: actorId, deleted_date: now })
+    .eq('pre_sa_que_id', pre_sa_que_id);
+  return error?.message ?? null;
+}

@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
   ArrowLeft,
@@ -13,19 +13,39 @@ import {
   Link2,
   Plus,
   ChevronDown,
+  UserPlus,
+  X,
+  Save,
+  ExternalLink,
 } from 'lucide-react';
 import { AppShell } from '../components/layout/AppShell';
 import { StageBadge } from '../components/ui/Badge';
+import { StatusBadge } from '../components/ui/StatusBadge';
+import { ProjectSelect } from '../components/ui/ProjectSelect';
+import { DispositionForm } from '../components/ui/DispositionForm';
+import { ActivityTimeline } from '../components/ui/ActivityTimeline';
 import {
   fetchCompanyById,
   fetchCompanyContacts,
   fetchCompanyDeals,
-  fetchProjects,
   type Company,
   type CompanyContact,
   type CompanyDeal,
-  type ProjectOption,
 } from '../data/companies';
+import { fetchAllContacts, updateContactCompany, type Contact } from '../data/contacts';
+import {
+  getCompanyStatus,
+  upsertCompanyStatus,
+  fetchContactStatuses,
+  upsertContactStatus,
+  fetchActivity,
+  type CompanyProjectStatus,
+  type ContactStatusLite,
+} from '../data/projectStatus';
+import { fetchOptions, type DropdownOption } from '../data/dropdowns';
+import { SearchSelect, type SearchSelectOption } from '../components/ui/SearchSelect';
+import { useAuth } from '../contexts/AuthContext';
+import type { Interaction } from '../data/contacts';
 
 /* ------------------------------------------------------------------
    Helpers
@@ -50,39 +70,6 @@ const TABS: { key: TabKey; label: string }[] = [
 ];
 
 /* ------------------------------------------------------------------
-   Project selector — display-only for now. // TODO ownership
------------------------------------------------------------------- */
-function ProjectSelector({ projects }: { projects: ProjectOption[] }) {
-  const [value, setValue] = useState('');
-  return (
-    <div className="relative inline-flex items-center">
-      <select
-        value={value}
-        onChange={(e) => setValue(e.target.value)}
-        style={{
-          fontSize: 12,
-          padding: '5px 28px 5px 10px',
-          border: '1px solid var(--border-input)',
-          borderRadius: 'var(--radius-btn, 6px)',
-          background: 'var(--color-surface)',
-          color: 'var(--color-gray-700)',
-          cursor: 'pointer',
-          height: 30,
-          appearance: 'none',
-        }}
-        title="Project (display-only)"
-      >
-        <option value="">Project</option>
-        {projects.map((p) => (
-          <option key={p.id} value={p.id}>{p.name}</option>
-        ))}
-      </select>
-      <ChevronDown size={13} className="absolute text-zinc-400 pointer-events-none" style={{ right: 9 }} />
-    </div>
-  );
-}
-
-/* ------------------------------------------------------------------
    Meta item in the header (icon + value)
 ------------------------------------------------------------------ */
 function MetaItem({ icon, children }: { icon: React.ReactNode; children: React.ReactNode }) {
@@ -95,10 +82,703 @@ function MetaItem({ icon, children }: { icon: React.ReactNode; children: React.R
 }
 
 /* ------------------------------------------------------------------
-   CONTACTS tab — grouped by city
+   Link-existing-contact modal (Fix #6)
 ------------------------------------------------------------------ */
-function ContactsTab({ contacts, companyId }: { contacts: CompanyContact[]; companyId: string }) {
+interface LinkContactModalProps {
+  companyId: number;
+  companyName: string;
+  onLinked: () => void;
+  onClose: () => void;
+}
+
+function LinkContactModal({ companyId, companyName, onLinked, onClose }: LinkContactModalProps) {
+  const [allContacts, setAllContacts] = useState<Contact[]>([]);
+  const [loadingContacts, setLoadingContacts] = useState(true);
+  const [selectedId, setSelectedId] = useState<number | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
+
+  useEffect(() => {
+    fetchAllContacts().then(({ contacts }) => {
+      setAllContacts(contacts);
+      setLoadingContacts(false);
+    });
+  }, []);
+
+  const contactOptions: SearchSelectOption[] = allContacts.map((c) => {
+    const hint = c.company_name && c.company_id !== companyId
+      ? `currently: ${c.company_name}`
+      : c.company_id === companyId
+      ? 'already linked'
+      : undefined;
+    return {
+      id: c.contact_id,
+      label: c.full_name,
+      sublabel: [c.email ?? undefined, hint].filter(Boolean).join(' · ') || undefined,
+    };
+  });
+
+  async function handleLink() {
+    if (!selectedId) return;
+    setSaving(true);
+    setSaveError(null);
+    const { error } = await updateContactCompany(selectedId, companyId);
+    setSaving(false);
+    if (error) {
+      setSaveError(error);
+      return;
+    }
+    onLinked();
+  }
+
+  const overlayStyle: React.CSSProperties = {
+    position: 'fixed', inset: 0, zIndex: 500,
+    background: 'rgba(0,0,0,0.35)',
+    display: 'flex', alignItems: 'center', justifyContent: 'center',
+  };
+
+  const modalStyle: React.CSSProperties = {
+    background: '#fff', borderRadius: 10,
+    padding: '24px 28px', width: '100%', maxWidth: 480,
+    boxShadow: '0 16px 48px rgba(0,0,0,0.18)',
+    position: 'relative',
+  };
+
+  return (
+    <div style={overlayStyle} onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
+      <div style={modalStyle}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+          <h3 style={{ fontSize: 15, fontWeight: 700, color: '#111827', margin: 0 }}>
+            Link existing contact
+          </h3>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#9CA3AF' }}>
+            <X size={16} />
+          </button>
+        </div>
+
+        <p style={{ fontSize: 13, color: '#6B7280', marginBottom: 14 }}>
+          Select a contact to link to <strong>{companyName}</strong>. Their company will be updated.
+        </p>
+
+        {loadingContacts ? (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: '#9CA3AF', fontSize: 13 }}>
+            <Loader2 size={14} className="animate-spin" /> Loading contacts…
+          </div>
+        ) : (
+          <SearchSelect
+            options={contactOptions}
+            value={selectedId}
+            onChange={setSelectedId}
+            placeholder="Search contacts by name, email or company…"
+          />
+        )}
+
+        {saveError && (
+          <p style={{ fontSize: 12, color: '#EF4444', marginTop: 10 }}>{saveError}</p>
+        )}
+
+        <div style={{ display: 'flex', gap: 8, marginTop: 18, justifyContent: 'flex-end' }}>
+          <button
+            type="button"
+            onClick={onClose}
+            style={{
+              fontSize: 13, padding: '7px 14px',
+              border: '1px solid #d4d4d8', borderRadius: 6,
+              background: '#fff', color: '#6B7280', cursor: 'pointer',
+            }}
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            onClick={handleLink}
+            disabled={!selectedId || saving}
+            style={{
+              fontSize: 13, padding: '7px 16px',
+              background: selectedId && !saving ? '#1A7EE8' : '#93c5fd',
+              color: '#fff', border: 'none', borderRadius: 6,
+              cursor: selectedId && !saving ? 'pointer' : 'not-allowed',
+              display: 'inline-flex', alignItems: 'center', gap: 6,
+            }}
+          >
+            {saving ? <Loader2 size={13} className="animate-spin" /> : <UserPlus size={13} />}
+            {saving ? 'Linking…' : 'Link contact'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------
+   ACCOUNT PANEL (per-project status, feasibility, decision power)
+   // TODO visibility: per-project status/notes are owner + admin only (security pass)
+------------------------------------------------------------------ */
+interface AccountPanelProps {
+  companyId: number;
+  projectId: number | null;
+  actorId: string | null;
+}
+
+function AccountPanel({ companyId, projectId, actorId }: AccountPanelProps) {
+  const [status, setStatus] = useState<CompanyProjectStatus | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const [saveOk, setSaveOk] = useState(false);
+
+  // Dropdown options
+  const [accountStatusOpts, setAccountStatusOpts] = useState<DropdownOption[]>([]);
+  const [feasibilityOpts, setFeasibilityOpts] = useState<DropdownOption[]>([]);
+  const [decisionPowerOpts, setDecisionPowerOpts] = useState<DropdownOption[]>([]);
+
+  // Form state (local draft)
+  const [draft, setDraft] = useState<{
+    account_status: string;
+    is_feasible: string; // 'true' | 'false' | ''
+    decision_power: string;
+    description: string;
+    comments: string;
+  }>({ account_status: '', is_feasible: '', decision_power: '', description: '', comments: '' });
+
+  // Load dropdown options once
+  useEffect(() => {
+    fetchOptions('account_status').then(setAccountStatusOpts);
+    fetchOptions('feasibility').then(setFeasibilityOpts);
+    fetchOptions('decision_power').then(setDecisionPowerOpts);
+  }, []);
+
+  // Load saved status when project changes
+  useEffect(() => {
+    if (!projectId || !companyId) {
+      setStatus(null);
+      setDraft({ account_status: '', is_feasible: '', decision_power: '', description: '', comments: '' });
+      return;
+    }
+    let cancelled = false;
+    setLoading(true);
+    getCompanyStatus(companyId, projectId).then((s) => {
+      if (cancelled) return;
+      setStatus(s);
+      setDraft({
+        account_status: s?.account_status ?? '',
+        is_feasible: s?.is_feasible == null ? '' : s.is_feasible ? 'true' : 'false',
+        decision_power: s?.decision_power ?? '',
+        description: s?.description ?? '',
+        comments: s?.comments ?? '',
+      });
+      setLoading(false);
+    });
+    return () => { cancelled = true; };
+  }, [companyId, projectId]);
+
+  async function handleSave() {
+    if (!projectId) return;
+    setSaving(true);
+    setSaveError(null);
+    setSaveOk(false);
+    const patch = {
+      account_status: draft.account_status || null,
+      is_feasible: draft.is_feasible === '' ? null : draft.is_feasible === 'true',
+      decision_power: draft.decision_power || null,
+      description: draft.description || null,
+      comments: draft.comments || null,
+    };
+    const { error } = await upsertCompanyStatus(companyId, projectId, patch, actorId);
+    setSaving(false);
+    if (error) { setSaveError(error); return; }
+    setSaveOk(true);
+    setTimeout(() => setSaveOk(false), 2000);
+    // Refresh saved status
+    const refreshed = await getCompanyStatus(companyId, projectId);
+    setStatus(refreshed);
+  }
+
+  const fieldStyle: React.CSSProperties = {
+    fontSize: 12,
+    padding: '5px 8px',
+    border: '1px solid #d4d4d8',
+    borderRadius: 5,
+    background: '#fff',
+    color: '#18181b',
+    width: '100%',
+    appearance: 'none' as const,
+  };
+
+  const labelStyle: React.CSSProperties = { fontSize: 11, color: '#6B7280', fontWeight: 500, marginBottom: 3, display: 'block' };
+
+  if (!projectId) {
+    return (
+      <div style={{ fontSize: 13, color: '#9ca3af', padding: '4px 0' }}>Select a project to view account status.</div>
+    );
+  }
+
+  if (loading) {
+    return (
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6, color: '#9ca3af', fontSize: 13 }}>
+        <Loader2 size={13} className="animate-spin" /> Loading…
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+      {/* Row 1: account_status + feasibility + decision_power */}
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8 }}>
+        <div>
+          <label style={labelStyle}>Account Status</label>
+          <div className="relative">
+            <select
+              value={draft.account_status}
+              onChange={(e) => setDraft((d) => ({ ...d, account_status: e.target.value }))}
+              style={{ ...fieldStyle, paddingRight: 22, height: 30 }}
+            >
+              <option value="">—</option>
+              {accountStatusOpts.map((o) => (
+                <option key={o.option_id} value={o.value}>{o.label}</option>
+              ))}
+            </select>
+            <ChevronDown size={12} style={{ position: 'absolute', right: 6, top: '50%', transform: 'translateY(-50%)', color: '#9ca3af', pointerEvents: 'none' }} />
+          </div>
+          {draft.account_status && (
+            <div style={{ marginTop: 4 }}>
+              <StatusBadge value={draft.account_status} category="account_status" />
+            </div>
+          )}
+        </div>
+
+        <div>
+          <label style={labelStyle}>Feasibility</label>
+          <div className="relative">
+            <select
+              value={draft.is_feasible}
+              onChange={(e) => setDraft((d) => ({ ...d, is_feasible: e.target.value }))}
+              style={{ ...fieldStyle, paddingRight: 22, height: 30 }}
+            >
+              <option value="">—</option>
+              {feasibilityOpts.length > 0
+                ? feasibilityOpts.map((o) => (
+                    <option key={o.option_id} value={o.value}>{o.label}</option>
+                  ))
+                : (
+                  <>
+                    <option value="true">Yes</option>
+                    <option value="false">No</option>
+                  </>
+                )}
+            </select>
+            <ChevronDown size={12} style={{ position: 'absolute', right: 6, top: '50%', transform: 'translateY(-50%)', color: '#9ca3af', pointerEvents: 'none' }} />
+          </div>
+          {draft.is_feasible !== '' && (
+            <div style={{ marginTop: 4 }}>
+              <StatusBadge value={draft.is_feasible === 'true' ? 'feasible' : 'not_feasible'} category="feasibility" />
+            </div>
+          )}
+        </div>
+
+        <div>
+          <label style={labelStyle}>Decision Power</label>
+          <div className="relative">
+            <select
+              value={draft.decision_power}
+              onChange={(e) => setDraft((d) => ({ ...d, decision_power: e.target.value }))}
+              style={{ ...fieldStyle, paddingRight: 22, height: 30 }}
+            >
+              <option value="">—</option>
+              {decisionPowerOpts.map((o) => (
+                <option key={o.option_id} value={o.value}>{o.label}</option>
+              ))}
+            </select>
+            <ChevronDown size={12} style={{ position: 'absolute', right: 6, top: '50%', transform: 'translateY(-50%)', color: '#9ca3af', pointerEvents: 'none' }} />
+          </div>
+          {draft.decision_power && (
+            <div style={{ marginTop: 4 }}>
+              <StatusBadge value={draft.decision_power} category="decision_power" />
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Row 2: description */}
+      <div>
+        <label style={labelStyle}>Description</label>
+        <textarea
+          value={draft.description}
+          onChange={(e) => setDraft((d) => ({ ...d, description: e.target.value }))}
+          rows={2}
+          placeholder="Brief description…"
+          style={{ ...fieldStyle, resize: 'vertical', fontFamily: 'inherit', fontSize: 12, lineHeight: 1.4 }}
+        />
+      </div>
+
+      {/* Row 3: comments */}
+      <div>
+        <label style={labelStyle}>Comments</label>
+        <textarea
+          value={draft.comments}
+          onChange={(e) => setDraft((d) => ({ ...d, comments: e.target.value }))}
+          rows={2}
+          placeholder="Internal comments…"
+          style={{ ...fieldStyle, resize: 'vertical', fontFamily: 'inherit', fontSize: 12, lineHeight: 1.4 }}
+        />
+      </div>
+
+      {saveError && <div style={{ fontSize: 11, color: '#dc2626' }}>{saveError}</div>}
+
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+        <button
+          type="button"
+          onClick={handleSave}
+          disabled={saving || !projectId}
+          style={{
+            fontSize: 12, fontWeight: 600,
+            padding: '5px 14px',
+            border: 'none', borderRadius: 5,
+            background: saving ? '#93c5fd' : '#1A7EE8',
+            color: '#fff',
+            cursor: saving ? 'not-allowed' : 'pointer',
+            display: 'inline-flex', alignItems: 'center', gap: 5,
+          }}
+        >
+          {saving ? <Loader2 size={12} className="animate-spin" /> : <Save size={12} />}
+          {saving ? 'Saving…' : 'Save'}
+        </button>
+        {saveOk && <span style={{ fontSize: 11, color: '#16a34a' }}>Saved</span>}
+        {status && (
+          <span style={{ fontSize: 11, color: '#9ca3af' }}>
+            Last updated: {status.account_status || status.description || status.comments ? 'has data' : '—'}
+          </span>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------
+   Per-contact inline row panel — disposition + per-project status fields
+   // TODO visibility: per-project status/notes are owner + admin only (security pass)
+------------------------------------------------------------------ */
+interface ContactRowPanelProps {
+  contact: CompanyContact;
+  projectId: number | null;
+  actorId: string | null;
+  statusLite: ContactStatusLite | undefined;
+  onStatusChange: (contactId: number, lite: ContactStatusLite) => void;
+  linkedinAsText: boolean;
+  showDisposition: boolean;
+  showDescription: boolean;
+  showComments: boolean;
+}
+
+function ContactRowPanel({
+  contact,
+  projectId,
+  actorId,
+  statusLite,
+  onStatusChange,
+  linkedinAsText,
+  showDisposition,
+  showDescription,
+  showComments,
+}: ContactRowPanelProps) {
+  const contactIdNum = Number(contact.id);
+  const [expanded, setExpanded] = useState(false);
+  const [contactStatusOpts, setContactStatusOpts] = useState<DropdownOption[]>([]);
+  const [draftStatus, setDraftStatus] = useState('');
+  const [draftDesc, setDraftDesc] = useState('');
+  const [draftComments, setDraftComments] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [saveOk, setSaveOk] = useState(false);
+  const [saveErr, setSaveErr] = useState<string | null>(null);
+  const [dispKey, setDispKey] = useState(0); // forces DispositionForm remount on log
+
+  // Seed draft from statusLite whenever it changes
+  useEffect(() => {
+    setDraftStatus(statusLite?.contact_status ?? '');
+    setDraftDesc(statusLite?.description ?? '');
+    setDraftComments(statusLite?.comments ?? '');
+  }, [statusLite]);
+
+  // Load contact_status options once
+  useEffect(() => {
+    fetchOptions('contact_status').then(setContactStatusOpts);
+  }, []);
+
+  async function handleSave() {
+    if (!projectId) return;
+    setSaving(true);
+    setSaveErr(null);
+    const patch = {
+      contact_status: draftStatus || null,
+      description: draftDesc || null,
+      comments: draftComments || null,
+    };
+    const { error } = await upsertContactStatus(contactIdNum, projectId, patch, actorId);
+    setSaving(false);
+    if (error) { setSaveErr(error); return; }
+    setSaveOk(true);
+    setTimeout(() => setSaveOk(false), 1800);
+    onStatusChange(contactIdNum, {
+      contact_status: draftStatus || null,
+      description: draftDesc || null,
+      comments: draftComments || null,
+    });
+  }
+
+  const fieldSm: React.CSSProperties = {
+    fontSize: 12, padding: '4px 7px',
+    border: '1px solid #d4d4d8', borderRadius: 5,
+    background: '#fff', color: '#18181b',
+    width: '100%',
+  };
+  const labelSm: React.CSSProperties = {
+    fontSize: 10, color: '#6B7280', fontWeight: 500,
+    display: 'block', marginBottom: 2,
+  };
+
+  const hasProjectFields = showDescription || showComments || showDisposition;
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
+      {/* Main contact row */}
+      <div
+        className="flex items-start justify-between gap-4 rounded-lg px-4 py-3"
+        style={{ border: '1px solid var(--border-color)', background: 'var(--color-surface)' }}
+      >
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-2 flex-wrap">
+            <p className="font-medium text-zinc-900" style={{ fontSize: 14 }}>
+              {contact.fullName || <span className="text-zinc-400">Unnamed contact</span>}
+            </p>
+            {contact.designation && (
+              <span className="text-zinc-500" style={{ fontSize: 12 }}>· {contact.designation}</span>
+            )}
+            {statusLite?.contact_status && (
+              <StatusBadge value={statusLite.contact_status} category="contact_status" />
+            )}
+          </div>
+          <div className="flex items-center gap-3 mt-1 flex-wrap">
+            {contact.email ? (
+              <a href={`mailto:${contact.email}`} className="flex items-center gap-1 text-zinc-500 hover:text-blue-600" style={{ fontSize: 12 }}>
+                <Mail size={12} /> {contact.email}
+              </a>
+            ) : (
+              <span className="flex items-center gap-1" style={{ fontSize: 12, color: '#D1D5DB' }}>
+                <Mail size={12} /> —
+              </span>
+            )}
+            {contact.phone ? (
+              <span className="flex items-center gap-1 text-zinc-500" style={{ fontSize: 12 }}>
+                {contact.phone}
+              </span>
+            ) : (
+              <span style={{ fontSize: 12, color: '#D1D5DB' }}>—</span>
+            )}
+            {contact.linkedin ? (
+              linkedinAsText ? (
+                <a
+                  href={fullUrl(contact.linkedin)}
+                  target="_blank"
+                  rel="noreferrer noopener"
+                  className="flex items-center gap-1 text-zinc-500 hover:text-blue-600"
+                  style={{ fontSize: 12 }}
+                >
+                  <ExternalLink size={12} />
+                  {contact.linkedin}
+                </a>
+              ) : (
+                <a
+                  href={fullUrl(contact.linkedin)}
+                  target="_blank"
+                  rel="noreferrer noopener"
+                  className="flex items-center gap-1 text-zinc-500 hover:text-blue-600"
+                  title={contact.linkedin}
+                  style={{ fontSize: 12 }}
+                >
+                  <Link2 size={12} />
+                  LinkedIn
+                </a>
+              )
+            ) : (
+              <span style={{ fontSize: 12, color: '#D1D5DB' }}>—</span>
+            )}
+          </div>
+          {/* Compact project status bar (visible without expand) */}
+          {projectId && !expanded && (
+            <div className="flex items-center gap-3 mt-1 flex-wrap">
+              {statusLite?.description && (
+                <span style={{ fontSize: 11, color: '#6B7280', fontStyle: 'italic' }}>
+                  {statusLite.description}
+                </span>
+              )}
+            </div>
+          )}
+        </div>
+
+        {/* Right: status select (compact inline) + expand toggle */}
+        <div className="flex items-center gap-2 shrink-0">
+          {projectId && (
+            <div className="relative" style={{ minWidth: 110 }}>
+              <select
+                value={draftStatus}
+                onChange={(e) => setDraftStatus(e.target.value)}
+                title="Contact status for this project"
+                style={{
+                  fontSize: 11, padding: '3px 20px 3px 7px',
+                  border: '1px solid #d4d4d8', borderRadius: 4,
+                  background: '#fff', color: '#374151',
+                  appearance: 'none', cursor: 'pointer', width: '100%',
+                }}
+              >
+                <option value="">Status…</option>
+                {contactStatusOpts.map((o) => (
+                  <option key={o.option_id} value={o.value}>{o.label}</option>
+                ))}
+              </select>
+              <ChevronDown size={10} style={{ position: 'absolute', right: 5, top: '50%', transform: 'translateY(-50%)', color: '#9ca3af', pointerEvents: 'none' }} />
+            </div>
+          )}
+          {hasProjectFields && projectId && (
+            <button
+              type="button"
+              onClick={() => setExpanded((v) => !v)}
+              title={expanded ? 'Collapse' : 'Expand per-project fields'}
+              style={{
+                background: 'none', border: 'none', cursor: 'pointer',
+                color: '#9ca3af', padding: 2, display: 'flex', alignItems: 'center',
+              }}
+            >
+              <ChevronDown size={14} style={{ transform: expanded ? 'rotate(180deg)' : 'none', transition: 'transform 0.15s' }} />
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* Expanded panel */}
+      {expanded && projectId && (
+        <div
+          style={{
+            border: '1px solid #e5e7eb', borderTop: 'none',
+            borderRadius: '0 0 8px 8px',
+            background: '#f9fafb',
+            padding: '10px 14px',
+            display: 'flex', flexDirection: 'column', gap: 8,
+          }}
+        >
+          <div style={{ display: 'grid', gridTemplateColumns: `${showDescription ? '1fr ' : ''}${showComments ? '1fr ' : ''}`, gap: 8 }}>
+            {showDescription && (
+              <div>
+                <label style={labelSm}>Description</label>
+                <textarea
+                  value={draftDesc}
+                  onChange={(e) => setDraftDesc(e.target.value)}
+                  rows={2}
+                  placeholder="Description…"
+                  style={{ ...fieldSm, resize: 'vertical', fontFamily: 'inherit' }}
+                />
+              </div>
+            )}
+            {showComments && (
+              <div>
+                <label style={labelSm}>Comments</label>
+                <textarea
+                  value={draftComments}
+                  onChange={(e) => setDraftComments(e.target.value)}
+                  rows={2}
+                  placeholder="Comments…"
+                  style={{ ...fieldSm, resize: 'vertical', fontFamily: 'inherit' }}
+                />
+              </div>
+            )}
+          </div>
+
+          {saveErr && <div style={{ fontSize: 11, color: '#dc2626' }}>{saveErr}</div>}
+
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            <button
+              type="button"
+              onClick={handleSave}
+              disabled={saving}
+              style={{
+                fontSize: 11, fontWeight: 600,
+                padding: '4px 12px',
+                border: 'none', borderRadius: 4,
+                background: saving ? '#93c5fd' : '#1A7EE8',
+                color: '#fff', cursor: saving ? 'not-allowed' : 'pointer',
+                display: 'inline-flex', alignItems: 'center', gap: 4,
+              }}
+            >
+              {saving ? <Loader2 size={11} className="animate-spin" /> : <Save size={11} />}
+              {saving ? 'Saving…' : 'Save'}
+            </button>
+            {saveOk && <span style={{ fontSize: 11, color: '#16a34a' }}>Saved</span>}
+          </div>
+
+          {showDisposition && (
+            <div style={{ marginTop: 4, borderTop: '1px solid #e5e7eb', paddingTop: 8 }}>
+              <div style={{ fontSize: 11, fontWeight: 600, color: '#6B7280', marginBottom: 6, textTransform: 'uppercase', letterSpacing: 0.4 }}>
+                Log call
+              </div>
+              <DispositionForm
+                key={dispKey}
+                recordType="contact"
+                recordId={contactIdNum}
+                projectId={projectId}
+                ownerUserId={null}
+                actorId={actorId}
+                onLogged={() => setDispKey((k) => k + 1)}
+              />
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------
+   CONTACTS tab — grouped by city, with per-project inline fields
+------------------------------------------------------------------ */
+interface ContactsTabProps {
+  contacts: CompanyContact[];
+  companyId: string;
+  projectId: number | null;
+  actorId: string | null;
+}
+
+function ContactsTab({ contacts, companyId, projectId, actorId }: ContactsTabProps) {
   const navigate = useNavigate();
+
+  // Per-contact status lite (keyed by numeric contact_id)
+  const [statusMap, setStatusMap] = useState<Record<number, ContactStatusLite>>({});
+  const [loadingStatuses, setLoadingStatuses] = useState(false);
+
+  // Field visibility toggles (compact toggle set)
+  const [linkedinAsText, setLinkedinAsText] = useState(false);
+  const [showDisposition, setShowDisposition] = useState(true);
+  const [showDescription, setShowDescription] = useState(true);
+  const [showComments, setShowComments] = useState(true);
+
+  // Load per-contact statuses for selected project
+  useEffect(() => {
+    if (!projectId || contacts.length === 0) {
+      setStatusMap({});
+      return;
+    }
+    let cancelled = false;
+    setLoadingStatuses(true);
+    const ids = contacts.map((c) => Number(c.id));
+    fetchContactStatuses(projectId, ids).then((map) => {
+      if (cancelled) return;
+      setStatusMap(map);
+      setLoadingStatuses(false);
+    });
+    return () => { cancelled = true; };
+  }, [projectId, contacts]);
+
+  const handleStatusChange = useCallback((contactId: number, lite: ContactStatusLite) => {
+    setStatusMap((prev) => ({ ...prev, [contactId]: lite }));
+  }, []);
 
   const grouped = useMemo(() => {
     const map = new Map<string, CompanyContact[]>();
@@ -128,7 +808,56 @@ function ContactsTab({ contacts, companyId }: { contacts: CompanyContact[]; comp
   }
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-4">
+      {/* Field-visibility toggles */}
+      <div style={{
+        display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap',
+        paddingBottom: 10, borderBottom: '1px solid #f3f4f6',
+      }}>
+        <span style={{ fontSize: 11, color: '#9ca3af', fontWeight: 500, textTransform: 'uppercase', letterSpacing: 0.4 }}>Show per row:</span>
+        {[
+          { key: 'disposition', label: 'Disposition', value: showDisposition, set: setShowDisposition },
+          { key: 'description', label: 'Description', value: showDescription, set: setShowDescription },
+          { key: 'comments', label: 'Comments', value: showComments, set: setShowComments },
+        ].map(({ key, label, value, set }) => (
+          <button
+            key={key}
+            type="button"
+            onClick={() => set((v) => !v)}
+            style={{
+              fontSize: 11, padding: '2px 8px',
+              border: `1px solid ${value ? '#1A7EE8' : '#d4d4d8'}`,
+              borderRadius: 4,
+              background: value ? '#EFF6FF' : '#fff',
+              color: value ? '#1D4ED8' : '#6B7280',
+              cursor: 'pointer', fontWeight: value ? 600 : 400,
+            }}
+          >
+            {label}
+          </button>
+        ))}
+        <button
+          type="button"
+          onClick={() => setLinkedinAsText((v) => !v)}
+          style={{
+            fontSize: 11, padding: '2px 8px',
+            border: `1px solid ${linkedinAsText ? '#1A7EE8' : '#d4d4d8'}`,
+            borderRadius: 4,
+            background: linkedinAsText ? '#EFF6FF' : '#fff',
+            color: linkedinAsText ? '#1D4ED8' : '#6B7280',
+            cursor: 'pointer', fontWeight: linkedinAsText ? 600 : 400,
+          }}
+        >
+          LinkedIn: {linkedinAsText ? 'full URL' : 'icon'}
+        </button>
+        {loadingStatuses && (
+          <span style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 11, color: '#9ca3af' }}>
+            <Loader2 size={11} className="animate-spin" /> Loading statuses…
+          </span>
+        )}
+      </div>
+
+      {/* Grouped contacts */}
       {grouped.map(([city, items]) => (
         <div key={city}>
           <div className="flex items-center gap-2 mb-2">
@@ -140,39 +869,18 @@ function ContactsTab({ contacts, companyId }: { contacts: CompanyContact[]; comp
           </div>
           <div className="space-y-2">
             {items.map((c) => (
-              <div
+              <ContactRowPanel
                 key={c.id}
-                className="flex items-start justify-between gap-4 rounded-lg px-4 py-3"
-                style={{ border: '1px solid var(--border-color)', background: 'var(--color-surface)' }}
-              >
-                <div className="min-w-0">
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <p className="font-medium text-zinc-900" style={{ fontSize: 14 }}>
-                      {c.fullName || <span className="text-zinc-400">Unnamed contact</span>}
-                    </p>
-                    {c.designation && (
-                      <span className="text-zinc-500" style={{ fontSize: 12 }}>· {c.designation}</span>
-                    )}
-                  </div>
-                  <div className="flex items-center gap-3 mt-1 flex-wrap">
-                    {c.email && (
-                      <a href={`mailto:${c.email}`} className="flex items-center gap-1 text-zinc-500 hover:text-blue-600" style={{ fontSize: 12 }}>
-                        <Mail size={12} /> {c.email}
-                      </a>
-                    )}
-                    {c.phone && (
-                      <span className="flex items-center gap-1 text-zinc-500" style={{ fontSize: 12 }}>
-                        {c.phone}
-                      </span>
-                    )}
-                    {c.linkedin && (
-                      <a href={fullUrl(c.linkedin)} target="_blank" rel="noreferrer noopener" className="flex items-center gap-1 text-zinc-500 hover:text-blue-600" style={{ fontSize: 12 }}>
-                        <Link2 size={12} /> LinkedIn
-                      </a>
-                    )}
-                  </div>
-                </div>
-              </div>
+                contact={c}
+                projectId={projectId}
+                actorId={actorId}
+                statusLite={statusMap[Number(c.id)]}
+                onStatusChange={handleStatusChange}
+                linkedinAsText={linkedinAsText}
+                showDisposition={showDisposition}
+                showDescription={showDescription}
+                showComments={showComments}
+              />
             ))}
           </div>
         </div>
@@ -224,15 +932,37 @@ function DealsTab({ deals }: { deals: CompanyDeal[] }) {
 }
 
 /* ------------------------------------------------------------------
-   ACTIVITY tab — placeholder
+   ACTIVITY tab — full interaction timeline for this company
 ------------------------------------------------------------------ */
-function ActivityTab() {
-  return (
-    <div className="flex flex-col items-center justify-center gap-2 py-12 text-center">
-      <Loader2 size={26} className="text-zinc-300" />
-      <p className="text-zinc-500" style={{ fontSize: 14 }}>Activity log coming with the interaction module</p>
-    </div>
-  );
+interface ActivityTabProps {
+  companyId: number;
+  projectId: number | null;
+}
+
+function ActivityTab({ companyId, projectId }: ActivityTabProps) {
+  const [items, setItems] = useState<Interaction[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    fetchActivity('company', companyId, projectId ?? undefined).then((rows) => {
+      if (cancelled) return;
+      setItems(rows);
+      setLoading(false);
+    });
+    return () => { cancelled = true; };
+  }, [companyId, projectId]);
+
+  if (loading) {
+    return (
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6, color: '#9ca3af', fontSize: 13 }}>
+        <Loader2 size={14} className="animate-spin" /> Loading activity…
+      </div>
+    );
+  }
+
+  return <ActivityTimeline items={items} emptyText="No activity yet for this company." />;
 }
 
 /* ------------------------------------------------------------------
@@ -241,15 +971,25 @@ function ActivityTab() {
 export function CompanyDetailPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const { profile } = useAuth();
   const companyId = Number(id);
+
+  // actorId is the acting user's user_id as text
+  const actorId = profile?.user_id != null ? String(profile.user_id) : null;
+  const ownerUserId = profile?.user_id ?? null;
 
   const [company, setCompany] = useState<Company | null>(null);
   const [contacts, setContacts] = useState<CompanyContact[]>([]);
   const [deals, setDeals] = useState<CompanyDeal[]>([]);
-  const [projects, setProjects] = useState<ProjectOption[]>([]);
   const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
   const [tab, setTab] = useState<TabKey>('contacts');
+
+  // Shared project selection — lifted to page level so header + contacts tab stay in sync
+  const [projectId, setProjectId] = useState<number | null>(null);
+
+  // Fix #6 — link existing contact
+  const [showLinkModal, setShowLinkModal] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -260,19 +1000,23 @@ export function CompanyDetailPage() {
       if (cancelled) return;
       if (!co) { setNotFound(true); setLoading(false); return; }
       setCompany(co);
-      const [c, d, p] = await Promise.all([
+      const [c, d] = await Promise.all([
         fetchCompanyContacts(companyId),
         fetchCompanyDeals(companyId),
-        fetchProjects(),
       ]);
       if (cancelled) return;
       setContacts(c);
       setDeals(d);
-      setProjects(p);
       setLoading(false);
     })();
     return () => { cancelled = true; };
   }, [companyId]);
+
+  async function handleContactLinked() {
+    setShowLinkModal(false);
+    const refreshed = await fetchCompanyContacts(companyId);
+    setContacts(refreshed);
+  }
 
   if (loading) {
     return (
@@ -356,15 +1100,28 @@ export function CompanyDetailPage() {
               </div>
             </div>
 
-            {/* Right block: owner + project selector */}
+            {/* Right block: project selector + owner */}
             <div className="flex flex-col items-end gap-2 shrink-0">
-              <ProjectSelector projects={projects} />
+              <ProjectSelect value={projectId} onChange={setProjectId} />
               <div className="flex items-center gap-1.5">
                 <span className="text-zinc-400" style={{ fontSize: 11 }}>Owner</span>
                 {/* Owner is always "Unassigned" for now. // TODO ownership */}
                 <span className="text-zinc-600 font-medium" style={{ fontSize: 12 }}>{company.owner}</span>
               </div>
             </div>
+          </div>
+
+          {/* ACCOUNT PANEL (per-project status) — shown below header meta */}
+          {/* // TODO visibility: per-project status/notes are owner + admin only (security pass) */}
+          <div style={{ marginTop: 16, paddingTop: 14, borderTop: '1px solid #f3f4f6' }}>
+            <div style={{ fontSize: 11, fontWeight: 600, color: '#6B7280', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 8 }}>
+              Account — Project Status
+            </div>
+            <AccountPanel
+              companyId={companyId}
+              projectId={projectId}
+              actorId={actorId}
+            />
           </div>
         </div>
 
@@ -394,24 +1151,53 @@ export function CompanyDetailPage() {
               })}
             </div>
             {tab === 'contacts' && (
-              <button
-                onClick={() => navigate(`/contacts/new?company=${company.id}`)}
-                className="inline-flex items-center gap-1.5 text-blue-600 hover:text-blue-700 font-medium transition-colors"
-                style={{ fontSize: 12, paddingRight: 6 }}
-              >
-                <Plus size={13} />
-                Add Contact
-              </button>
+              <div className="flex items-center gap-2" style={{ paddingRight: 6 }}>
+                <button
+                  onClick={() => setShowLinkModal(true)}
+                  className="inline-flex items-center gap-1.5 text-zinc-600 hover:text-zinc-800 font-medium transition-colors"
+                  style={{ fontSize: 12, padding: '4px 8px', border: '1px solid #d4d4d8', borderRadius: 5, background: '#fff' }}
+                >
+                  <UserPlus size={13} />
+                  Link existing contact
+                </button>
+                <button
+                  onClick={() => navigate(`/contacts/new?company=${company.id}`)}
+                  className="inline-flex items-center gap-1.5 text-blue-600 hover:text-blue-700 font-medium transition-colors"
+                  style={{ fontSize: 12 }}
+                >
+                  <Plus size={13} />
+                  Add new contact
+                </button>
+              </div>
             )}
           </div>
 
           <div className="p-4">
-            {tab === 'contacts' && <ContactsTab contacts={contacts} companyId={company.id} />}
+            {tab === 'contacts' && (
+              <ContactsTab
+                contacts={contacts}
+                companyId={company.id}
+                projectId={projectId}
+                actorId={actorId}
+              />
+            )}
             {tab === 'deals' && <DealsTab deals={deals} />}
-            {tab === 'activity' && <ActivityTab />}
+            {tab === 'activity' && (
+              <ActivityTab companyId={companyId} projectId={projectId} />
+            )}
           </div>
         </div>
       </div>
+
+      {/* Link-existing-contact modal (Fix #6) */}
+      {showLinkModal && (
+        <LinkContactModal
+          companyId={companyId}
+          companyName={company.name}
+          onLinked={handleContactLinked}
+          onClose={() => setShowLinkModal(false)}
+        />
+      )}
     </AppShell>
   );
 }

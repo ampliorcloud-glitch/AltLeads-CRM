@@ -1,4 +1,4 @@
-﻿import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   useReactTable,
@@ -10,13 +10,21 @@ import {
   type SortingState,
   type PaginationState,
 } from '@tanstack/react-table';
-import * as XLSX from 'xlsx';
 import { AppShell } from '../components/layout/AppShell';
 import { StageBadge } from '../components/ui/Badge';
 import { fetchLeadsFallback, type RealLead } from '../data/realLeads';
+import { useAuth } from '../contexts/AuthContext';
+import { useRowSelection } from '../components/ui/useRowSelection';
+import { ExportButton } from '../components/ui/ExportButton';
+import {
+  ColumnCustomizer,
+  defaultColumnPrefs,
+  reconcileColumns,
+} from '../components/ui/ColumnCustomizer';
+import type { ColumnDef as ColDef, ExportColumn } from '../components/ui/columns';
+import type { ColumnPref } from '../data/views';
 import {
   Search,
-  Download,
   X,
   ChevronUp,
   ChevronDown,
@@ -113,6 +121,45 @@ const defaultFilters: Filters = {
 };
 
 /* ------------------------------------------------------------------
+   Column catalogue (all lead columns; drives ColumnCustomizer + ExportButton)
+------------------------------------------------------------------ */
+
+const ALL_COLUMNS: ColDef[] = [
+  { key: 'company',          header: 'Company',        defaultVisible: true },
+  { key: 'contactName',      header: 'Contact',        defaultVisible: true },
+  { key: 'project',          header: 'Project',        defaultVisible: true },
+  { key: 'city',             header: 'City',           defaultVisible: true },
+  { key: 'agent',            header: 'Agent',          defaultVisible: true },
+  { key: 'source',           header: 'Source',         defaultVisible: true },
+  { key: 'stage',            header: 'Stage',          defaultVisible: true },
+  { key: 'meetingDate',      header: 'Meeting Date',   defaultVisible: true },
+  { key: 'lastUpdated',      header: 'Last Updated',   defaultVisible: true },
+  { key: 'leadNumber',       header: 'Lead #',         defaultVisible: false },
+  { key: 'contactEmail',     header: 'Email',          defaultVisible: false },
+  { key: 'contactPhone',     header: 'Phone',          defaultVisible: false },
+  { key: 'industry',         header: 'Industry',       defaultVisible: false },
+  { key: 'leadGeneratedDate',header: 'Lead Generated', defaultVisible: false },
+];
+
+// Export column definitions (maps keys to flat values for xlsx/csv)
+const EXPORT_COLUMNS: ExportColumn[] = [
+  { key: 'leadNumber',        header: 'Lead #' },
+  { key: 'company',           header: 'Company' },
+  { key: 'contactName',       header: 'Contact Name' },
+  { key: 'contactEmail',      header: 'Contact Email' },
+  { key: 'contactPhone',      header: 'Contact Phone' },
+  { key: 'industry',          header: 'Industry' },
+  { key: 'city',              header: 'City' },
+  { key: 'agent',             header: 'Agent' },
+  { key: 'project',           header: 'Project' },
+  { key: 'source',            header: 'Source' },
+  { key: 'stage',             header: 'Stage' },
+  { key: 'meetingDate',       header: 'Meeting Date',   accessor: (r) => r.meetingDate ?? '' },
+  { key: 'leadGeneratedDate', header: 'Lead Generated' },
+  { key: 'lastUpdated',       header: 'Last Updated' },
+];
+
+/* ------------------------------------------------------------------
    Filter sub-components
 ------------------------------------------------------------------ */
 
@@ -205,10 +252,21 @@ const PAGE_SIZE_OPTIONS = [25, 50, 100];
 
 export function LeadsPage() {
   const navigate = useNavigate();
+  const { profile } = useAuth();
+  const userId = profile?.user_id ?? null;
+
   const [filters, setFilters] = useState<Filters>(defaultFilters);
   const [sorting, setSorting] = useState<SortingState>([]);
   const [pagination, setPagination] = useState<PaginationState>({ pageIndex: 0, pageSize: 25 });
   const [bannerDismissed, setBannerDismissed] = useState(false);
+
+  // Column visibility / order state (seeded from catalogue defaults)
+  const [columnPrefs, setColumnPrefs] = useState<ColumnPref[]>(() =>
+    defaultColumnPrefs(ALL_COLUMNS),
+  );
+
+  // Row multi-selection
+  const sel = useRowSelection<string>();
 
   const [allLeads, setAllLeads] = useState<RealLead[]>([]);
   const [industries, setIndustries] = useState<string[]>([]);
@@ -275,86 +333,192 @@ export function LeadsPage() {
     });
   }, [filters, allLeads]);
 
-  const columns = useMemo(
-    () => [
-      columnHelper.accessor('company', {
-        header: 'Company',
-        cell: (info) => {
-          const name = info.getValue() ?? '';
-          const sub = info.row.original.city || info.row.original.industry || '';
-          return (
-            <div className="flex items-center gap-2.5">
-              <CompanyAvatar name={name} />
-              <div className="min-w-0">
-                <p className="font-medium text-zinc-900 truncate" style={{ fontSize: 13, maxWidth: 200 }}>
-                  {name || <span className="text-zinc-400">—</span>}
-                </p>
-                {sub && (
-                  <p className="text-zinc-400 truncate" style={{ fontSize: 11, maxWidth: 200 }}>{sub}</p>
-                )}
-              </div>
-            </div>
-          );
-        },
-      }),
-      columnHelper.accessor('contactName', {
-        header: 'Contact',
-        cell: (info) => (
-          <div>
-            <p className="text-zinc-800" style={{ fontSize: 13 }}>{info.getValue() || '—'}</p>
-            <p className="text-zinc-400" style={{ fontSize: 11 }}>{info.row.original.contactPhone || ''}</p>
-          </div>
-        ),
-      }),
-      columnHelper.accessor('project', {
-        header: 'Project',
-        cell: (info) => (
-          <span className="text-zinc-600" style={{ fontSize: 13 }}>
-            {info.getValue() || <span className="text-zinc-300">—</span>}
-          </span>
-        ),
-      }),
-      columnHelper.accessor('city', {
-        header: 'City',
-        cell: (info) => (
-          <span className="text-zinc-600" style={{ fontSize: 13 }}>
-            {info.getValue() || <span className="text-zinc-300">—</span>}
-          </span>
-        ),
-      }),
-      columnHelper.accessor('agent', {
-        header: 'Agent',
-        cell: (info) => (
-          <span className="text-zinc-700" style={{ fontSize: 13 }}>
-            {info.getValue() || <span className="text-zinc-300">—</span>}
-          </span>
-        ),
-      }),
-      columnHelper.accessor('source', {
-        header: 'Source',
-        cell: (info) => (
-          <span className="text-zinc-600" style={{ fontSize: 13 }}>
-            {info.getValue() || <span className="text-zinc-300">—</span>}
-          </span>
-        ),
-      }),
-      columnHelper.accessor('stage', {
-        header: 'Stage',
-        cell: (info) => <StageBadge stage={info.getValue()} />,
-      }),
-      columnHelper.accessor('meetingDate', {
-        header: 'Meeting Date',
-        cell: (info) => (
-          <span className="text-zinc-500" style={{ fontSize: 13 }}>{info.getValue() ?? '—'}</span>
-        ),
-      }),
-      columnHelper.accessor('lastUpdated', {
-        header: 'Last Updated',
-        cell: (info) => <span className="text-zinc-400" style={{ fontSize: 13 }}>{info.getValue()}</span>,
-      }),
-    ],
-    []
+  // Derive the ordered, visibility-filtered set of column keys from prefs.
+  const visibleKeys = useMemo(
+    () => columnPrefs.filter((p) => p.visible).map((p) => p.key),
+    [columnPrefs],
   );
+
+  // Build TanStack columns dynamically from visible prefs.
+  const columns = useMemo(() => {
+    // Checkbox column (always first, not in column catalogue)
+    const checkboxCol = columnHelper.display({
+      id: '__select',
+      header: ({ table: t }) => {
+        const pageIds = t.getRowModel().rows.map((r) => r.original.id);
+        const allChecked = pageIds.length > 0 && sel.allSelected(pageIds);
+        return (
+          <input
+            type="checkbox"
+            checked={allChecked}
+            onChange={() => sel.toggleAll(pageIds)}
+            onClick={(e) => e.stopPropagation()}
+            title={allChecked ? 'Deselect all on page' : 'Select all on page'}
+            style={{ cursor: 'pointer', accentColor: 'var(--color-brand)' }}
+          />
+        );
+      },
+      cell: ({ row }) => (
+        <input
+          type="checkbox"
+          checked={sel.isSelected(row.original.id)}
+          onChange={() => sel.toggle(row.original.id)}
+          onClick={(e) => e.stopPropagation()}
+          style={{ cursor: 'pointer', accentColor: 'var(--color-brand)' }}
+        />
+      ),
+      size: 40,
+    });
+
+    // Data columns — map each visible key to its TanStack column definition.
+    const dataCols = visibleKeys
+      .map((key) => {
+        switch (key) {
+          case 'company':
+            return columnHelper.accessor('company', {
+              id: 'company',
+              header: 'Company',
+              cell: (info) => {
+                const name = info.getValue() ?? '';
+                const sub = info.row.original.city || info.row.original.industry || '';
+                return (
+                  <div className="flex items-center gap-2.5">
+                    <CompanyAvatar name={name} />
+                    <div className="min-w-0">
+                      <p className="font-medium text-zinc-900 truncate" style={{ fontSize: 13, maxWidth: 200 }}>
+                        {name || <span className="text-zinc-400">—</span>}
+                      </p>
+                      {sub && (
+                        <p className="text-zinc-400 truncate" style={{ fontSize: 11, maxWidth: 200 }}>{sub}</p>
+                      )}
+                    </div>
+                  </div>
+                );
+              },
+            });
+          case 'contactName':
+            return columnHelper.accessor('contactName', {
+              id: 'contactName',
+              header: 'Contact',
+              cell: (info) => (
+                <div>
+                  <p className="text-zinc-800" style={{ fontSize: 13 }}>{info.getValue() || '—'}</p>
+                  <p className="text-zinc-400" style={{ fontSize: 11 }}>{info.row.original.contactPhone || ''}</p>
+                </div>
+              ),
+            });
+          case 'project':
+            return columnHelper.accessor('project', {
+              id: 'project',
+              header: 'Project',
+              cell: (info) => (
+                <span className="text-zinc-600" style={{ fontSize: 13 }}>
+                  {info.getValue() || <span className="text-zinc-300">—</span>}
+                </span>
+              ),
+            });
+          case 'city':
+            return columnHelper.accessor('city', {
+              id: 'city',
+              header: 'City',
+              cell: (info) => (
+                <span className="text-zinc-600" style={{ fontSize: 13 }}>
+                  {info.getValue() || <span className="text-zinc-300">—</span>}
+                </span>
+              ),
+            });
+          case 'agent':
+            return columnHelper.accessor('agent', {
+              id: 'agent',
+              header: 'Agent',
+              cell: (info) => (
+                <span className="text-zinc-700" style={{ fontSize: 13 }}>
+                  {info.getValue() || <span className="text-zinc-300">—</span>}
+                </span>
+              ),
+            });
+          case 'source':
+            return columnHelper.accessor('source', {
+              id: 'source',
+              header: 'Source',
+              cell: (info) => (
+                <span className="text-zinc-600" style={{ fontSize: 13 }}>
+                  {info.getValue() || <span className="text-zinc-300">—</span>}
+                </span>
+              ),
+            });
+          case 'stage':
+            return columnHelper.accessor('stage', {
+              id: 'stage',
+              header: 'Stage',
+              cell: (info) => <StageBadge stage={info.getValue()} />,
+            });
+          case 'meetingDate':
+            return columnHelper.accessor('meetingDate', {
+              id: 'meetingDate',
+              header: 'Meeting Date',
+              cell: (info) => (
+                <span className="text-zinc-500" style={{ fontSize: 13 }}>{info.getValue() ?? '—'}</span>
+              ),
+            });
+          case 'lastUpdated':
+            return columnHelper.accessor('lastUpdated', {
+              id: 'lastUpdated',
+              header: 'Last Updated',
+              cell: (info) => (
+                <span className="text-zinc-400" style={{ fontSize: 13 }}>{info.getValue()}</span>
+              ),
+            });
+          case 'leadNumber':
+            return columnHelper.accessor('leadNumber', {
+              id: 'leadNumber',
+              header: 'Lead #',
+              cell: (info) => (
+                <span className="text-zinc-500 font-mono" style={{ fontSize: 12 }}>{info.getValue() || '—'}</span>
+              ),
+            });
+          case 'contactEmail':
+            return columnHelper.accessor('contactEmail', {
+              id: 'contactEmail',
+              header: 'Email',
+              cell: (info) => (
+                <span className="text-zinc-600" style={{ fontSize: 13 }}>{info.getValue() || '—'}</span>
+              ),
+            });
+          case 'contactPhone':
+            return columnHelper.accessor('contactPhone', {
+              id: 'contactPhone',
+              header: 'Phone',
+              cell: (info) => (
+                <span className="text-zinc-600" style={{ fontSize: 13 }}>{info.getValue() || '—'}</span>
+              ),
+            });
+          case 'industry':
+            return columnHelper.accessor('industry', {
+              id: 'industry',
+              header: 'Industry',
+              cell: (info) => (
+                <span className="text-zinc-600" style={{ fontSize: 13 }}>{info.getValue() || '—'}</span>
+              ),
+            });
+          case 'leadGeneratedDate':
+            return columnHelper.accessor('leadGeneratedDate', {
+              id: 'leadGeneratedDate',
+              header: 'Lead Generated',
+              cell: (info) => (
+                <span className="text-zinc-500" style={{ fontSize: 13 }}>{info.getValue() || '—'}</span>
+              ),
+            });
+          default:
+            return null;
+        }
+      })
+      .filter((c): c is NonNullable<typeof c> => c != null);
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    return [checkboxCol, ...dataCols] as any[];
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [visibleKeys, sel.selectedIds]);
 
   const table = useReactTable({
     data: filteredData,
@@ -367,30 +531,6 @@ export function LeadsPage() {
     getPaginationRowModel: getPaginationRowModel(),
   });
 
-  const handleExport = () => {
-    // Export the FULL filtered set (every matching row, not just the visible page).
-    const rows = filteredData.map((l) => ({
-      'Lead #': l.leadNumber,
-      Company: l.company,
-      'Contact Name': l.contactName,
-      'Contact Email': l.contactEmail,
-      'Contact Phone': l.contactPhone,
-      Industry: l.industry,
-      City: l.city,
-      Agent: l.agent,
-      Project: l.project,
-      Source: l.source,
-      Stage: l.stage,
-      'Meeting Date': l.meetingDate ?? '',
-      'Lead Generated': l.leadGeneratedDate,
-      'Last Updated': l.lastUpdated,
-    }));
-    const ws = XLSX.utils.json_to_sheet(rows);
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, 'Leads');
-    XLSX.writeFile(wb, 'amplior-crm-leads.xlsx');
-  };
-
   // Pagination display values.
   const totalRows = filteredData.length;
   const pageIndex = table.getState().pagination.pageIndex;
@@ -398,8 +538,13 @@ export function LeadsPage() {
   const firstRow = totalRows === 0 ? 0 : pageIndex * pageSize + 1;
   const lastRow = Math.min((pageIndex + 1) * pageSize, totalRows);
 
-  // navBtn is kept for compatibility — actual styles applied inline on buttons
-  const navBtn = '';
+  // Export columns limited to visible ones (in display order)
+  const exportColumns = useMemo<ExportColumn[]>(() => {
+    const exportMap = new Map(EXPORT_COLUMNS.map((c) => [c.key, c]));
+    return visibleKeys
+      .map((k) => exportMap.get(k))
+      .filter((c): c is ExportColumn => c != null);
+  }, [visibleKeys]);
 
   return (
     <AppShell title="Leads">
@@ -516,6 +661,19 @@ export function LeadsPage() {
               <>
                 <span className="font-medium text-zinc-700">{filteredData.length}</span> of{' '}
                 <span className="font-medium text-zinc-700">{allLeads.length}</span> leads
+                {sel.count > 0 && (
+                  <>
+                    {' ·'}{' '}
+                    <span className="font-medium text-zinc-700">{sel.count}</span> selected
+                    <button
+                      onClick={() => sel.clear()}
+                      className="ml-2 text-zinc-400 hover:text-zinc-700 transition-colors"
+                      style={{ fontSize: 12 }}
+                    >
+                      Clear
+                    </button>
+                  </>
+                )}
                 {hasActiveFilters && (
                   <button
                     onClick={() => { setFilters(defaultFilters); setPagination((p) => ({ ...p, pageIndex: 0 })); }}
@@ -529,29 +687,27 @@ export function LeadsPage() {
             )}
           </p>
           <div className="flex items-center gap-2">
-            <button
-              onClick={handleExport}
+            {/* Column customizer */}
+            <ColumnCustomizer
+              entity="leads"
+              userId={userId}
+              allColumns={ALL_COLUMNS}
+              value={columnPrefs}
+              onChange={(next) => setColumnPrefs(reconcileColumns(next, ALL_COLUMNS))}
+            />
+
+            {/* Export (selected rows or all filtered rows) */}
+            <ExportButton
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any
+              rows={filteredData as any[]}
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any
+              columns={exportColumns as any[]}
+              filename="amplior-crm-leads"
+              selectedIds={sel.selectedIds}
+              idKey="id"
               disabled={loading || filteredData.length === 0}
-              style={{
-                display: 'flex', alignItems: 'center', gap: 6,
-                border: '1px solid var(--border-input)',
-                background: 'var(--color-surface)',
-                color: 'var(--color-gray-700)',
-                fontWeight: 500,
-                borderRadius: 'var(--radius-btn)',
-                fontSize: 12,
-                padding: '5px 12px',
-                height: 30,
-                cursor: 'pointer',
-                transition: 'border-color 0.15s',
-                opacity: (loading || filteredData.length === 0) ? 0.4 : 1,
-              }}
-              onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.borderColor = 'var(--color-brand)'; }}
-              onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.borderColor = 'var(--border-input)'; }}
-            >
-              <Download size={13} strokeWidth={1.75} />
-              Export to Excel
-            </button>
+            />
+
             <button
               onClick={() => navigate('/leads/new')}
               style={{
@@ -587,7 +743,7 @@ export function LeadsPage() {
                       <th
                         key={header.id}
                         style={{
-                          padding: '11px 16px',
+                          padding: header.id === '__select' ? '11px 12px' : '11px 16px',
                           textAlign: 'left',
                           fontWeight: 500,
                           fontSize: 12,
@@ -595,6 +751,7 @@ export function LeadsPage() {
                           whiteSpace: 'nowrap',
                           userSelect: 'none',
                           cursor: header.column.getCanSort() ? 'pointer' : 'default',
+                          width: header.id === '__select' ? 40 : undefined,
                         }}
                         onClick={header.column.getToggleSortingHandler()}
                       >
@@ -643,12 +800,25 @@ export function LeadsPage() {
                         height: 44,
                         cursor: 'pointer',
                         transition: 'background 0.1s',
+                        background: sel.isSelected(row.original.id) ? 'var(--color-brand-subtle, #EBF4FD)' : undefined,
                       }}
-                      onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = 'var(--color-gray-50)'; }}
-                      onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = ''; }}
+                      onMouseEnter={(e) => {
+                        if (!sel.isSelected(row.original.id)) {
+                          (e.currentTarget as HTMLElement).style.background = 'var(--color-gray-50)';
+                        }
+                      }}
+                      onMouseLeave={(e) => {
+                        (e.currentTarget as HTMLElement).style.background = sel.isSelected(row.original.id)
+                          ? 'var(--color-brand-subtle, #EBF4FD)'
+                          : '';
+                      }}
                     >
                       {row.getVisibleCells().map((cell) => (
-                        <td key={cell.id} className="px-4 align-middle whitespace-nowrap">
+                        <td
+                          key={cell.id}
+                          className="align-middle whitespace-nowrap"
+                          style={{ padding: cell.column.id === '__select' ? '0 12px' : '0 16px' }}
+                        >
                           {flexRender(cell.column.columnDef.cell, cell.getContext())}
                         </td>
                       ))}

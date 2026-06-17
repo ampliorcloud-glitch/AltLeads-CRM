@@ -100,6 +100,8 @@ export interface LeadFormData {
   description: string;
   linkedin_url: string;
   role_and_resp: string;
+  /** FK to contact_master — set when the lead is linked to an existing contact */
+  contact_id: number | null;
 }
 
 /* ── Helpers ───────────────────────────────────────────────────────────── */
@@ -584,6 +586,7 @@ export async function createLead(
     stage: '',
     created_by: ownerId,
     created_date: now,
+    contact_id: form.contact_id ?? null,
   };
 
   const result = await insertLeadWithUniqueNumber(payload);
@@ -659,6 +662,7 @@ export async function updateLead(
     role_and_resp: form.role_and_resp.trim() || '',
     updated_by: updatedBy,
     updated_date: now,
+    contact_id: form.contact_id ?? null,
   };
 
   // Reassigning the "Agent (Owner)" must move ownership, which lives in created_by

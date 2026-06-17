@@ -200,6 +200,7 @@ export interface MeetingDetail {
   city: string;
   agent: string;
   salesperson: string;
+  salespersonUserId: number | null;  // numeric user_id for the assigned SP (for notifications)
   // related collections
   participants: MeetingParticipant[];
   feedback: FeedbackItem[];
@@ -547,6 +548,7 @@ export async function fetchMeetingDetail(meetingId: string): Promise<MeetingDeta
   let city = '';
   let agent = '';
   let salesperson = '';
+  let salespersonUserId: number | null = null;
   let leadStage = '';
 
   if (reportId != null) {
@@ -575,6 +577,7 @@ export async function fetchMeetingDetail(meetingId: string): Promise<MeetingDeta
       const roles = ((spRoleRaw ?? []) as unknown as UserRoleRow[]).map((r) => r.role_id);
       const roleId = roles.includes(4) ? 4 : roles.includes(5) ? 5 : undefined;
       salesperson = salespersonLabel(spName, roleId);
+      salespersonUserId = report.user_id;
     }
     if (report?.lead_id != null) {
       const { data: leadRaw } = await supabase
@@ -753,6 +756,7 @@ export async function fetchMeetingDetail(meetingId: string): Promise<MeetingDeta
     city,
     agent,
     salesperson,
+    salespersonUserId,
     participants,
     feedback,
     preSales,

@@ -2,7 +2,7 @@
 
 > **Purpose:** Define what the rebuilt Amplior CRM must do, for whom, and why — so the owner and any builder share one clear picture of the product before and during the rebuild.
 
-*Last updated: 2026-06-12*
+*Last updated: 2026-06-17*
 
 > **How to read this doc:** It is written in plain language for a business owner, with small technical notes in *italics* where they help. Anything not yet confirmed is marked **TBD — confirm with owner**. For the build sequence and dates, see the Roadmap; this PRD describes the *what* and *why*, not the *how/when*.
 
@@ -37,22 +37,26 @@ The current Amplior/Altleads CRM was built by an outsourced vendor and has becom
 - **Ship the "₹96k" features as standard**: rich filters on Leads and Meetings, plus Excel exports.
 - **Migrate the real business data** (~108,000 rows: 605 leads, 610 meetings, 54 wishlist items, 18 active salespeople) with **zero data loss**, not start from a blank system.
 - **Slash running cost and operational burden** — no servers to patch or restart, predictable low monthly cost.
-- **Fix the security problems** — proper, modern logins; no plain-text passwords; access rules enforced at the database level.
+- **Fix the security problems** — proper, modern logins; no plain-text passwords; access rules enforced at the database level (RLS on all tables, legacy password column hidden from the API).
 - **Keep the old system running in parallel** until the team has tested the new one, then cut over safely.
+- **Provide a self-service Companies + Contacts module** so the team can maintain a clean target-company directory and call-disposition log alongside leads.
 
 ### Non-Goals (for this rebuild)
 
 - **Not** re-creating the old Java backend or staying on self-managed MySQL/DigitalOcean — those are being retired.
 - **Not** migrating the old plain-text passwords. *Each user sets a fresh password at go-live via a one-time email.*
 - **Not** a ground-up redesign of business workflows — we rebuild the proven flows, then refine. Net-new features beyond parity are future scope.
-- **Not** adding new integrations (new SMS/email providers, third-party CRMs, analytics suites) in this phase unless explicitly requested.
+- **Not** adding new integrations (new SMS/email providers, third-party CRMs, analytics suites) in this phase unless explicitly requested. Email notifications run via Gmail SMTP on the same server.
 - **Not** a public/customer-facing portal — this is an internal sales-team tool.
+- **CR Layer 2 (multi-tenant org chart, meetings-centric pivot, Kafka, calendar integrations)** — explicitly deferred to a later phase.
 
 ---
 
 ## 4. Target Users & Personas
 
 The system serves one sales organization with **six roles**. Access is enforced by role *(technical note: via Row Level Security — rules attached to the database itself, so even a bug in the app cannot leak another person's data)*.
+
+**Two-app split (decided):** The **web app** is for Amplior's internal team (Admin, Team Lead, Agent). The **mobile app** serves the client-side sales team (Sales Head, Sales Person). Sales Person may be given web access later but is gated off in the first release — the web UI is designed with this in mind.
 
 | Role | Who they are | What they mainly need from the CRM |
 |---|---|---|
@@ -76,64 +80,126 @@ The system serves one sales organization with **six roles**. Access is enforced 
 
 ### In-Scope modules (this rebuild)
 
-| Module | Summary |
-|---|---|
-| **Login / Authentication** | Secure sign-in for all six roles; one-time password setup at go-live; sessions; route protection. |
-| **Dashboard** | At-a-glance numbers (leads, meetings this week, successful deals) and quick navigation. |
-| **Leads** | The core module. Searchable, filterable, paginated list with Excel export; full lead detail with a HubSpot-style workspace (header + info panel + **Activity / Lead Report / Meeting** tabs where agents fill in information); add/edit leads; live stage changes. |
-| **Meetings** | List + detail of client meetings (610 records), filters, and Excel export; linked to their leads. |
-| **Wishlist** | Wishlist / prospect list (54 records). |
-| **Notifications** | In-app notifications (e.g., when a meeting is assigned or reassigned). |
-| **Admin Panel** | Manage Users, Projects, Clients, and reference/lookup lists; assign roles; ADMIN-only. |
-| **Settings** | Editable profile and password change for the logged-in user. |
+| Module | Summary | Status |
+|---|---|---|
+| **Login / Authentication** | Secure sign-in for all six roles; one-time password setup at go-live; sessions; route protection. | DONE |
+| **Dashboard** | At-a-glance numbers (leads, meetings this week, successful deals) and quick navigation. | DONE |
+| **Leads** | The core module. Searchable, filterable, paginated list with multi-select + Excel export; full lead detail with a HubSpot-style workspace (header + info panel + **Activity / Lead Report / Meeting** tabs); add/edit leads; live stage changes. Pick an existing contact when creating a lead. | DONE |
+| **Meetings** | List + detail of client meetings (610 records), filters, multi-select + Excel export; linked to their leads; reschedule/cancel with email + in-app notifications. | DONE |
+| **Wishlist** | Wishlist / prospect list (54 records). Assign + convert to lead. | DONE |
+| **Approvals** | Queue for Team Lead / Admin to approve or reject lead-report requests; email + in-app notification on request / approval / rejection. | DONE |
+| **Notifications** | In-app notification feed with live unread-count bell badge (60 s poll). Email + in-app on: meeting scheduled / rescheduled / cancelled, lead assigned / reassigned, approval requested / approved / rejected. Recipient = salesperson for now; owner tunes per-action later. | DONE |
+| **Companies** | Directory of 525 target companies; search, filters, export; HubSpot-style detail with contacts-by-city and per-project account status. Dedup on create (clean domain or CIN). | DONE |
+| **Contacts** | 607 contacts (migrated from leads); call-disposition log; detail with disposition / status / description / comments. Dedup on create (email → LinkedIn → phone). Link existing contact into a company; change a contact's company. | DONE |
+| **Admin Panel** | Manage Users (add + reset-password via secure service-role endpoint), Projects, Clients, reference/lookup lists, and **editable dropdown option lists**; assign roles; ADMIN-only. | DONE |
+| **Settings** | Editable profile and password change for the logged-in user. | DONE |
+
+### Per-Project Status Model (key design — all modules)
+
+Three layers of status exist, all **scoped per project**:
+
+1. **Call Disposition** — logged per call/interaction; kept in full activity history. Shown on contact detail and company-contact rows.
+2. **Contact Status** — one current status per contact per project. Shown in contact list rows.
+3. **Account Status** — one current status per company per project.
+
+The same company or contact can have a different status on Project A vs Project B. Visible and editable by owner + admin only. Full history retained.
+
+**Additional per-project fields on a company/account:** Feasibility (per project), Decision-making power (Centralised / Regional-site-wise / Hybrid), Description, Comments.
+
+**Additional per-project fields on a contact:** Description, Comments.
+
+All dropdown option lists — contact status, account status, call disposition, decision power, feasibility, and others — are **admin-editable** from the Admin panel. Starter values are seeded in the database (`dropdown_option` table).
+
+### Lists everywhere — common behaviours
+
+Every module list supports:
+- **Multi-select** (select all / select none) + **bulk export** to Excel.
+- **Show/hide and reorder columns** per user.
+- **Per-user saved views** — reset to default at any time; old view is kept (not deleted). Default Contacts columns: Name, Company, City, Email, LinkedIn, Phone (mobile + landline stacked), Contact Status, Description, Comments.
+
+Status: PLANNED for per-user saved views across all modules; export and column-toggle partially built.
+
+### Pre-Sales Questions
+
+45 questions exist in the database, grouped by service domain. Currently hidden from the UI. Planned: surface them in the lead workspace, selectable per domain/industry. Status: PLANNED.
 
 ### Out-of-Scope / Future (not in this rebuild unless requested)
 
 - **Mobile app polish beyond repair-and-reconnect** — the existing React Native app is repaired and pointed at the new backend; deeper redesign is later.
-- **New outbound channels** — adding/replacing SMS (Twilio) or email (e.g., Resend/SendGrid) providers beyond what notifications need. *Email provider for meeting-assignment notifications is **TBD — confirm with owner** (~100+ emails/day expected).*
+- **New outbound channels** — email notifications run via Gmail SMTP on the combined Node server. SMS (Twilio) to be confirmed by owner.
 - **Advanced reporting/analytics dashboards** beyond the core dashboard numbers and Excel exports.
-- **Team-scoped fine-grained permissions** for managers (start broad, refine later).
-- **Any net-new workflow** not present in the old system (full multi-step stage-change approval with auto meeting creation is captured but **deferred** — current stage change is the simple case).
+- **Team-scoped fine-grained permissions** for managers — start broad, refine to team-scope after launch.
+- **Full multi-step stage-change workflow** (approval + auto meeting creation) — current stage change is the simple case; full workflow deferred.
+- **CR Layer 2**: multi-tenant org chart, calendar integration, Kafka, email campaigns, removing the Leads web screen, multiple TL/SH per project. All deferred to a later phase.
+- **AI / semantic search (pgvector)** — planned for a future phase but not started.
 - **Third-party CRM / external integrations.**
 
 ---
 
 ## 6. Key Features by Module
 
-### Login / Authentication
+### Login / Authentication (DONE)
 - Email + password sign-in for all six roles *(via Supabase Auth — bank-grade, no plain-text passwords).*
 - One-time "set your password" email for each user at go-live.
 - Each login is auto-linked to the right person and role; protected routes keep signed-out users out.
 
-### Dashboard
-- Headline metrics from real data (e.g., total leads, meetings this week, successful deals).
-- Fast entry points into Leads, Meetings, and other modules.
+### Dashboard (DONE)
+- Headline metrics from real data (total leads, meetings this week, successful deals).
+- Fast entry points into all modules.
 
-### Leads (core)
+### Leads (DONE)
 - **List view** with search, **multiple filters** (the "₹96k" filters delivered as standard), **pagination**, and **Excel export**.
+- **Multi-select** rows for bulk export.
 - **Lead detail** in a HubSpot-style layout: header + right-hand info panel + three workspace tabs:
-  - **Activity** — timeline of what's happened on the lead.
-  - **Lead Report** — the structured report agents fill in, including stage history.
-  - **Meeting** — meetings related to this lead.
-- **Add / Edit lead** with proper audit fields and auto-generated lead numbers (e.g., `ALT####`).
-- **Live stage changes** (simple case today; full approval + auto-meeting workflow is deferred).
-- Clickable contacts; related companies, projects, and meetings resolved from the real data.
+  - **Activity** — timeline of what's happened on the lead (agents log calls/notes here).
+  - **Lead Report** — the structured report agents fill in, including stage history and approval flow.
+  - **Meeting** — meetings scoped to this lead (not the user's whole calendar).
+- **Add / Edit lead** with proper audit fields and auto-generated lead numbers (`ALT####`). When adding a lead the agent can **pick an existing contact** from a searchable dropdown (saves to `lead_master.contact_id`).
+- **Stage changes** — simple case (updates `lead_report.stage_id`); full approval + auto-meeting workflow deferred.
+- Approval flow: agent requests approval → TL/Admin sees queue at /approvals → approve (advances stage) or reject (requires reason); email + in-app at each step.
 
-### Meetings
-- Filterable, paginated list of meetings with **Excel export**.
+### Meetings (DONE)
+- Filterable, paginated list of 610 meetings with **Excel export** and **multi-select**.
 - Meeting detail, linked back to its lead.
+- **Reschedule / Cancel** — fire email + in-app notification to the salesperson.
 
-### Wishlist
-- List of wishlist / prospect items, viewable and editable.
+### Wishlist (DONE)
+- List of 54 wishlist / prospect items. Assign to an agent + convert to a lead.
 
-### Notifications
-- In-app notification feed (e.g., meeting assignment / reassignment alerts).
+### Approvals (DONE)
+- `/approvals` page, gated to ADMIN / TEAM_LEAD. Shows pending approval requests with approve / reject actions.
+- Sidebar badge shows the live pending count.
 
-### Admin Panel (ADMIN only)
-- **Users** — add, edit, and manage people and their **roles**.
-- **Projects**, **Clients**, and **Reference/lookup lists** — create and edit the supporting data the CRM depends on.
+### Notifications (DONE)
+- In-app notification feed; bell icon with live unread count (polls every 60 seconds).
+- **Email + in-app fired on:**
+  - Meeting scheduled, rescheduled, cancelled.
+  - Lead assigned or reassigned.
+  - Approval requested, approved, rejected.
+- Recipient = the salesperson for each action. Owner can change recipients per action (code has a single clearly-commented TODO spot per action).
+- Email is sent via Gmail SMTP from the combined Node server (no third-party email service needed).
 
-### Settings
+### Companies (DONE)
+- Directory of 525 target companies with search, industry + city filters, Excel export, pagination.
+- HubSpot-style company detail: contacts grouped by city/region; each contact row shows inline Call Disposition, Description, Comments, and LinkedIn link.
+- **New company with dedup** — blocks creation if a company with the same cleaned website domain or CIN already exists; surfaces the existing record instead.
+- Per-project account fields: Account Status, Feasibility, Decision-making power, Description, Comments (all stored in `company_project_status`).
+- Link an existing contact into the company from the company detail page.
+
+### Contacts (DONE)
+- Directory of 607 contacts (migrated from `lead_master`; 417/608 now have a linked company via email-domain sync).
+- List with search, status, and company filters; default columns: Name, Company, City, Email, LinkedIn, Phone, Contact Status, Description, Comments.
+- Contact detail: full edit of all fields; call & disposition panel that writes to the `interaction` activity log.
+- **New contact with dedup** — blocks creation if a contact with the same professional email (or LinkedIn, or phone) already exists. Demo mode skips dedup.
+- Change or clear a contact's company from their detail page.
+- Per-project contact fields: Contact Status, Description, Comments (stored in `contact_project_status`).
+
+### Admin Panel (ADMIN only — DONE)
+- **Users** — Add User (creates Supabase Auth account + `user_master` row via service-role endpoint); Reset Password (same endpoint, `auth.admin.updateUserById`).
+- **Dropdown option lists** — admin can edit the pick-list values for ALL dropdowns: contact status, account status, call disposition, decision power, feasibility, and others. Changes take effect immediately across the app.
+- **Projects**, **Clients**, and **Reference/lookup lists** — create and edit supporting data.
+
+### Settings (DONE)
 - Edit own profile; change own password.
 
 ---
@@ -159,16 +225,24 @@ The rebuild is successful when:
 - Each user will set a new password via the one-time email at go-live (old passwords are intentionally not migrated).
 - "Agent" and "salesperson" refer to the same field worker; there is no separate "sales person" field in the real data.
 - The proven old-system workflows are the spec; we rebuild them faithfully, then refine.
+- Existing duplicate contacts/companies are allowed to remain; only **new** duplicates are blocked.
+
+**Hosting & deployment (decided)**
+- The app is **ONE combined Node.js server** — the React web app (served as static files) and the email/notify service live in the same Node process. Deployed on **Hostinger**, git auto-deploy from the **AltLeads-CRM** GitHub repo (a new clean repo with fresh history; old vendor code, large design files, and secrets are excluded). Live at **crm.altleads.com**. Email is sent via **Gmail SMTP** (no third-party email provider needed). The same Node server can host additional small backend functions in future.
+- **Netlify** was considered but dropped in favour of keeping everything on Hostinger (one host, one bill, no Netlify Functions complexity).
+- Production environment variables required on Hostinger: `GMAIL_USER`, `GMAIL_PASS`, `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`.
+
+**Security (current state)**
+- RLS is **on** for all 70 public tables. Authenticated users have broad access (no per-role fine-grained rules yet). Anonymous access is denied everywhere. Self-promotion (a user raising their own role) is blocked at the policy level.
+- Legacy plaintext `password` column on `user_master` is **hidden from the API** (column-level grant REVOKED for anon + authenticated; data kept intact but not readable).
+- Fine-grained per-role RLS (agent sees only own leads) and a full IDOR/RLS security audit are **PLANNED** before go-live.
 
 **Dependencies / open items**
-- **Accounts & access (owner):** Supabase, Netlify, and GitHub access are set up; the new Supabase project (`amplior-crm`, Mumbai region) and migration are done.
-- **Deploy rules (binding):** the first Netlify deploy is done only when the owner says go; auto-deploy is turned **off** after the first deploy — deploys are **manual by the owner** thereafter.
-- **Security gate:** database access rules (Row Level Security) **must** be applied before any public deploy. *(Currently off for local-only building.)*
-- **Email provider** for notifications: **TBD — confirm with owner.**
+- **Accounts & access:** Supabase (`amplior-crm`, Mumbai region), Hostinger, and GitHub (AltLeads-CRM repo) are all set up and live. Migration done (65 tables, ~108k rows).
+- **Hostinger env vars:** `SUPABASE_URL` + `SUPABASE_SERVICE_ROLE_KEY` must be set before the Add User and Reset Password endpoints work in production (currently return 503 without them).
 - **Mobile (later phase):** the existing app needs missing files recreated and re-pointing to the new backend; an **iOS build needs a Mac** (owner is on Windows, can borrow one) and Apple/Google Play access.
-- **Vendor risk:** the vendor may withhold the Android signing key / app-store access (final invoice unpaid); recovery via Google/Apple support is the fallback. **TBD — confirm with owner.**
-- **Known data-quality items:** some lead/company links rely on `created_by` + `client_assoc_id` (not the older empty columns); a few records have minor vendor-era data bugs (handled, nothing deleted).
-- **Deadline pressure:** the heavy build is front-loaded due to an AI-model availability window; see the Roadmap.
+- **Vendor risk:** the vendor may withhold the Android signing key / app-store access; recovery via Google/Apple support is the fallback.
+- **Known data-quality items:** 159 contacts have work-email domains whose company is not in the 525-company directory — candidates to auto-create companies later. 4 orphan-row data bugs from the vendor are logged in `fk-skipped.txt` (nothing deleted).
 
 ---
 

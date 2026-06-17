@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Loader2, ShieldAlert, Users, Briefcase, Building2, Tag, Globe, Layout } from 'lucide-react';
+import { Loader2, ShieldAlert, Users, Briefcase, Building2, Tag, Globe, Layout, ListTree, HelpCircle, ShieldCheck } from 'lucide-react';
 import { AppShell } from '../components/layout/AppShell';
 import { useAuth } from '../contexts/AuthContext';
 import { fetchLookups, type AdminLookups } from '../data/admin';
@@ -7,21 +7,30 @@ import { UsersTab } from '../components/admin/UsersTab';
 import { ProjectsTab } from '../components/admin/ProjectsTab';
 import { ClientsTab } from '../components/admin/ClientsTab';
 import { ReferenceDataTab } from '../components/admin/ReferenceDataTab';
+import { DropdownsTab } from '../components/admin/DropdownsTab';
+import { PreSalesQuestionsTab } from '../components/admin/PreSalesQuestionsTab';
+import { ProjectAccessTab } from '../components/admin/ProjectAccessTab';
 
-type TabKey = 'users' | 'projects' | 'clients' | 'reference';
+type TabKey = 'users' | 'projects' | 'clients' | 'reference' | 'dropdowns' | 'presales' | 'access';
 
 const NAV_ITEMS: { key: TabKey; label: string; icon: React.ReactNode }[] = [
-  { key: 'users',     label: 'User',       icon: <Users size={15} strokeWidth={1.6} /> },
-  { key: 'clients',   label: 'Client',     icon: <Building2 size={15} strokeWidth={1.6} /> },
-  { key: 'projects',  label: 'Project',    icon: <Briefcase size={15} strokeWidth={1.6} /> },
-  { key: 'reference', label: 'Reference Data', icon: <Tag size={15} strokeWidth={1.6} /> },
+  { key: 'users',     label: 'User',              icon: <Users size={15} strokeWidth={1.6} /> },
+  { key: 'clients',   label: 'Client',            icon: <Building2 size={15} strokeWidth={1.6} /> },
+  { key: 'projects',  label: 'Project',           icon: <Briefcase size={15} strokeWidth={1.6} /> },
+  { key: 'access',    label: 'Project Access',    icon: <ShieldCheck size={15} strokeWidth={1.6} /> },
+  { key: 'reference', label: 'Reference Data',    icon: <Tag size={15} strokeWidth={1.6} /> },
+  { key: 'dropdowns', label: 'Option Lists',      icon: <ListTree size={15} strokeWidth={1.6} /> },
+  { key: 'presales',  label: 'Pre-Sales Questions', icon: <HelpCircle size={15} strokeWidth={1.6} /> },
 ];
 
 const TAB_TITLES: Record<TabKey, string> = {
-  users: 'User',
-  projects: 'Project',
-  clients: 'Client',
+  users:     'User',
+  projects:  'Project',
+  clients:   'Client',
+  access:    'Project Access',
   reference: 'Reference Data',
+  dropdowns: 'Option Lists',
+  presales:  'Pre-Sales Questions',
 };
 
 function Restricted() {
@@ -216,7 +225,10 @@ export default function AdminPage() {
               {tab === 'users'     && <UsersTab     lookups={lookups} actorId={actorId} />}
               {tab === 'projects'  && <ProjectsTab  lookups={lookups} actorId={actorId} />}
               {tab === 'clients'   && <ClientsTab   lookups={lookups} actorId={actorId} />}
+              {tab === 'access'    && <ProjectAccessTab actorId={actorId} />}
               {tab === 'reference' && <ReferenceDataTab actorId={actorId} />}
+              {tab === 'dropdowns' && <DropdownsTab actorId={actorId} />}
+              {tab === 'presales'  && <PreSalesQuestionsTab actorId={actorId} />}
             </>
           )}
         </div>

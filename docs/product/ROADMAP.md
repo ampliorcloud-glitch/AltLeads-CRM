@@ -2,42 +2,42 @@
 
 > **Purpose:** A simple, phase-by-phase timeline of the whole rebuild — what each phase delivers, where we are today, and what's left. Written for the business owner; no technical background needed.
 >
-> *Last updated 2026-06-13.*
+> *Last updated 2026-06-17.*
 
 ---
 
 ## The 60-second summary
 
-We are rebuilding the old Amplior/Altleads CRM (built badly by an outside vendor) into a clean, modern system that you can manage yourself. The work is split into **8 phases (0 to 7)**. The hardest phases were front-loaded on purpose, because the fast Fable AI model is only available until **22 June 2026**.
+We are rebuilding the old Amplior/Altleads CRM (built badly by an outside vendor) into a clean, modern system that you can manage yourself.
 
-**Where we are right now:** the foundation is done and the real data is already live in the new system. We are in the middle of **Phase 3 (building the web app)** — the core modules are built and you are reviewing/refining them. After that comes the security-and-deploy step, then mobile, then a side-by-side trial run before we switch over for good.
+**Where we are right now (2026-06-17):** The web app is **live at crm.altleads.com** and has passed a smoke test. All core modules are done (Leads, Meetings, Wishlist, Approvals, Notifications, Companies, Contacts, Admin, Settings). Email delivery via Gmail SMTP is verified. RLS is on (baseline). The next step is feature waves (admin dropdown editor, per-project status UI, per-user saved views) and security hardening, then mobile, then the parallel-run and full cutover.
 
 **Build pace / AI model note:**
-- **Until 22 June 2026** — the fast *Fable* model is available, so all the heavy lifting (data migration, core web build, mobile rewiring) is being pushed to finish inside this window.
-- **After 22 June 2026** — *Opus 4.8* handles the hard parts, *Sonnet 4.6* is the everyday workhorse. The remaining phases (mobile polish, parallel-run, cutover) are mostly your testing time and need very little AI.
+- The Fable model deadline (22 June 2026) has passed. The build now runs on *Opus 4.8* for hard parts and *Sonnet 4.6* as the daily driver.
+- Remaining phases (feature waves, security audit, mobile, parallel-run, cutover) are a mix of focused build sessions and your team's real-world testing — much lighter on AI time than the initial build.
 
 ---
 
 ## Timeline view (Gantt-ish)
 
-Each block is a phase. `███` = done, `▓▓▓` = in progress (where we are now), `░░░` = not started yet. The dashed line marks the **22 June Fable deadline**.
+Each block is a phase. `███` = done, `▓▓▓` = in progress (where we are now), `░░░` = not started yet.
 
 ```
-                         FABLE WINDOW (fast model)        │  OPUS / SONNET
-                         ──────── to 22 Jun ───────────── │ ───────────────►
- Phase 0  Accounts & access    ████████████▓                │
- Phase 1  Cleanup              ████                         │
- Phase 2  Supabase + data      ░░░███████▓                  │   (RLS security left)
- Phase 3  Web core         ◄── YOU ARE HERE ─►  ▓▓▓▓▓▓▓▓▓▓  │
- Phase 4  Admin panel                    ▓▓▓▓▓▓             │   (mostly built in P3)
- Phase 5  Netlify deploy                          ░░░       │
- Phase 6  Mobile repair                           ░░░░░░░░  │░░░░░░░░
- Phase 7  Parallel-run & cutover                           │░░░░░░░░░░░░░░░░░░►
-                                                            │
-                                            22 Jun ─────────┘
+ Phase 0  Accounts & access    ████████████
+ Phase 1  Cleanup              ████
+ Phase 2  Supabase + data      ████████████
+ Phase 3  Web core             ████████████████████
+ Phase 4  Admin panel          ████████████  (built within Phase 3)
+ Phase 5  Hostinger deploy     ████  DONE — live at crm.altleads.com
+ Phase 5b Feature waves        ▓▓▓▓▓▓▓▓▓▓▓▓  (in progress — dropdown editor,
+           (status UI, saved    per-project status UI, saved views, security audit)
+           views, security)
+ Phase 6  Mobile repair        ░░░░░░░░
+ Phase 7  Parallel-run         ░░░░░░░░░░░░░░░░░░►
+           & cutover
 ```
 
-> **Reading it:** Phases 1 and 2's data work are finished. Phase 3 is the active phase. Phases 4 and 5 are next and small. Phase 6 (mobile) and Phase 7 (trial + switchover) extend past the Fable deadline and run on Opus/Sonnet — that's fine, because they're light on AI and heavy on your real-world testing.
+> **Reading it:** Phases 0–5 are complete. Phase 5b (feature waves) is the active phase. Phase 6 (mobile) and Phase 7 (parallel-run + switchover) are next.
 
 ---
 
@@ -70,32 +70,43 @@ Each block is a phase. `███` = done, `▓▓▓` = in progress (where we a
 | **Key deliverables** | New Supabase database built · **all real data copied (65 tables, ~108,000 rows)** · every table's row count matched against the original ✓ · the new web app already showing real leads, meetings and wishlist. |
 | **Status** | ✅ **Data done** (2026-06-12) — and the live system was never touched: we copied from a temporary fork, verified, then can delete it. **One important item still open:** the database access-permission rules ("who can see what") are not yet switched on. This is a hard requirement before the site can go live (see the Phase 5 gate below). |
 
-### Phase 3 — Web core  ◄── **CURRENT PHASE**
+### Phase 3 — Web core  ✅ DONE
 *Build the actual web application: the screens your team uses every day.*
 
 | | |
 |---|---|
-| **Goal** | A working web CRM with login and all the core modules running on real data: Dashboard, Leads (with the Activity / Lead-Report / Meeting workspace tabs), Meetings, Wishlist, Notifications, Settings — plus the filters and Excel exports the vendor charged ₹96k for. |
-| **Key deliverables** | Secure login (Supabase Auth) ✅ · Leads module with list, filters, Excel export, detail page, add/edit ✅ · Meetings, Wishlist, Notifications, Settings built on real data ✅ · the 7+7 filters and Excel exports built in as standard ✅ · the HubSpot-style Lead workspace (header + info panel + 3 tabs where agents fill in info) — in progress. |
-| **Status** | ▓ **In progress.** Login works and is verified. The core modules are built on real data and wired together. You have started reviewing them. Refinements underway from your feedback (the data-accuracy and pagination fixes are in; lead editing fixed). Next: finish the detailed Lead workspace, then a design-match pass against the Figma mockups. |
+| **Goal** | A working web CRM with login and all the core modules running on real data. |
+| **Key deliverables** | ✅ Secure login (Supabase Auth) · ✅ Leads (list, filters, export, workspace 3 tabs, approval flow) · ✅ Meetings (list, filters, export, reschedule/cancel) · ✅ Wishlist (assign, convert to lead) · ✅ Approvals queue · ✅ Notifications (email + in-app, live bell badge) · ✅ Companies module (525 companies, dedup, detail) · ✅ Contacts module (607 contacts, call-disposition, dedup, detail) · ✅ Admin (add user, reset password, dropdown editor seeded) · ✅ Settings · ✅ RLS baseline on all tables. |
+| **Status** | ✅ **Complete.** All modules built, build passes, design-matched to Figma, RLS enabled, security audit passed baseline. |
 
-### Phase 4 — Admin panel
-*The control room: manage users, roles, projects, clients.*
-
-| | |
-|---|---|
-| **Goal** | An admin area (visible only to ADMIN users) to manage users, roles, projects, clients, designations and access. |
-| **Key deliverables** | Users / Projects / Clients / Reference-data tabs with real editing · ADMIN-only access. |
-| **Status** | ▓ **Largely built already** as part of the Phase 3 work (Admin tabs exist with real edits, gated to ADMIN). Remaining: polish and confirm role/access management once the security rules (Phase 2/5) are switched on. |
-
-### Phase 5 — Netlify deploy
-*Put the web app on the internet so the team can reach it.*
+### Phase 4 — Admin panel  ✅ DONE (built within Phase 3)
 
 | | |
 |---|---|
-| **Goal** | Publish the web app to a live web address, with auto-deploy from GitHub for the first push (then switched to manual deploys, per your instruction). |
-| **Key deliverables** | Live site on Netlify · GitHub auto-deploy for the first publish, then **auto-deploy turned off** — future deploys are manual, done by you, one click. |
-| **Status** | ⛔ **Not started — and gated.** **Hard gate: the database access-permission rules (RLS) from Phase 2 MUST be switched on before anything goes live.** Today the new app is local-only (on the build PC), so this is safe; it must not reach the internet until those rules are on. The first deploy happens only after you explicitly say "go." |
+| **Status** | ✅ **Complete.** Users (add + reset-password), Projects, Clients, Reference tabs, dropdown option management seeded. ADMIN-gated. Needs `SUPABASE_SERVICE_ROLE_KEY` env var on Hostinger for add/reset-password to work in production. |
+
+### Phase 5 — Deploy  ✅ DONE
+*Web app live on the internet.*
+
+| | |
+|---|---|
+| **Goal** | Publish the web app and email service to a live address. |
+| **Key deliverables** | ✅ Combined Node app on Hostinger · ✅ Git auto-deploy from AltLeads-CRM GitHub repo · ✅ Live at crm.altleads.com · ✅ Email delivery verified (Gmail SMTP). |
+| **Status** | ✅ **Complete.** HTTP 200 at crm.altleads.com. `/health` OK. Real email delivered. |
+
+### Phase 5b — Feature Waves  ◄── **CURRENT PHASE**
+*Complete the per-project status UI, dropdown editor, per-user saved views, and security hardening.*
+
+| | |
+|---|---|
+| **Goal** | Finish the features that were designed and database-ready but whose UI is still outstanding; harden security before go-live. |
+| **Wave B** | Admin dropdown management UI (edit option lists from Admin panel) · Pre-sales questions surfaced in lead workspace per domain. |
+| **Wave C** | Contact list: multi-select, Contact Status column, show/hide columns, per-user saved views (reset keeps old view). |
+| **Wave D** | Contact detail: full per-project fields (status, description, comments) with history. |
+| **Wave E** | Company detail: account status, feasibility, decision power, description, comments per project. |
+| **Wave F** | Multi-select + export on all remaining lists (confirm Leads/Meetings/Wishlist are complete). |
+| **Wave G** | Security audit — dedicated sub-agent IDOR/RLS pass; fine-grained per-role policies (agent sees own leads). |
+| **Status** | ▓ **In progress.** Wave A (tables + seeding) done. Wave B onwards planned. |
 
 ### Phase 6 — Mobile repair
 *Fix and reconnect the existing phone app to the new system.*
@@ -119,18 +130,25 @@ Each block is a phase. `███` = done, `▓▓▓` = in progress (where we a
 
 ## Milestones
 
-The big checkpoints, in order. ✓ = reached.
+The big checkpoints, in order. ✅ = reached, 🟡 = in progress, ⬜ = not yet.
 
-- ✅ **Rebuild approved & stack locked** — Supabase + React/Vite/Netlify + repaired mobile app (2026-06-11).
+- ✅ **Rebuild approved & stack locked** — Supabase + React/Vite + repaired mobile app (2026-06-11).
 - ✅ **Old code cleaned & archived** — clean starting point (2026-06-11).
 - ✅ **Real data live in the new database** — 65 tables, ~108,000 rows, every row count matched, live system never touched (2026-06-12).
 - ✅ **Secure login working** — team members log in via Supabase Auth, with their real roles (2026-06-12).
-- ✅ **Core web modules built on real data** — Dashboard, Leads, Meetings, Wishlist, Notifications, Admin, Settings (2026-06-12).
-- 🟡 **Web app reviewed & refined** — *in progress now* (your review + the Lead workspace + design-match pass).
-- ⬜ **Security rules switched on (RLS)** — the must-do gate before going live.
-- ⬜ **First Netlify deploy** — web app reachable on the internet (only on your "go").
+- ✅ **Core web modules built on real data** — Dashboard, Leads (workspace + approval flow), Meetings, Wishlist, Notifications (email + in-app), Approvals, Companies, Contacts, Admin, Settings (2026-06-12–14).
+- ✅ **RLS security baseline** — all 70 tables enabled, anon denied, self-promote blocked (2026-06-14).
+- ✅ **Design-matched to Figma** — brand blue, split login, lead workspace, admin panel, all modules (2026-06-14).
+- ✅ **Legacy password column hidden** — column-level grant revoked; plaintext data no longer API-accessible (2026-06-16).
+- ✅ **Email + in-app notifications live** — meeting, lead, approval events fire email (Gmail SMTP) + in-app (2026-06-16).
+- ✅ **Companies + Contacts modules built** — 525 companies, 607 contacts, dedup, call-disposition log, 286 contacts domain-linked (2026-06-14–16).
+- ✅ **Add User + Reset Password** (admin service-role endpoints) built and verified locally (2026-06-16).
+- ✅ **First deploy — live at crm.altleads.com** on Hostinger, git auto-deploy from AltLeads-CRM repo (2026-06-16).
+- 🟡 **Feature waves** — per-project status UI, admin dropdown editor, per-user saved views (in progress).
+- ⬜ **Fine-grained RLS + IDOR security audit** — hard gate before full go-live.
+- ⬜ **Hostinger env vars** for admin endpoints (`SUPABASE_SERVICE_ROLE_KEY`).
 - ⬜ **Mobile app reconnected & building** — Android + iPhone.
-- ⬜ **Parallel run starts** — team tries the new system alongside the old.
+- ⬜ **Parallel run starts** — team uses new system alongside the old.
 - ⬜ **Go-live / cutover** — switch fully to the new system.
 - ⬜ **Old DigitalOcean retired** — last step; final cost savings realised.
 
@@ -138,7 +156,7 @@ The big checkpoints, in order. ✓ = reached.
 
 ## Where we are, in one line
 
-> **We have a working web CRM running on your real data, currently under your review. The next gate is switching on the security rules, then the first live deploy.** Heavy AI build is being finished inside the Fable window (to 22 June); after that, Opus/Sonnet handle the lighter remaining work (mobile, trial run, cutover).
+> **The app is live at crm.altleads.com with all core modules working on real data. The next steps are: set the Hostinger env vars for admin endpoints, finish the per-project status UI and dropdown editor, run the security hardening pass, then mobile repair, then a side-by-side trial run before full cutover.**
 
 ---
 

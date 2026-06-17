@@ -2,7 +2,7 @@
 
 *Purpose: A running record of the important architecture and product decisions on the rebuild — what we chose, why, what we rejected, and whether the decision still stands. So nobody re-litigates a settled question, and a future developer understands the "why".*
 
-*Last updated 2026-06-12*
+*Last updated 2026-06-17*
 
 ---
 
@@ -60,13 +60,13 @@ The numbering (ADR-01, ADR-02 …) is just an index; it is not a priority order.
 
 ---
 
-## ADR-05 — Host on Netlify with GitHub auto-deploy, but turn auto-deploy OFF after the first deploy
+## ADR-05 — Host on Hostinger (ONE combined Node app), not Netlify
 
-- **Context:** We want simple hosting wired to the code repository, but the owner wants **control over when the live site changes** (no surprise deploys).
-- **Decision:** Host the web app on **Netlify**, connected to **GitHub**. The **first** deploy is done by Claude — but only after the owner explicitly says go. After that, **auto-deploy is turned OFF** and all further deploys are **manual, by the owner only** (one click).
-- **Why:** Gives the convenience of a GitHub-connected pipeline for the initial setup, while keeping the owner in full control afterward. Nothing reaches production without a deliberate human action.
-- **Alternatives considered:** Leave auto-deploy ON (rejected — owner wants no automatic production changes). A different host (rejected — Netlify pairs cleanly with the chosen stack and Functions). **Hard prerequisite:** RLS must be applied before any deploy (see Risk R-08).
-- **Status:** Accepted.
+- **Context:** We want simple, all-in-one hosting wired to the code repository. The app needs both a static web front-end and a small server (email/notify service, admin API endpoints). Initially Netlify was planned for the front-end.
+- **Decision:** Deploy as **one combined Node.js process** on **Hostinger** — the React web app is served as static files and the email/notify API runs in the same process. Git auto-deploy from the **AltLeads-CRM** GitHub repo. Live at **crm.altleads.com**. Email via **Gmail SMTP** (no third-party email provider). The same server can host more small backend functions in future.
+- **Why:** Netlify Functions add complexity and cost for what is essentially a simple server. Keeping everything on Hostinger means one host, one bill, no deployment split. Gmail SMTP is free and already available. The combined-server pattern also makes it easy to add future backend logic (password reset, batch jobs, webhooks) without changing hosts.
+- **Alternatives considered:** Netlify (static front-end) + separate server for the email service (rejected — two deploys, two environments, more complexity). Netlify Functions (rejected — harder to debug, edge-function constraints). A traditional VPS (rejected — management burden).
+- **Status:** Accepted. DONE — live at crm.altleads.com, /health OK, email delivery verified.
 
 ---
 
@@ -120,6 +120,106 @@ The numbering (ADR-01, ADR-02 …) is just an index; it is not a priority order.
 
 ---
 
+## ADR-11 — Web app is for Amplior internal team; mobile app is for client sales team (two-app split)
+
+- **Context:** The old system blurred the line between Amplior's internal staff (who manage leads and meetings) and the client-side field sales team (who capture wishlist prospects and report back). Both groups needed access, but their roles and UIs are different.
+- **Decision:** **Web app** = Amplior internal team (Admin, Team Lead, Agent). **Mobile app** = client sales team (Sales Head, Sales Person). Sales Person *may* be given web access later but is gated off in the first release. The web UI is designed with this future extension in mind.
+- **Why:** Keeps each app clean for its primary audience. The web UI is more complex (approval flows, admin tools) and doesn't need to be optimised for field use. The mobile app is designed for speed in the field.
+- **Alternatives considered:** One unified web + mobile experience (rejected — different UX needs; the FRS already designed two separate apps). Give Sales Person web access from day one (deferred — not needed for first release, reduces scope risk).
+- **Status:** Accepted.
+
+---
+
+## ADR-12 — First-rebuild scope = FRS parity + CR Layer 1; CR Layer 2 is deferred
+
+- **Context:** The vendor's change-request documents had two layers: Layer 1 (small additions: filters, exports, editable settings — already mostly built) and Layer 2 (major re-architecture: multi-tenant org chart, Companies + Contacts modules as a replacement for the Leads screen, multiple TL/SH per project, calendar integration, Kafka). Layer 2 would effectively replace the current product.
+- **Decision:** **First rebuild = FRS parity + Layer 1 CR only.** CR Layer 2 is **explicitly deferred** to a later phase. Companies + Contacts modules *are* being built now (owner requested) but as an **additive** module alongside Leads, not as a replacement.
+- **Why:** Layer 2 is a completely different product vision. Trying to build both at once would delay the go-live indefinitely and risk getting nothing done. It's better to ship a complete, reliable FRS-parity product first and layer on the bigger vision after.
+- **Alternatives considered:** Build Layer 2 now (rejected — too big, delays go-live). Abandon Layer 2 entirely (rejected — owner wants it eventually, just not as the first delivery).
+- **Status:** Accepted.
+
+---
+
+## ADR-13 — Dedup rules: existing duplicates allowed; only new duplicates blocked
+
+- **Context:** The migration brought 607 contacts and 525 companies with some existing duplicates already in the data. Cleaning all existing duplicates retroactively is risky and time-consuming.
+- **Decision:** **Allow existing duplicates to remain.** Only **new** duplicates are blocked. Dedup keys: Contact = professional email → else cleaned LinkedIn URL → else phone. Company = cleaned website domain → else CIN (caveat: one company can have multiple CINs). On a match: surface the existing record (with its per-project owner) and block the new create.
+- **Why:** Retroactive dedup can destroy valid data. The more important goal is stopping new junk from entering. The business can clean up historical duplicates manually over time.
+- **Alternatives considered:** Full retroactive dedup on migration (rejected — risky, time-consuming, owner didn't request it). No dedup at all (rejected — data quality would degrade quickly).
+- **Status:** Accepted.
+
+---
+
+## ADR-14 — Email via Gmail SMTP, not a third-party provider
+
+- **Context:** Meeting assignment, approval, and lead notifications need outbound email. Options explored included Resend, SendGrid, and the owner's own SMTP.
+- **Decision:** Use **Gmail SMTP** (from `amplior.ankits@gmail.com`) running on the same Hostinger Node server as the app. No third-party email service.
+- **Why:** Free, already available, no API keys to manage, no monthly email limit to worry about at current volumes. Verified working: real email delivered on the first smoke test.
+- **Alternatives considered:** Resend (free 3k/mo, then paid; rejected — unnecessary cost and another API key to manage). SendGrid (rejected — same). Self-hosted SMTP (rejected — maintenance burden).
+- **Status:** Accepted. DONE — verified working in production.
+
+---
+
+## ADR-15 — Admin user management via a service-role backend endpoint, not direct Supabase client calls
+
+- **Context:** Creating a new Supabase Auth user, or resetting a user's password, requires the Supabase **service-role key** (which has full admin access). This key must never be exposed to the browser.
+- **Decision:** Implement `POST /api/users/create` and `POST /api/users/reset-password` as **server-side endpoints** in the combined Node app, using the `@supabase/supabase-js` client with the service-role key. The browser sends the request to these endpoints (which check that the caller is ADMIN), and the server does the Supabase auth operation.
+- **Why:** The service-role key cannot safely be exposed to the browser (it bypasses all RLS). The server is the right place to hold it and act on it. This is the same pattern Supabase recommends for admin operations.
+- **Alternatives considered:** Use the Supabase Management API directly from the browser (rejected — exposes the service-role key). Build a separate admin microservice (rejected — unnecessary; the existing Node server is the right place).
+- **Status:** Accepted. DONE — verified end-to-end locally; needs env vars set on Hostinger for production.
+
+---
+
+## ADR-16 — Hide legacy plaintext password column instead of dropping it
+
+- **Context:** `user_master.password` holds plaintext passwords from the old system. The Supabase security advisor flagged it as a sensitive-column exposure risk. Options: DROP the column (destroys the data), or HIDE it from the API.
+- **Decision:** **HIDE** the column via Postgres column-level grants: REVOKE SELECT/INSERT/UPDATE on `user_master.password` (and `user_master_audit.password`) from both `anon` and `authenticated` roles. The data is kept intact but not queryable from the app or the API.
+- **Why:** Dropping a column in production is a one-way, potentially risky operation. Hiding it via grants is reversible if the data is ever needed for reference (e.g. validating a migration). The app never used the column for login anyway (Supabase Auth handles all logins).
+- **Alternatives considered:** DROP the column (rejected — irreversible; data may be useful for forensics). Leave it as-is (rejected — security advisor correctly flags it as a risk).
+- **Status:** Accepted. DONE. Script: `new-code/migration/hide-password-column.js`.
+
+---
+
+## ADR-17 — Per-project status model with three layers (call disposition / contact status / account status)
+
+- **Context:** The old system had a single status per lead. The business actually needs to track status at three levels simultaneously, all varying by project.
+- **Decision:** Three independent status layers, all **per-project**: (1) **Call Disposition** — logged per call, kept in full history in the `interaction` table; (2) **Contact Status** — one current status per contact per project (`contact_project_status`); (3) **Account Status** — one current status per company per project (`company_project_status`). Full history retained for all three. Visible and editable by owner + admin only.
+- **Why:** A contact's status on Project A (e.g. "Not Interested") should not affect their status on Project B (e.g. "Warm Lead"). The same applies at the company level. Separating call logs from status keeps the audit trail clean.
+- **Alternatives considered:** Single global status per contact/company (rejected — doesn't model how the business actually works across multiple projects). No history (rejected — owner needs to see how status changed over time).
+- **Status:** Accepted. DB tables created. UI in progress.
+
+---
+
+## ADR-18 — Admin-editable dropdown option lists in the database
+
+- **Context:** Every dropdown in the app (contact status, account status, call disposition, decision power, feasibility, etc.) would previously require a developer to change the options. The owner needs to manage these himself.
+- **Decision:** All dropdown option lists are stored in a `dropdown_option` table and managed via the Admin panel. Admins can add, edit, or reorder options for any dropdown without a code change or deployment. Starter values are seeded at migration time.
+- **Why:** Removes developer dependency for routine data-management tasks. Aligns with the core goal of giving the owner full self-service control.
+- **Alternatives considered:** Hard-code the dropdown values in the app code (rejected — requires a developer and deployment for every change). Separate lookup tables per dropdown (rejected — harder to manage generically in the Admin panel).
+- **Status:** Accepted. `dropdown_option` table seeded. Admin UI management screen planned (Wave B).
+
+---
+
+## ADR-19 — Contact-company linking via email-domain sync (not a manual migration)
+
+- **Context:** When the Companies and Contacts modules were built, only 130 of 607 contacts had a `company_id` set. The rest had no company link even though the contact's email domain often matched a company in `company_master`.
+- **Decision:** Run a **one-time email-domain sync** script: clean each contact's email domain, match it to `company_master.domain_clean`, and set `contact.company_id` where there is a match. **286 additional contacts linked** (417/608 now have a company). The sync was a dry-run first, then applied. Going forward, dedup rules handle new records.
+- **Why:** Manual linking would take hundreds of hours. Email domain is a reliable proxy for company membership for professional contacts. The dry-run-then-apply pattern ensures no accidental changes.
+- **Alternatives considered:** Leave contacts unlinked (rejected — 78% of contacts would have no company, making the module useless). Full manual review (rejected — 607 records, not scalable).
+- **Status:** Accepted. DONE. Script: `new-code/migration/backfill-apply.js`. Note: 159 contacts have work-email domains not in the 525-company list — candidates to auto-create companies later.
+
+---
+
+## ADR-20 — New clean GitHub repo (AltLeads-CRM) with fresh history
+
+- **Context:** The original repo had years of vendor history including large binary files (design files, old code), committed secrets, and mobile assets we don't need for the web app.
+- **Decision:** Create a **new, clean GitHub repo** (`AltLeads-CRM`) with fresh git history. Old vendor code, Figma/design files, large binaries, and secrets are excluded from the new repo. The Hostinger git auto-deploy is wired to this new repo.
+- **Why:** A clean repo is easier to reason about, faster to clone, and doesn't carry committed secrets. The old history is archived in `old-code/` locally if ever needed for reference.
+- **Alternatives considered:** Push new code onto the old repo with git history intact (rejected — drags along secrets and large files that are hard to fully remove from git history).
+- **Status:** Accepted. DONE.
+
+---
+
 ## Quick index
 
 | ADR | Decision | Status |
@@ -128,9 +228,19 @@ The numbering (ADR-01, ADR-02 …) is just an index; it is not a priority order.
 | ADR-02 | Supabase Auth over homemade JWT | Accepted |
 | ADR-03 | React + Vite + TypeScript web app | Accepted |
 | ADR-04 | TanStack Table over paid AG Grid | Accepted |
-| ADR-05 | Netlify + GitHub; auto-deploy OFF after first | Accepted |
+| ADR-05 | Hostinger (combined Node app) over Netlify | Accepted / Done |
 | ADR-06 | Migrate real data via DB fork; don't touch prod | Accepted |
 | ADR-07 | Keep old system running in parallel until cutover | Accepted |
 | ADR-08 | Repair the existing React Native app, not rebuild | Accepted |
 | ADR-09 | Ownership = `created_by`, company = `client_association` | Accepted |
 | ADR-10 | Orchestrator + cheap sub-agents working model | Accepted |
+| ADR-11 | Two-app split: web = internal team, mobile = client sales | Accepted |
+| ADR-12 | First rebuild scope = FRS parity + CR Layer 1; Layer 2 deferred | Accepted |
+| ADR-13 | Existing dupes allowed; only new dupes blocked | Accepted |
+| ADR-14 | Email via Gmail SMTP on same server | Accepted / Done |
+| ADR-15 | Admin user management via service-role backend endpoint | Accepted / Done |
+| ADR-16 | Hide legacy password column (not drop) | Accepted / Done |
+| ADR-17 | Per-project three-layer status model | Accepted |
+| ADR-18 | Admin-editable dropdown option lists in DB | Accepted |
+| ADR-19 | Contact-company linking via email-domain sync | Accepted / Done |
+| ADR-20 | New clean GitHub repo (AltLeads-CRM) | Accepted / Done |

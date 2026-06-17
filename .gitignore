@@ -60,3 +60,6 @@ insert_dev_user.sql
 populate_sample_data.sql
 amplior_backup.sql
 test_db_connection.js
+
+# Local MCP config (contains API token)
+.mcp.json

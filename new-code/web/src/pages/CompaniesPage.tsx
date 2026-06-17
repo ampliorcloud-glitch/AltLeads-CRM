@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   useReactTable,
@@ -10,12 +10,19 @@ import {
   type SortingState,
   type PaginationState,
 } from '@tanstack/react-table';
-import * as XLSX from 'xlsx';
 import { AppShell } from '../components/layout/AppShell';
 import { fetchCompanies, type Company } from '../data/companies';
+import { useAuth } from '../contexts/AuthContext';
+import { supabase } from '../lib/supabase';
+import { useRowSelection } from '../components/ui/useRowSelection';
+import { ExportButton } from '../components/ui/ExportButton';
+import { ColumnCustomizer, defaultColumnPrefs, reconcileColumns } from '../components/ui/ColumnCustomizer';
+import { StatusBadge } from '../components/ui/StatusBadge';
+import { ProjectSelect } from '../components/ui/ProjectSelect';
+import type { ColumnDef as ColDef, ExportColumn } from '../components/ui/columns';
+import type { ColumnPref } from '../data/views';
 import {
   Search,
-  Download,
   ChevronUp,
   ChevronDown,
   ChevronsUpDown,
@@ -24,6 +31,8 @@ import {
   Loader2,
   Plus,
 } from 'lucide-react';
+
+// TODO visibility: per-project status/notes are owner + admin only (security pass).
 
 const columnHelper = createColumnHelper<Company>();
 
@@ -157,8 +166,76 @@ function fullUrl(webUrl: string): string {
   return /^https?:\/\//.test(webUrl) ? webUrl : `https://${webUrl}`;
 }
 
+/* ------------------------------------------------------------------
+   Lightweight company status shape for the list (batch-fetched per page).
+------------------------------------------------------------------ */
+interface CompanyStatusLite {
+  account_status: string | null;
+}
+
+/** Batch-fetch account statuses for an array of company_ids within one project. */
+async function fetchCompanyStatuses(
+  projectId: number,
+  companyIds: number[],
+): Promise<Record<number, CompanyStatusLite>> {
+  const out: Record<number, CompanyStatusLite> = {};
+  if (!projectId || companyIds.length === 0) return out;
+  const CHUNK = 200;
+  for (let i = 0; i < companyIds.length; i += CHUNK) {
+    const slice = companyIds.slice(i, i + CHUNK);
+    const { data, error } = await supabase
+      .from('company_project_status')
+      .select('company_id, account_status')
+      .eq('project_id', projectId)
+      .in('company_id', slice);
+    if (error) {
+      console.error('[CompaniesPage] fetchCompanyStatuses error', error);
+      continue;
+    }
+    for (const row of (data ?? []) as { company_id: number; account_status: string | null }[]) {
+      out[row.company_id] = { account_status: row.account_status ?? null };
+    }
+  }
+  return out;
+}
+
+/* ------------------------------------------------------------------
+   Column catalogue — drives ColumnCustomizer + ExportButton.
+   Keys must be stable; they are persisted in user_view_pref.
+------------------------------------------------------------------ */
+// ColDef used without a Row generic here — only key/header/defaultVisible are needed.
+const ALL_COLUMNS: ColDef[] = [
+  { key: 'name',          header: 'Company',        defaultVisible: true },
+  { key: 'domainClean',   header: 'Domain',          defaultVisible: true },
+  { key: 'industry',      header: 'Industry',        defaultVisible: true },
+  { key: 'city',          header: 'City',            defaultVisible: true },
+  { key: 'cin',           header: 'CIN',             defaultVisible: true },
+  { key: 'owner',         header: 'Owner',           defaultVisible: true },
+  { key: 'accountStatus', header: 'Account Status',  defaultVisible: true },
+];
+
+type ExportRow = Company & { accountStatus: string | null };
+
+const EXPORT_COLUMNS: ExportColumn<ExportRow>[] = [
+  { key: 'name',          header: 'Company' },
+  { key: 'domainClean',   header: 'Domain' },
+  { key: 'webUrl',        header: 'Website' },
+  { key: 'industry',      header: 'Industry' },
+  { key: 'city',          header: 'City' },
+  { key: 'cin',           header: 'CIN' },
+  { key: 'size',          header: 'Size',           accessor: (r) => r.size ?? '' },
+  { key: 'email',         header: 'Email' },
+  { key: 'linkedin',      header: 'LinkedIn' },
+  { key: 'owner',         header: 'Owner' },
+  { key: 'accountStatus', header: 'Account Status', accessor: (r) => r.accountStatus ?? '' },
+  { key: 'isDemo',        header: 'Demo',           accessor: (r) => (r.isDemo ? 'Yes' : 'No') },
+];
+
 export function CompaniesPage() {
   const navigate = useNavigate();
+  const { profile } = useAuth();
+  const userId = profile?.user_id ?? null;
+
   const [filters, setFilters] = useState<Filters>(defaultFilters);
   const [sorting, setSorting] = useState<SortingState>([]);
   const [pagination, setPagination] = useState<PaginationState>({ pageIndex: 0, pageSize: 25 });
@@ -169,6 +246,20 @@ export function CompaniesPage() {
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
 
+  // Project selection (defaults to first project via ProjectSelect).
+  const [projectId, setProjectId] = useState<number | null>(null);
+
+  // Per-project statuses keyed by numeric company_id.
+  const [statusMap, setStatusMap] = useState<Record<number, CompanyStatusLite>>({});
+  const [statusLoading, setStatusLoading] = useState(false);
+
+  // Column prefs driven by ColumnCustomizer.
+  const [columnPrefs, setColumnPrefs] = useState<ColumnPref[]>(() => defaultColumnPrefs(ALL_COLUMNS));
+
+  // Row selection.
+  const sel = useRowSelection<string>();
+
+  /* ---- load companies ---- */
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
@@ -186,6 +277,7 @@ export function CompaniesPage() {
   const setFilter = <K extends keyof Filters>(key: K, value: Filters[K]) => {
     setFilters((prev) => ({ ...prev, [key]: value }));
     setPagination((p) => ({ ...p, pageIndex: 0 }));
+    sel.clear();
   };
 
   const hasActiveFilters = Object.values(filters).some((v) => v !== '');
@@ -205,9 +297,104 @@ export function CompaniesPage() {
     });
   }, [filters, allCompanies]);
 
-  const columns = useMemo(
-    () => [
+  /* ---- augmented rows with accountStatus for export ---- */
+  const exportRows = useMemo(
+    () => filteredData.map((c) => ({
+      ...c,
+      accountStatus: statusMap[Number(c.id)]?.account_status ?? null,
+    })),
+    [filteredData, statusMap],
+  );
+
+  /* ---- batch-load statuses for the CURRENT PAGE rows when project changes ---- */
+  const pageCompanyIds = useMemo(() => {
+    // We compute this after the table is built; for now derive from filteredData + pagination.
+    const start = pagination.pageIndex * pagination.pageSize;
+    const end = start + pagination.pageSize;
+    return filteredData.slice(start, end).map((c) => Number(c.id));
+  }, [filteredData, pagination.pageIndex, pagination.pageSize]);
+
+  const loadStatuses = useCallback(async (pid: number, ids: number[]) => {
+    if (!pid || ids.length === 0) return;
+    setStatusLoading(true);
+    const result = await fetchCompanyStatuses(pid, ids);
+    setStatusMap((prev) => ({ ...prev, ...result }));
+    setStatusLoading(false);
+  }, []);
+
+  useEffect(() => {
+    if (projectId == null) return;
+    // Load statuses for ids not yet in the map.
+    const missing = pageCompanyIds.filter((id) => !(id in statusMap));
+    if (missing.length > 0) {
+      loadStatuses(projectId, missing);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [projectId, pageCompanyIds]);
+
+  // When project changes, clear the cache and reload for current page.
+  useEffect(() => {
+    if (projectId == null) return;
+    setStatusMap({});
+    loadStatuses(projectId, pageCompanyIds);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [projectId]);
+
+  /* ---- visible column keys (from prefs) ---- */
+  const visibleKeys = useMemo(
+    () => new Set(columnPrefs.filter((p) => p.visible).map((p) => p.key)),
+    [columnPrefs],
+  );
+
+  /* ---- export columns: never leak a column the user has hidden in the
+     customizer. Keys present in the column catalogue must be visible to be
+     exported; export-only extras (Website/Email/LinkedIn/Size/Demo) that are
+     not customizer-controlled are always included. ---- */
+  const customizerKeys = useMemo(() => new Set(ALL_COLUMNS.map((c) => c.key)), []);
+  const activeExportColumns = useMemo<ExportColumn<ExportRow>[]>(
+    () =>
+      EXPORT_COLUMNS.filter(
+        (c) => !customizerKeys.has(c.key) || visibleKeys.has(c.key),
+      ),
+    [visibleKeys, customizerKeys],
+  );
+
+  /* ---- TanStack columns (filtered by prefs) ---- */
+  const columns = useMemo(() => {
+    const all = [
+      // Checkbox column — always first, not managed by prefs.
+      columnHelper.display({
+        id: '__select',
+        header: ({ table: t }) => {
+          const pageRows = t.getRowModel().rows;
+          const pageIds = pageRows.map((r) => r.original.id);
+          const allSel = sel.allSelected(pageIds);
+          return (
+            <input
+              type="checkbox"
+              aria-label="Select all on page"
+              checked={allSel}
+              onChange={() => sel.toggleAll(pageIds)}
+              style={{ cursor: 'pointer' }}
+              onClick={(e) => e.stopPropagation()}
+            />
+          );
+        },
+        cell: ({ row }) => (
+          <input
+            type="checkbox"
+            aria-label="Select row"
+            checked={sel.isSelected(row.original.id)}
+            onChange={() => sel.toggle(row.original.id)}
+            style={{ cursor: 'pointer' }}
+            onClick={(e) => e.stopPropagation()}
+          />
+        ),
+        size: 40,
+        enableSorting: false,
+      }),
       columnHelper.accessor('name', {
+        id: 'name',
         header: 'Company',
         cell: (info) => {
           const name = info.getValue() ?? '';
@@ -231,6 +418,7 @@ export function CompaniesPage() {
         },
       }),
       columnHelper.accessor('domainClean', {
+        id: 'domainClean',
         header: 'Domain',
         cell: (info) => {
           const domain = info.getValue() ?? '';
@@ -251,6 +439,7 @@ export function CompaniesPage() {
         },
       }),
       columnHelper.accessor('industry', {
+        id: 'industry',
         header: 'Industry',
         cell: (info) => (
           <span className="text-zinc-600" style={{ fontSize: 13 }}>
@@ -259,6 +448,7 @@ export function CompaniesPage() {
         ),
       }),
       columnHelper.accessor('city', {
+        id: 'city',
         header: 'City',
         cell: (info) => (
           <span className="text-zinc-600" style={{ fontSize: 13 }}>
@@ -267,6 +457,7 @@ export function CompaniesPage() {
         ),
       }),
       columnHelper.accessor('cin', {
+        id: 'cin',
         header: 'CIN',
         cell: (info) => (
           <span className="text-zinc-500 font-mono" style={{ fontSize: 12 }}>
@@ -275,15 +466,38 @@ export function CompaniesPage() {
         ),
       }),
       columnHelper.accessor('owner', {
+        id: 'owner',
         header: 'Owner',
         // Owner is always "Unassigned" for now. // TODO ownership
         cell: (info) => (
           <span className="text-zinc-400" style={{ fontSize: 13 }}>{info.getValue()}</span>
         ),
       }),
-    ],
-    []
-  );
+      // Account Status — per-project, batch-loaded for current page.
+      columnHelper.display({
+        id: 'accountStatus',
+        header: 'Account Status',
+        enableSorting: false,
+        cell: ({ row }) => {
+          const numId = Number(row.original.id);
+          if (projectId == null) return <span className="text-zinc-300" style={{ fontSize: 12 }}>—</span>;
+          if (statusLoading && !(numId in statusMap)) {
+            return <Loader2 size={12} className="animate-spin text-zinc-300" />;
+          }
+          const status = statusMap[numId]?.account_status ?? null;
+          return <StatusBadge value={status} category="account_status" />;
+        },
+      }),
+    ];
+
+    // Filter out columns that are hidden via prefs (keep __select always).
+    return all.filter((col) => {
+      const id = col.id ?? ('accessorKey' in col ? String(col.accessorKey) : '');
+      if (id === '__select') return true;
+      return visibleKeys.has(id);
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [visibleKeys, statusMap, statusLoading, projectId, sel]);
 
   const table = useReactTable({
     data: filteredData,
@@ -295,26 +509,6 @@ export function CompaniesPage() {
     getSortedRowModel: getSortedRowModel(),
     getPaginationRowModel: getPaginationRowModel(),
   });
-
-  const handleExport = () => {
-    const rows = filteredData.map((c) => ({
-      Company: c.name,
-      Domain: c.domainClean,
-      Website: c.webUrl,
-      Industry: c.industry,
-      City: c.city,
-      CIN: c.cin,
-      Size: c.size ?? '',
-      Email: c.email,
-      LinkedIn: c.linkedin,
-      Owner: c.owner, // Unassigned // TODO ownership
-      Demo: c.isDemo ? 'Yes' : 'No',
-    }));
-    const ws = XLSX.utils.json_to_sheet(rows);
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, 'Companies');
-    XLSX.writeFile(wb, 'amplior-crm-companies.xlsx');
-  };
 
   const totalRows = filteredData.length;
   const pageIndex = table.getState().pagination.pageIndex;
@@ -356,6 +550,12 @@ export function CompaniesPage() {
               onChange={(v) => setFilter('city', v)}
               options={cities}
             />
+
+            {/* Project selector for per-project Account Status column */}
+            <div className="flex flex-col gap-1">
+              <label className="font-medium text-zinc-500" style={{ fontSize: 11 }}>Project</label>
+              <ProjectSelect value={projectId} onChange={setProjectId} />
+            </div>
           </div>
         </div>
 
@@ -371,11 +571,18 @@ export function CompaniesPage() {
               <span className="text-red-500">{loadError}</span>
             ) : (
               <>
+                {sel.count > 0 && (
+                  <span className="font-medium text-zinc-700 mr-3">{sel.count} selected</span>
+                )}
                 <span className="font-medium text-zinc-700">{filteredData.length}</span> of{' '}
                 <span className="font-medium text-zinc-700">{allCompanies.length}</span> companies
                 {hasActiveFilters && (
                   <button
-                    onClick={() => { setFilters(defaultFilters); setPagination((p) => ({ ...p, pageIndex: 0 })); }}
+                    onClick={() => {
+                      setFilters(defaultFilters);
+                      setPagination((p) => ({ ...p, pageIndex: 0 }));
+                      sel.clear();
+                    }}
                     className="ml-3 text-zinc-400 hover:text-zinc-700 transition-colors"
                     style={{ fontSize: 12 }}
                   >
@@ -386,29 +593,25 @@ export function CompaniesPage() {
             )}
           </p>
           <div className="flex items-center gap-2">
-            <button
-              onClick={handleExport}
+            {/* Column customizer */}
+            <ColumnCustomizer
+              entity="companies"
+              userId={userId}
+              allColumns={ALL_COLUMNS}
+              value={columnPrefs}
+              onChange={(next) => setColumnPrefs(reconcileColumns(next, ALL_COLUMNS))}
+            />
+
+            {/* Export button — replaces old single Excel button */}
+            <ExportButton
+              rows={exportRows as unknown as Record<string, unknown>[]}
+              columns={activeExportColumns as unknown as ExportColumn<Record<string, unknown>>[]}
+              filename="amplior-crm-companies"
+              selectedIds={sel.selectedIds}
+              idKey="id"
               disabled={loading || filteredData.length === 0}
-              style={{
-                display: 'flex', alignItems: 'center', gap: 6,
-                border: '1px solid var(--border-input)',
-                background: 'var(--color-surface)',
-                color: 'var(--color-gray-700)',
-                fontWeight: 500,
-                borderRadius: 'var(--radius-btn)',
-                fontSize: 12,
-                padding: '5px 12px',
-                height: 30,
-                cursor: 'pointer',
-                transition: 'border-color 0.15s',
-                opacity: (loading || filteredData.length === 0) ? 0.4 : 1,
-              }}
-              onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.borderColor = 'var(--color-brand)'; }}
-              onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.borderColor = 'var(--border-input)'; }}
-            >
-              <Download size={13} strokeWidth={1.75} />
-              Export to Excel
-            </button>
+            />
+
             <button
               onClick={() => navigate('/companies/new')}
               style={{
@@ -444,7 +647,7 @@ export function CompaniesPage() {
                       <th
                         key={header.id}
                         style={{
-                          padding: '11px 16px',
+                          padding: header.id === '__select' ? '11px 8px 11px 16px' : '11px 16px',
                           textAlign: 'left',
                           fontWeight: 500,
                           fontSize: 12,
@@ -452,6 +655,7 @@ export function CompaniesPage() {
                           whiteSpace: 'nowrap',
                           userSelect: 'none',
                           cursor: header.column.getCanSort() ? 'pointer' : 'default',
+                          width: header.id === '__select' ? 40 : undefined,
                         }}
                         onClick={header.column.getToggleSortingHandler()}
                       >
@@ -487,26 +691,40 @@ export function CompaniesPage() {
                     </td>
                   </tr>
                 ) : (
-                  table.getRowModel().rows.map((row) => (
-                    <tr
-                      key={row.id}
-                      onClick={() => navigate(`/companies/${row.original.id}`)}
-                      style={{
-                        borderBottom: '1px solid var(--color-gray-100)',
-                        height: 44,
-                        cursor: 'pointer',
-                        transition: 'background 0.1s',
-                      }}
-                      onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = 'var(--color-gray-50)'; }}
-                      onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = ''; }}
-                    >
-                      {row.getVisibleCells().map((cell) => (
-                        <td key={cell.id} className="px-4 align-middle whitespace-nowrap">
-                          {flexRender(cell.column.columnDef.cell, cell.getContext())}
-                        </td>
-                      ))}
-                    </tr>
-                  ))
+                  table.getRowModel().rows.map((row) => {
+                    const isSelected = sel.isSelected(row.original.id);
+                    return (
+                      <tr
+                        key={row.id}
+                        onClick={() => navigate(`/companies/${row.original.id}`)}
+                        style={{
+                          borderBottom: '1px solid var(--color-gray-100)',
+                          height: 44,
+                          cursor: 'pointer',
+                          transition: 'background 0.1s',
+                          background: isSelected ? 'var(--color-brand-50, #EBF4FD)' : undefined,
+                        }}
+                        onMouseEnter={(e) => {
+                          if (!isSelected) (e.currentTarget as HTMLElement).style.background = 'var(--color-gray-50)';
+                        }}
+                        onMouseLeave={(e) => {
+                          (e.currentTarget as HTMLElement).style.background = isSelected ? 'var(--color-brand-50, #EBF4FD)' : '';
+                        }}
+                      >
+                        {row.getVisibleCells().map((cell) => (
+                          <td
+                            key={cell.id}
+                            className="align-middle whitespace-nowrap"
+                            style={{
+                              padding: cell.column.id === '__select' ? '0 8px 0 16px' : '0 16px',
+                            }}
+                          >
+                            {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                          </td>
+                        ))}
+                      </tr>
+                    );
+                  })
                 )}
               </tbody>
             </table>

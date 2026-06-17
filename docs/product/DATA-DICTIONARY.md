@@ -2,13 +2,13 @@
 
 *Purpose: a plain-language guide to the Amplior CRM database (Supabase / Postgres) — what each table holds, what its important columns mean, and how the tables connect. Written so a non-technical owner can read it, with small technical notes where they help.*
 
-*Last updated 2026-06-13*
+*Last updated 2026-06-17*
 
 ---
 
 ## How to read this
 
-- The database has **71 tables** holding about **108,000 rows** of real, migrated production data.
+- The database has **75+ tables** holding about **108,000 rows** of real, migrated production data. New tables added during the rebuild are documented at the end of each relevant section.
 - Tables are grouped by **domain** (Leads, Meetings, Wishlist, etc.) so related things sit together.
 - For each important table you get: a **one-line purpose**, its **key columns** in plain words, and **how it links** to other tables.
 - A **"table" is like a spreadsheet tab**; a **"column" is a spreadsheet column**; a **"row" is one record** (one lead, one meeting, one person).
@@ -56,9 +56,10 @@ The heart of the CRM. A **lead** is a person at a prospective client who Amplior
 | `project_id` | The project/campaign the lead was sourced under. Links to `project`. |
 | `source_id` | Where the lead came from (Email, LinkedIn, Reference, Wishlist…). Links to `source_master`. |
 | `address_id` | The lead's location/address. Links to `address_master`. |
+| `contact_id` | **(New — added during rebuild)** Links to `contact_master` — the contact record for this lead. Set when the agent picks an existing contact from the search dropdown on the Lead form. |
 | `lead_designation_id`, `location_id` | Links to a designation lookup and a map location. |
 
-*Links to:* `client_association` (the client/account), `project`, `source_master`, `address_master`, `lead_designation`, `location`, and (in name only) `company_master`.
+*Links to:* `client_association` (the client/account), `project`, `source_master`, `address_master`, `lead_designation`, `location`, `contact_master` (new), and (in name only) `company_master`.
 
 ### `lead_report` — the working "report card" for each lead (≈594 rows)
 *Purpose:* the live sales status of a lead — its **real current stage**, approval state, and the salesperson handling it. There is roughly one report per lead.
@@ -193,13 +194,114 @@ This area is **the most confusing part of the database** — please read the Got
 *Purpose:* maps users to clients (e.g. which salespeople work on AP Securitas). Links `user_master` ↔ `client_association`.
 
 ### `company_master` — a broad company directory (≈525 rows)
-*Purpose:* a directory of companies with size, industry, sector, turnover, logo, etc. **Largely NOT used as the lead's company** — most leads don't fill `company_id`. Treat this as reference data, not the live account link. *Links to:* `city_master`, `industry_master`, `sub_industry_master`, `company_sector`, `turnover_master`.
+*Purpose:* a directory of companies with size, industry, sector, turnover, logo, etc. **Largely NOT used as the lead's company** — most leads don't fill `company_id`. Treat this as reference data and the Companies module directory. The **new Companies module** uses this table directly. *Links to:* `city_master`, `industry_master`, `sub_industry_master`, `company_sector`, `turnover_master`.
+
+**Columns added during rebuild:**
+- `domain_clean` — the normalised website domain used for company dedup (e.g. `"tata.com"` from `"https://www.tata.com/careers"`). Set for all 525 companies.
+- `is_demo` — whether this is a test/demo record (excluded from dedup checks).
 
 ### `company_sector` — sector labels for companies (5 rows)
 *Purpose:* a small lookup of business sectors. Referenced by `company_master.sector_id`.
 
 ### `address_master` — addresses for leads, companies, wishlist (≈570 rows)
 *Purpose:* shared address book — street lines, pincode, city, and GPS coordinates. Used by leads, clients, companies, and wishlist entries. The `is_lead` / `is_wishlist` flags note what kind of thing the address is for. *Links to:* `city_master`, `company_master`.
+
+---
+
+## 4b. New Tables — Companies, Contacts & Per-Project Status (added during rebuild)
+
+These tables were added as part of the CR Layer 2 / Companies + Contacts feature build. DDL in `new-code/migration/companies-contacts.sql` and `new-code/migration/feature-status-schema.sql`.
+
+### `contact_master` — unified contact directory (≈607 rows)
+*Purpose:* one row per contact person, migrated from the old `lead_master` records and de-duplicated. Powers the Contacts module.
+
+| Key column | Plain meaning |
+|---|---|
+| `contact_id` | Unique number for the contact. |
+| `full_name` | Their name. |
+| `email`, `mobile`, `phone` | Contact details (email is the primary dedup key). |
+| `linkedin_url`, `linkedin_clean` | Their LinkedIn profile. `linkedin_clean` is the normalised URL used for dedup. |
+| `designation`, `title` | Their job title. |
+| `company_id` | Which company they work at. Links to `company_master`. 417/607 are now set (via email-domain sync). |
+| `city_id`, `state_id` | Where they are based. |
+| `is_demo` | Whether this is a test/demo record (excluded from dedup checks and real reports). |
+
+*Links to:* `company_master`, `city_master`, `state_master`. *Referenced by:* `lead_master.contact_id`, `contact_project_status`.
+
+### `interaction` — call/contact activity log (new)
+*Purpose:* the activity log for the Contacts module — every call, note, or disposition logged against a contact. Powers the call-disposition panel in Contact detail and the per-contact activity timeline.
+
+| Key column | Plain meaning |
+|---|---|
+| `interaction_id` | Unique number. |
+| `contact_id` | Which contact. Links to `contact_master`. |
+| `project_id` | Which project context this interaction belongs to. Links to `project`. |
+| `disposition` | The call outcome (e.g. "Connected", "No Answer", "Call Back") — chosen from `dropdown_option`. |
+| `notes` | Free-text notes about the call or contact. |
+| `created_by`, `created_date` | Who logged it and when. |
+
+*Links to:* `contact_master`, `project`. RLS enabled.
+
+### `contact_project_status` — per-project contact status (new)
+*Purpose:* one row per (contact × project) combination, recording the contact's current status, description, and comments for that specific project. Enforces the rule that a contact can have a different status on each project they are involved in.
+
+| Key column | Plain meaning |
+|---|---|
+| `contact_id` | Which contact. Links to `contact_master`. |
+| `project_id` | Which project. Links to `project`. |
+| `status` | Current contact status for this project (value from `dropdown_option` where `type = 'contact_status'`). |
+| `description` | Per-project description/notes for this contact. |
+| `comments` | Per-project comments. |
+| `updated_by`, `updated_date` | Last changed by whom and when. |
+
+*Unique constraint:* one row per (contact_id, project_id). RLS enabled.
+
+### `company_project_status` — per-project account/company status (new)
+*Purpose:* one row per (company × project) combination, recording account-level information specific to that project.
+
+| Key column | Plain meaning |
+|---|---|
+| `company_id` | Which company. Links to `company_master`. |
+| `project_id` | Which project. Links to `project`. |
+| `account_status` | Current account status (value from `dropdown_option` where `type = 'account_status'`). |
+| `is_feasible` | Feasibility for this project (value from `dropdown_option` where `type = 'feasibility'`). |
+| `decision_power` | Who makes decisions at this account for this project — Centralised / Regional-site-wise / Hybrid (value from `dropdown_option` where `type = 'decision_power'`). |
+| `description` | Per-project description. |
+| `comments` | Per-project comments. |
+| `updated_by`, `updated_date` | Last changed. |
+
+*Unique constraint:* one row per (company_id, project_id). RLS enabled.
+
+### `dropdown_option` — admin-editable pick-lists (new)
+*Purpose:* stores all the options for every dropdown in the app. Admins can add, edit, or reorder options from the Admin panel without a code change.
+
+| Key column | Plain meaning |
+|---|---|
+| `option_id` | Unique number. |
+| `type` | Which dropdown this option belongs to. Values: `contact_status`, `call_disposition`, `account_status`, `decision_power`, `feasibility` (and any others added later). |
+| `label` | The display text shown in the dropdown. |
+| `sort_order` | Display order. |
+| `is_active` | Whether this option is currently available to users. |
+
+**Seeded starter values:**
+- `contact_status`: Active, Interested, Not Interested, Follow Up, Do Not Call, Converted
+- `call_disposition`: Connected, Not Connected, No Answer, Busy, Wrong Number, Call Back, Voicemail, Disconnected
+- `account_status`: Active, Warm, Hot, Cold, Not Interested, Closed Won, Closed Lost
+- `decision_power`: Centralised, Regional-site-wise, Hybrid
+- `feasibility`: High, Medium, Low
+
+### `user_view_pref` — per-user column layout preferences (new)
+*Purpose:* stores each user's saved column layout (which columns to show, in what order) for each list view in the app. Allows users to customise their view and save it without affecting other users.
+
+| Key column | Plain meaning |
+|---|---|
+| `pref_id` | Unique number. |
+| `user_id` | Which user. Links to `user_master`. |
+| `view_name` | Which list view (e.g. `contacts`, `leads`, `meetings`). |
+| `columns` | JSON array of column keys in the user's preferred order. |
+| `updated_date` | When last saved. |
+
+*Note:* Resetting to default keeps the old saved row intact — the UI simply stops applying it. Users can restore their custom view at any time.
 
 ---
 
@@ -345,7 +447,7 @@ These are confirmed against the live data. Getting any of these wrong leads to b
 5. **`created_by` / `updated_by` are user IDs stored as TEXT, not names.**
    To show a person's name, look the number up in `user_master.user_id`. (They're text columns for legacy reasons, but the value is the numeric user ID.)
 
-6. **`user_master.password` is dead.** It held plaintext passwords in the old system. The new system uses Supabase Auth (`profiles` → `auth.users`). Ignore this column; it must not be used for login.
+6. **`user_master.password` is dead AND hidden.** It held plaintext passwords in the old system. The new system uses Supabase Auth (`profiles` → `auth.users`). The column has been **hidden from the API** via a Postgres column-level grant (REVOKE SELECT/INSERT/UPDATE from `anon` and `authenticated`). The data exists in the DB but cannot be read via any API call. Never use this column for login or display.
 
 7. **`meeting_master_audit` is huge (~85k rows, >75% of the database).** It's just change history. Never load it into a normal screen; query it only for audit/history needs.
 

@@ -17,6 +17,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { useNavigate } from 'react-router-dom';
 import { Logo } from '../ui/Logo';
 import { fetchPendingCount } from '../../data/approvals';
+import { fetchUnreadNotifCount } from '../../data/account';
 
 type NavItem = {
   to: string;
@@ -48,8 +49,9 @@ export function Sidebar() {
   const isAdmin = profile?.role === 'ADMIN';
   const isApprover = profile?.role === 'ADMIN' || profile?.role === 'TEAM_LEAD';
   const [pendingCount, setPendingCount] = useState(0);
+  const [unreadNotifCount, setUnreadNotifCount] = useState(0);
 
-  // Fetch pending count for the badge (non-blocking, best-effort)
+  // Fetch pending approvals count for the Approvals badge (non-blocking, best-effort)
   useEffect(() => {
     if (!isApprover) return;
     let cancelled = false;
@@ -60,6 +62,19 @@ export function Sidebar() {
     }, 60_000);
     return () => { cancelled = true; clearInterval(id); };
   }, [isApprover]);
+
+  // Fetch unread notification count for the Bell badge (non-blocking, best-effort)
+  // Polls every 60 s — same lightweight pattern as the Approvals pending-count badge above.
+  useEffect(() => {
+    const userId = profile?.user_id ?? null;
+    if (userId == null) return;
+    let cancelled = false;
+    fetchUnreadNotifCount(userId).then((c) => { if (!cancelled) setUnreadNotifCount(c); });
+    const id = setInterval(() => {
+      fetchUnreadNotifCount(userId).then((c) => { if (!cancelled) setUnreadNotifCount(c); });
+    }, 60_000);
+    return () => { cancelled = true; clearInterval(id); };
+  }, [profile?.user_id]);
 
   const visibleNavItems = navItems.filter((item) => {
     if (item.adminOnly) return isAdmin;
@@ -175,6 +190,26 @@ export function Sidebar() {
                     }}
                   >
                     {pendingCount > 99 ? '99+' : pendingCount}
+                  </span>
+                )}
+                {/* Unread count badge on Notifications link */}
+                {to === '/notifications' && unreadNotifCount > 0 && (
+                  <span
+                    style={{
+                      minWidth: 18,
+                      height: 18,
+                      borderRadius: 9,
+                      background: '#b91c1c',
+                      color: '#fff',
+                      fontSize: 10,
+                      fontWeight: 700,
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      padding: '0 4px',
+                    }}
+                  >
+                    {unreadNotifCount > 99 ? '99+' : unreadNotifCount}
                   </span>
                 )}
               </>

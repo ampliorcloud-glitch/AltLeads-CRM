@@ -192,7 +192,17 @@ export function WishlistDetailPage() {
     }
     setActionSaving(true);
     setActionError(null);
-    const res = await assignWishlist({ wishlistId: item.wishlistId, agentId, teamLeadId, actor });
+    const res = await assignWishlist({
+      wishlistId: item.wishlistId,
+      agentId,
+      teamLeadId,
+      actor,
+      // Notification context — resolved here in one spot from the loaded item.
+      // TODO recipients: owner will tune per-action later
+      leadName: item.contactName || item.company || undefined,
+      company: item.company || undefined,
+      isReassign: item.assignAgentId != null,
+    });
     setActionSaving(false);
     if (res?.error) {
       setActionError(res.error);

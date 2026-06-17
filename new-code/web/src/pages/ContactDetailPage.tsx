@@ -8,70 +8,43 @@ import {
   Building2,
   MapPin,
   Briefcase,
-  PhoneCall,
-  Clock,
-  User,
   Link2,
+  Pencil,
+  Check,
+  X,
+  Save,
 } from 'lucide-react';
 import { AppShell } from '../components/layout/AppShell';
 import { useAuth } from '../contexts/AuthContext';
 import {
   fetchContactById,
-  fetchContactInteractions,
-  logCallInteraction,
+  fetchCompanyOptions,
+  fetchCityOptions,
+  updateContactCompany,
+  deriveLinkedinClean,
   type Contact,
-  type Interaction,
+  type CompanyOption,
+  type CityOption,
 } from '../data/contacts';
+import {
+  getContactStatus,
+  upsertContactStatus,
+  fetchActivity,
+  type ContactProjectStatus,
+} from '../data/projectStatus';
+import { fetchOptions, type DropdownOption } from '../data/dropdowns';
+import { supabase } from '../lib/supabase';
 import { SectionCard } from '../components/admin/primitives';
+import { SearchSelect, type SearchSelectOption } from '../components/ui/SearchSelect';
+import { ProjectSelect } from '../components/ui/ProjectSelect';
+import { DispositionForm } from '../components/ui/DispositionForm';
+import { ActivityTimeline } from '../components/ui/ActivityTimeline';
+import { StatusBadge } from '../components/ui/StatusBadge';
+import type { Interaction } from '../data/contacts';
 
 /* ------------------------------------------------------------------ */
-/*  Constants                                                           */
+/*  Helpers                                                             */
 /* ------------------------------------------------------------------ */
-
-const DISPOSITIONS = [
-  'Connected',
-  'No answer',
-  'Call back',
-  'Busy',
-  'Wrong number',
-  'Not interested',
-  'Interested',
-];
-
-const DISPOSITION_COLORS: Record<string, { bg: string; text: string }> = {
-  'Connected':      { bg: '#EBF4FD', text: '#1A7EE8' },
-  'Interested':     { bg: '#F0FDF4', text: '#16A34A' },
-  'No answer':      { bg: '#FFFBEB', text: '#D97706' },
-  'Call back':      { bg: '#FFFBEB', text: '#D97706' },
-  'Busy':           { bg: '#F5F3FF', text: '#7C3AED' },
-  'Wrong number':   { bg: '#FEF2F2', text: '#DC2626' },
-  'Not interested': { bg: '#FEF2F2', text: '#DC2626' },
-};
-
-function dispositionBadge(d: string | null) {
-  if (!d) return null;
-  const style = DISPOSITION_COLORS[d] ?? { bg: '#F3F4F6', text: '#6B7280' };
-  return (
-    <span style={{
-      fontSize: 11, fontWeight: 600, borderRadius: 4,
-      padding: '2px 8px', background: style.bg, color: style.text,
-      display: 'inline-flex', alignItems: 'center',
-    }}>
-      {d}
-    </span>
-  );
-}
-
-function formatDateTime(iso: string): string {
-  try {
-    return new Date(iso).toLocaleString('en-IN', {
-      day: 'numeric', month: 'short', year: 'numeric',
-      hour: '2-digit', minute: '2-digit',
-    });
-  } catch {
-    return iso;
-  }
-}
 
 function contactInitials(name: string): string {
   const words = name.trim().split(/\s+/).filter(Boolean);
@@ -81,7 +54,44 @@ function contactInitials(name: string): string {
 }
 
 /* ------------------------------------------------------------------ */
-/*  Info row helper                                                     */
+/*  Inline field editor sub-component                                  */
+/* ------------------------------------------------------------------ */
+
+function FieldEditor({
+  label,
+  value,
+  onChange,
+}: {
+  label: string;
+  value: string;
+  onChange: (v: string) => void;
+}) {
+  return (
+    <div className="flex flex-col gap-1">
+      <label style={{ fontSize: 11, color: '#6B7280', fontWeight: 500 }}>{label}</label>
+      <input
+        type="text"
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        style={{
+          fontSize: 13,
+          padding: '6px 10px',
+          border: '1px solid #d4d4d8',
+          borderRadius: 6,
+          background: '#fff',
+          color: '#18181b',
+          outline: 'none',
+          width: '100%',
+        }}
+        onFocus={(e) => { e.currentTarget.style.borderColor = '#1A7EE8'; }}
+        onBlur={(e) => { e.currentTarget.style.borderColor = '#d4d4d8'; }}
+      />
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/*  Info row helper (read-only display)                                */
 /* ------------------------------------------------------------------ */
 
 function InfoRow({ icon, label, value, href }: {
@@ -114,74 +124,239 @@ function InfoRow({ icon, label, value, href }: {
 export function ContactDetailPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const { profile, user } = useAuth();
-
-  const [contact, setContact] = useState<Contact | null>(null);
-  const [interactions, setInteractions] = useState<Interaction[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-
-  // Call log panel
-  const [disposition, setDisposition] = useState('');
-  const [noteText, setNoteText] = useState('');
-  const [logging, setLogging] = useState(false);
-  const [logError, setLogError] = useState<string | null>(null);
-  const [logSuccess, setLogSuccess] = useState(false);
+  const { profile } = useAuth();
 
   const contactId = id ? Number(id) : null;
 
-  const loadData = useCallback(async () => {
+  // Core contact data
+  const [contact, setContact] = useState<Contact | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  // Edit mode for contact fields
+  const [editing, setEditing] = useState(false);
+  const [editDraft, setEditDraft] = useState<{
+    full_name: string;
+    designation: string;
+    email: string;
+    mobile_no: string;
+    alt_mobile_no: string;
+    linkedin_url: string;
+    city_id: number | null;
+    company_id: number | null;
+  } | null>(null);
+  const [savingEdit, setSavingEdit] = useState(false);
+  const [editError, setEditError] = useState<string | null>(null);
+
+  // Company / city option lists
+  const [companyOptions, setCompanyOptions] = useState<CompanyOption[]>([]);
+  const [cityOptions, setCityOptions] = useState<CityOption[]>([]);
+
+  // Per-project working panel state
+  // TODO visibility: per-project status/notes are owner + admin only (security pass)
+  const [projectId, setProjectId] = useState<number | null>(null);
+  const [projectStatus, setProjectStatus] = useState<ContactProjectStatus | null>(null);
+  const [statusOptions, setStatusOptions] = useState<DropdownOption[]>([]);
+  const [statusDraft, setStatusDraft] = useState<{
+    contact_status: string;
+    description: string;
+    comments: string;
+  }>({ contact_status: '', description: '', comments: '' });
+  const [savingStatus, setSavingStatus] = useState(false);
+  const [statusError, setStatusError] = useState<string | null>(null);
+  const [statusSuccess, setStatusSuccess] = useState(false);
+
+  // Activity timeline
+  const [activity, setActivity] = useState<Interaction[]>([]);
+
+  /* ---------------------------------------------------------------- */
+  /*  Load contact + reference data                                    */
+  /* ---------------------------------------------------------------- */
+
+  const loadContact = useCallback(async () => {
     if (!contactId) return;
     setLoading(true);
     setError(null);
-    const c = await fetchContactById(contactId);
+    const [c, companies, cities] = await Promise.all([
+      fetchContactById(contactId),
+      fetchCompanyOptions(),
+      fetchCityOptions(),
+    ]);
     if (!c) {
       setError('Contact not found.');
       setLoading(false);
       return;
     }
     setContact(c);
-    const ints = await fetchContactInteractions(contactId);
-    setInteractions(ints);
+    setCompanyOptions(companies);
+    setCityOptions(cities);
     setLoading(false);
   }, [contactId]);
 
-  useEffect(() => { loadData(); }, [loadData]);
+  useEffect(() => { loadContact(); }, [loadContact]);
 
-  const handleLog = async () => {
-    if (!contactId) return;
-    if (!disposition) { setLogError('Please select a disposition.'); return; }
-    setLogging(true);
-    setLogError(null);
-    setLogSuccess(false);
+  // Load contact_status dropdown options once
+  useEffect(() => {
+    fetchOptions('contact_status').then(setStatusOptions);
+  }, []);
 
-    const ownerUserId = profile?.user_id ?? null;
-    const createdBy = user?.email ?? profile?.email ?? 'unknown';
+  /* ---------------------------------------------------------------- */
+  /*  Load per-project status whenever project changes                 */
+  /* ---------------------------------------------------------------- */
 
-    const { error: err } = await logCallInteraction({
-      contactId,
-      disposition,
-      noteText,
-      ownerUserId,
-      createdBy,
+  const loadProjectStatus = useCallback(async () => {
+    if (!contactId || !projectId) return;
+    const ps = await getContactStatus(contactId, projectId);
+    setProjectStatus(ps);
+    setStatusDraft({
+      contact_status: ps?.contact_status ?? '',
+      description: ps?.description ?? '',
+      comments: ps?.comments ?? '',
     });
+  }, [contactId, projectId]);
 
-    if (err) {
-      setLogError(err);
-      setLogging(false);
+  useEffect(() => { loadProjectStatus(); }, [loadProjectStatus]);
+
+  /* ---------------------------------------------------------------- */
+  /*  Load activity timeline (all projects for this contact)          */
+  /* ---------------------------------------------------------------- */
+
+  const loadActivity = useCallback(async () => {
+    if (!contactId) return;
+    const rows = await fetchActivity('contact', contactId);
+    setActivity(rows);
+  }, [contactId]);
+
+  useEffect(() => { loadActivity(); }, [loadActivity]);
+
+  /* ---------------------------------------------------------------- */
+  /*  Edit contact fields                                              */
+  /* ---------------------------------------------------------------- */
+
+  function startEdit() {
+    if (!contact) return;
+    setEditDraft({
+      full_name: contact.full_name ?? '',
+      designation: contact.designation ?? '',
+      email: contact.email ?? '',
+      mobile_no: contact.mobile_no ?? '',
+      alt_mobile_no: contact.alt_mobile_no ?? '',
+      linkedin_url: contact.linkedin_url ?? '',
+      city_id: contact.city_id,
+      company_id: contact.company_id,
+    });
+    setEditError(null);
+    setEditing(true);
+  }
+
+  function cancelEdit() {
+    setEditing(false);
+    setEditDraft(null);
+    setEditError(null);
+  }
+
+  async function saveEdit() {
+    if (!contactId || !editDraft || !contact) return;
+    setSavingEdit(true);
+    setEditError(null);
+
+    const linkedinClean = deriveLinkedinClean(editDraft.linkedin_url);
+
+    // If company changed, use the shared helper; otherwise skip
+    const companyChanged = editDraft.company_id !== contact.company_id;
+
+    // Update all scalar fields directly on contact_master
+    const { data: updatedRows, error: updateErr } = await supabase
+      .from('contact_master')
+      .update({
+        full_name: editDraft.full_name.trim() || null,
+        designation: editDraft.designation.trim() || null,
+        email: editDraft.email.trim() || null,
+        mobile_no: editDraft.mobile_no.trim() || null,
+        alt_mobile_no: editDraft.alt_mobile_no.trim() || null,
+        linkedin_url: editDraft.linkedin_url.trim() || null,
+        linkedin_clean: linkedinClean,
+        city_id: editDraft.city_id,
+        company_id: editDraft.company_id,
+        updated_date: new Date().toISOString(),
+      })
+      .eq('contact_id', contactId)
+      .select('contact_id');
+
+    if (updateErr) {
+      setEditError(
+        updateErr.code === '42501'
+          ? "You can only edit records you own (ask an admin or the owner's manager)."
+          : updateErr.message,
+      );
+      setSavingEdit(false);
+      return;
+    }
+    if (!updatedRows || (updatedRows as { contact_id: number }[]).length === 0) {
+      setEditError("You can only edit records you own (ask an admin or the owner's manager).");
+      setSavingEdit(false);
       return;
     }
 
-    setDisposition('');
-    setNoteText('');
-    setLogSuccess(true);
-    setLogging(false);
-    // Reload interactions
-    const ints = await fetchContactInteractions(contactId);
-    setInteractions(ints);
-    setTimeout(() => setLogSuccess(false), 3000);
-  };
+    // If company changed, also run the dedicated helper (it may do extra work)
+    if (companyChanged) {
+      await updateContactCompany(contactId, editDraft.company_id);
+    }
 
+    // Refresh contact
+    await loadContact();
+    setSavingEdit(false);
+    setEditing(false);
+    setEditDraft(null);
+  }
+
+  /* ---------------------------------------------------------------- */
+  /*  Save project status                                              */
+  /* ---------------------------------------------------------------- */
+
+  async function saveProjectStatus() {
+    if (!contactId || !projectId) return;
+    setSavingStatus(true);
+    setStatusError(null);
+    setStatusSuccess(false);
+    const actorId = profile?.user_id != null ? String(profile.user_id) : null;
+    const { error: err } = await upsertContactStatus(
+      contactId,
+      projectId,
+      {
+        contact_status: statusDraft.contact_status || null,
+        description: statusDraft.description.trim() || null,
+        comments: statusDraft.comments.trim() || null,
+      },
+      actorId,
+    );
+    setSavingStatus(false);
+    if (err) {
+      setStatusError(err);
+      return;
+    }
+    setStatusSuccess(true);
+    setTimeout(() => setStatusSuccess(false), 3000);
+    // Refresh both status and activity (status_change interaction is appended)
+    await Promise.all([loadProjectStatus(), loadActivity()]);
+  }
+
+  /* ---------------------------------------------------------------- */
+  /*  Build SearchSelect option lists                                  */
+  /* ---------------------------------------------------------------- */
+
+  const companySelectOptions: SearchSelectOption[] = companyOptions.map((c) => ({
+    id: c.company_id,
+    label: c.company_name,
+  }));
+
+  const citySelectOptions: SearchSelectOption[] = cityOptions.map((c) => ({
+    id: c.city_id,
+    label: c.city_name,
+  }));
+
+  /* ---------------------------------------------------------------- */
+  /*  Render: loading / error states                                   */
   /* ---------------------------------------------------------------- */
 
   if (loading) {
@@ -213,9 +388,17 @@ export function ContactDetailPage() {
     ? (contact.linkedin_url.startsWith('http') ? contact.linkedin_url : `https://linkedin.com/in/${contact.linkedin_url}`)
     : undefined;
 
+  const actorId = profile?.user_id != null ? String(profile.user_id) : null;
+  const ownerUserId = profile?.user_id ?? null;
+
+  /* ---------------------------------------------------------------- */
+  /*  Render                                                           */
+  /* ---------------------------------------------------------------- */
+
   return (
     <AppShell title={contact.full_name || 'Contact'}>
       <div className="space-y-4">
+
         {/* Back nav */}
         <button
           onClick={() => navigate('/contacts')}
@@ -266,148 +449,327 @@ export function ContactDetailPage() {
               </Link>
             )}
           </div>
+
+          {/* Edit / Save / Cancel buttons */}
+          <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
+            {!editing ? (
+              <button
+                type="button"
+                onClick={startEdit}
+                style={{
+                  display: 'inline-flex', alignItems: 'center', gap: 5,
+                  fontSize: 12, fontWeight: 500,
+                  background: '#F3F4F6', color: '#374151',
+                  border: '1px solid #E5E7EB', borderRadius: 6,
+                  padding: '6px 12px', cursor: 'pointer',
+                }}
+              >
+                <Pencil size={13} /> Edit
+              </button>
+            ) : (
+              <>
+                <button
+                  type="button"
+                  onClick={saveEdit}
+                  disabled={savingEdit}
+                  style={{
+                    display: 'inline-flex', alignItems: 'center', gap: 5,
+                    fontSize: 12, fontWeight: 500,
+                    background: '#1A7EE8', color: '#fff',
+                    border: 'none', borderRadius: 6,
+                    padding: '6px 12px',
+                    cursor: savingEdit ? 'not-allowed' : 'pointer',
+                    opacity: savingEdit ? 0.6 : 1,
+                  }}
+                >
+                  {savingEdit ? <Loader2 size={12} className="animate-spin" /> : <Save size={12} />}
+                  Save
+                </button>
+                <button
+                  type="button"
+                  onClick={cancelEdit}
+                  style={{
+                    display: 'inline-flex', alignItems: 'center', gap: 5,
+                    fontSize: 12, fontWeight: 500,
+                    background: 'none', color: '#6B7280',
+                    border: '1px solid #d4d4d8', borderRadius: 6,
+                    padding: '6px 12px', cursor: 'pointer',
+                  }}
+                >
+                  <X size={12} /> Cancel
+                </button>
+              </>
+            )}
+          </div>
         </div>
 
+        {/* Edit error banner */}
+        {editError && (
+          <div style={{ fontSize: 13, color: '#EF4444', padding: '8px 14px', background: '#FEF2F2', borderRadius: 6, border: '1px solid #FECACA' }}>
+            {editError}
+          </div>
+        )}
+
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
-          {/* Contact Info */}
+
+          {/* Contact Details — read view OR edit form */}
           <SectionCard title="Contact Details">
-            <div className="space-y-3">
-              <InfoRow icon={<Mail size={15} />} label="Email" value={contact.email} href={contact.email ? `mailto:${contact.email}` : undefined} />
-              <InfoRow icon={<Phone size={15} />} label="Phone" value={contact.mobile_no} />
-              <InfoRow icon={<Phone size={15} />} label="Alt Phone" value={contact.alt_mobile_no} />
-              <InfoRow
-                icon={<Link2 size={15} />}
-                label="LinkedIn"
-                value={contact.linkedin_clean || contact.linkedin_url}
-                href={linkedinHref}
-              />
-              <InfoRow icon={<MapPin size={15} />} label="City" value={contact.city_name} />
-              <InfoRow icon={<Briefcase size={15} />} label="Designation" value={contact.designation} />
-              <InfoRow
-                icon={<Building2 size={15} />}
-                label="Company"
-                value={contact.company_name}
-                href={contact.company_id ? `/companies/${contact.company_id}` : undefined}
-              />
-            </div>
+            {!editing ? (
+              <div className="space-y-3">
+                <InfoRow
+                  icon={<Mail size={15} />}
+                  label="Email"
+                  value={contact.email}
+                  href={contact.email ? `mailto:${contact.email}` : undefined}
+                />
+                <InfoRow icon={<Phone size={15} />} label="Phone" value={contact.mobile_no} />
+                <InfoRow icon={<Phone size={15} />} label="Alt Phone" value={contact.alt_mobile_no} />
+                <InfoRow
+                  icon={<Link2 size={15} />}
+                  label="LinkedIn"
+                  value={contact.linkedin_clean || contact.linkedin_url}
+                  href={linkedinHref}
+                />
+                <InfoRow icon={<MapPin size={15} />} label="City" value={contact.city_name} />
+                <InfoRow icon={<Briefcase size={15} />} label="Designation" value={contact.designation} />
+                {/* Company (read) */}
+                <div className="flex items-start gap-3" style={{ minHeight: 32 }}>
+                  <span style={{ color: '#9CA3AF', marginTop: 2, flexShrink: 0 }}><Building2 size={15} /></span>
+                  <div className="flex flex-col gap-0.5 min-w-0">
+                    <span style={{ fontSize: 11, color: '#9CA3AF', fontWeight: 500 }}>Company</span>
+                    {contact.company_name && contact.company_id ? (
+                      <Link
+                        to={`/companies/${contact.company_id}`}
+                        style={{ fontSize: 13, color: '#1A7EE8', textDecoration: 'none' }}
+                      >
+                        {contact.company_name}
+                      </Link>
+                    ) : (
+                      <span style={{ fontSize: 13, color: '#D1D5DB' }}>—</span>
+                    )}
+                  </div>
+                </div>
+              </div>
+            ) : (
+              /* Edit form */
+              editDraft && (
+                <div className="space-y-3">
+                  <FieldEditor
+                    label="Full Name *"
+                    value={editDraft.full_name}
+                    onChange={(v) => setEditDraft((d) => d ? { ...d, full_name: v } : d)}
+                  />
+                  <FieldEditor
+                    label="Designation"
+                    value={editDraft.designation}
+                    onChange={(v) => setEditDraft((d) => d ? { ...d, designation: v } : d)}
+                  />
+                  <FieldEditor
+                    label="Email"
+                    value={editDraft.email}
+                    onChange={(v) => setEditDraft((d) => d ? { ...d, email: v } : d)}
+                  />
+                  <FieldEditor
+                    label="Phone"
+                    value={editDraft.mobile_no}
+                    onChange={(v) => setEditDraft((d) => d ? { ...d, mobile_no: v } : d)}
+                  />
+                  <FieldEditor
+                    label="Alt Phone"
+                    value={editDraft.alt_mobile_no}
+                    onChange={(v) => setEditDraft((d) => d ? { ...d, alt_mobile_no: v } : d)}
+                  />
+                  <FieldEditor
+                    label="LinkedIn URL"
+                    value={editDraft.linkedin_url}
+                    onChange={(v) => setEditDraft((d) => d ? { ...d, linkedin_url: v } : d)}
+                  />
+
+                  {/* City picker */}
+                  <div className="flex flex-col gap-1">
+                    <label style={{ fontSize: 11, color: '#6B7280', fontWeight: 500 }}>City</label>
+                    <SearchSelect
+                      options={citySelectOptions}
+                      value={editDraft.city_id}
+                      onChange={(v) => setEditDraft((d) => d ? { ...d, city_id: v } : d)}
+                      placeholder="Search city…"
+                    />
+                  </div>
+
+                  {/* Company picker */}
+                  <div className="flex flex-col gap-1">
+                    <label style={{ fontSize: 11, color: '#6B7280', fontWeight: 500 }}>Company</label>
+                    <SearchSelect
+                      options={companySelectOptions}
+                      value={editDraft.company_id}
+                      onChange={(v) => setEditDraft((d) => d ? { ...d, company_id: v } : d)}
+                      placeholder="Search company…"
+                    />
+                  </div>
+
+                  {/* Inline save / cancel (mirrors header buttons) */}
+                  <div style={{ display: 'flex', gap: 8, paddingTop: 4 }}>
+                    <button
+                      type="button"
+                      onClick={saveEdit}
+                      disabled={savingEdit}
+                      style={{
+                        display: 'inline-flex', alignItems: 'center', gap: 4,
+                        fontSize: 12, fontWeight: 500,
+                        background: '#1A7EE8', color: '#fff',
+                        border: 'none', borderRadius: 5, padding: '5px 12px',
+                        cursor: savingEdit ? 'not-allowed' : 'pointer',
+                        opacity: savingEdit ? 0.6 : 1,
+                      }}
+                    >
+                      {savingEdit ? <Loader2 size={12} className="animate-spin" /> : <Check size={12} />}
+                      Save changes
+                    </button>
+                    <button
+                      type="button"
+                      onClick={cancelEdit}
+                      style={{
+                        display: 'inline-flex', alignItems: 'center', gap: 4,
+                        fontSize: 12, color: '#6B7280',
+                        background: 'none', border: '1px solid #d4d4d8',
+                        borderRadius: 5, padding: '5px 8px', cursor: 'pointer',
+                      }}
+                    >
+                      <X size={12} /> Cancel
+                    </button>
+                  </div>
+                </div>
+              )
+            )}
           </SectionCard>
 
-          {/* Call & Disposition */}
-          <SectionCard title="Log a Call">
+          {/* Per-project working panel */}
+          {/* TODO visibility: per-project status/notes are owner + admin only (security pass) */}
+          <SectionCard
+            title="Project Status"
+            action={
+              <ProjectSelect
+                value={projectId}
+                onChange={setProjectId}
+              />
+            }
+          >
             <div className="space-y-3">
+              {/* Current status badge */}
+              {projectStatus?.contact_status && (
+                <div style={{ marginBottom: 4 }}>
+                  <StatusBadge value={projectStatus.contact_status} category="contact_status" />
+                </div>
+              )}
+
+              {/* Status dropdown */}
               <div className="flex flex-col gap-1">
-                <label style={{ fontSize: 12, fontWeight: 500, color: '#6B7280' }}>Disposition *</label>
+                <label style={{ fontSize: 11, color: '#6B7280', fontWeight: 500 }}>Contact Status</label>
                 <select
-                  value={disposition}
-                  onChange={(e) => setDisposition(e.target.value)}
+                  value={statusDraft.contact_status}
+                  onChange={(e) => setStatusDraft((d) => ({ ...d, contact_status: e.target.value }))}
                   style={{
-                    fontSize: 13, padding: '7px 10px',
-                    border: '1px solid #E5E7EB', borderRadius: 6,
-                    background: '#fff', color: '#111827', outline: 'none',
-                    cursor: 'pointer',
+                    fontSize: 13, padding: '6px 10px',
+                    border: '1px solid #d4d4d8', borderRadius: 6,
+                    background: '#fff', color: '#18181b', outline: 'none',
+                    cursor: 'pointer', height: 34, appearance: 'none',
                   }}
                   onFocus={(e) => { e.currentTarget.style.borderColor = '#1A7EE8'; }}
-                  onBlur={(e) => { e.currentTarget.style.borderColor = '#E5E7EB'; }}
+                  onBlur={(e) => { e.currentTarget.style.borderColor = '#d4d4d8'; }}
                 >
-                  <option value="">Select disposition...</option>
-                  {DISPOSITIONS.map((d) => <option key={d} value={d}>{d}</option>)}
+                  <option value="">— none —</option>
+                  {statusOptions.map((o) => (
+                    <option key={o.option_id} value={o.value}>{o.label}</option>
+                  ))}
                 </select>
               </div>
+
+              {/* Description */}
               <div className="flex flex-col gap-1">
-                <label style={{ fontSize: 12, fontWeight: 500, color: '#6B7280' }}>Notes</label>
+                <label style={{ fontSize: 11, color: '#6B7280', fontWeight: 500 }}>Description</label>
                 <textarea
-                  value={noteText}
-                  onChange={(e) => setNoteText(e.target.value)}
-                  placeholder="Add call notes..."
-                  rows={3}
+                  value={statusDraft.description}
+                  onChange={(e) => setStatusDraft((d) => ({ ...d, description: e.target.value }))}
+                  placeholder="Short description…"
+                  rows={2}
                   style={{
-                    fontSize: 13, padding: '7px 10px', resize: 'vertical',
-                    border: '1px solid #E5E7EB', borderRadius: 6,
-                    background: '#fff', color: '#111827', outline: 'none',
-                    fontFamily: 'inherit',
+                    fontSize: 13, padding: '6px 10px', resize: 'vertical',
+                    border: '1px solid #d4d4d8', borderRadius: 6,
+                    background: '#fff', color: '#18181b', outline: 'none',
+                    fontFamily: 'inherit', width: '100%',
                   }}
                   onFocus={(e) => { e.currentTarget.style.borderColor = '#1A7EE8'; }}
-                  onBlur={(e) => { e.currentTarget.style.borderColor = '#E5E7EB'; }}
+                  onBlur={(e) => { e.currentTarget.style.borderColor = '#d4d4d8'; }}
                 />
               </div>
-              {logError && (
-                <p style={{ fontSize: 12, color: '#EF4444' }}>{logError}</p>
+
+              {/* Comments */}
+              <div className="flex flex-col gap-1">
+                <label style={{ fontSize: 11, color: '#6B7280', fontWeight: 500 }}>Comments</label>
+                <textarea
+                  value={statusDraft.comments}
+                  onChange={(e) => setStatusDraft((d) => ({ ...d, comments: e.target.value }))}
+                  placeholder="Internal comments…"
+                  rows={2}
+                  style={{
+                    fontSize: 13, padding: '6px 10px', resize: 'vertical',
+                    border: '1px solid #d4d4d8', borderRadius: 6,
+                    background: '#fff', color: '#18181b', outline: 'none',
+                    fontFamily: 'inherit', width: '100%',
+                  }}
+                  onFocus={(e) => { e.currentTarget.style.borderColor = '#1A7EE8'; }}
+                  onBlur={(e) => { e.currentTarget.style.borderColor = '#d4d4d8'; }}
+                />
+              </div>
+
+              {statusError && (
+                <p style={{ fontSize: 12, color: '#EF4444' }}>{statusError}</p>
               )}
-              {logSuccess && (
-                <p style={{ fontSize: 12, color: '#16A34A' }}>Call logged successfully.</p>
+              {statusSuccess && (
+                <p style={{ fontSize: 12, color: '#16A34A' }}>Status saved.</p>
               )}
+
               <button
-                onClick={handleLog}
-                disabled={logging}
+                type="button"
+                onClick={saveProjectStatus}
+                disabled={savingStatus || !projectId}
                 style={{
-                  display: 'flex', alignItems: 'center', gap: 6,
+                  display: 'inline-flex', alignItems: 'center', gap: 5,
+                  fontSize: 12, fontWeight: 500,
                   background: '#1A7EE8', color: '#fff',
-                  fontSize: 13, fontWeight: 500,
-                  borderRadius: 6, border: 'none',
-                  padding: '8px 18px', cursor: logging ? 'not-allowed' : 'pointer',
-                  opacity: logging ? 0.6 : 1,
-                  transition: 'background 0.15s',
+                  border: 'none', borderRadius: 6,
+                  padding: '6px 14px',
+                  cursor: (savingStatus || !projectId) ? 'not-allowed' : 'pointer',
+                  opacity: (savingStatus || !projectId) ? 0.6 : 1,
                 }}
-                onMouseEnter={(e) => { if (!logging) (e.currentTarget as HTMLElement).style.background = '#1568C8'; }}
-                onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = '#1A7EE8'; }}
               >
-                {logging ? <Loader2 size={14} className="animate-spin" /> : <PhoneCall size={14} />}
-                {logging ? 'Logging...' : 'Log Call'}
+                {savingStatus ? <Loader2 size={12} className="animate-spin" /> : <Save size={12} />}
+                Save status
               </button>
             </div>
           </SectionCard>
         </div>
 
+        {/* Call Disposition Logger */}
+        <SectionCard title="Log a Call">
+          <DispositionForm
+            recordType="contact"
+            recordId={contactId!}
+            projectId={projectId}
+            ownerUserId={ownerUserId}
+            actorId={actorId}
+            onLogged={loadActivity}
+          />
+        </SectionCard>
+
         {/* Activity Timeline */}
         <SectionCard title="Activity Timeline">
-          {interactions.length === 0 ? (
-            <div style={{ padding: '24px 0', textAlign: 'center', color: '#9CA3AF', fontSize: 13 }}>
-              No interactions logged yet. Use the call panel above to log the first one.
-            </div>
-          ) : (
-            <div className="space-y-3">
-              {interactions.map((item) => (
-                <div
-                  key={item.interaction_id}
-                  style={{
-                    display: 'flex', gap: 12, alignItems: 'flex-start',
-                    padding: '12px 0', borderBottom: '1px solid #F3F4F6',
-                  }}
-                >
-                  {/* Icon */}
-                  <div style={{
-                    width: 32, height: 32, borderRadius: '50%',
-                    background: '#EBF4FD', color: '#1A7EE8',
-                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    flexShrink: 0,
-                  }}>
-                    <PhoneCall size={14} />
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      {dispositionBadge(item.disposition)}
-                      <span style={{ fontSize: 12, color: '#9CA3AF' }}>
-                        <Clock size={11} style={{ display: 'inline', marginRight: 3 }} />
-                        {formatDateTime(item.occurred_at)}
-                      </span>
-                      {item.created_by && (
-                        <span style={{ fontSize: 12, color: '#9CA3AF' }}>
-                          <User size={11} style={{ display: 'inline', marginRight: 3 }} />
-                          {item.created_by}
-                        </span>
-                      )}
-                    </div>
-                    {item.note_text && (
-                      <p style={{ fontSize: 13, color: '#374151', marginTop: 4, marginBottom: 0 }}>
-                        {item.note_text}
-                      </p>
-                    )}
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
+          <ActivityTimeline
+            items={activity}
+            emptyText="No activity yet. Use Log a Call above to record the first interaction."
+          />
         </SectionCard>
+
       </div>
     </AppShell>
   );

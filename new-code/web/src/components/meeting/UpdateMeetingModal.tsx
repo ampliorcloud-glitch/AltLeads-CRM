@@ -21,6 +21,8 @@ import {
   SecondaryButton,
   InlineNote,
 } from '../lead/primitives';
+import { supabase } from '../../lib/supabase';
+import { notify, notifyInApp, resolveUserEmailAndName } from '../../lib/notify';
 
 export function UpdateMeetingModal({
   meeting,
@@ -78,6 +80,68 @@ export function UpdateMeetingModal({
       setErr(res.error);
       return;
     }
+
+    // Fire-and-forget: email + in-app notification to the meeting's salesperson.
+    // TODO recipients: owner will tune per-action (reschedule/cancel/etc.).
+    // Recipient = meeting.salespersonUserId (the assigned SP/SH from lead_report.user_id).
+    (async () => {
+      try {
+        const recipientUserId = meeting.salespersonUserId;
+        if (!recipientUserId) return;
+        const { email: recipientEmail } = await resolveUserEmailAndName(supabase, recipientUserId);
+        const route = `/meetings/${meeting.id}`;
+        const leadName = meeting.leadName || meeting.company || 'Lead';
+
+        if (action === 'reschedule') {
+          const emailData = {
+            leadName,
+            oldDate: meeting.meetingDate ?? '',
+            oldTime: meeting.meetingTime ?? '',
+            newDate,
+            newTime,
+            mode: meeting.mode,
+            reason: reason.trim(),
+            rescheduledBy: by,
+          };
+          if (recipientEmail) {
+            await notify('meeting_rescheduled', recipientEmail, emailData);
+          }
+          await notifyInApp(supabase, recipientUserId, {
+            status: 'Meeting Rescheduled',
+            notif_descr: `Meeting with ${leadName} has been rescheduled to ${newDate}${newTime ? ' ' + newTime : ''}.`,
+            route,
+            meeting_id: Number(meeting.id),
+            lead_id: meeting.leadId ? Number(meeting.leadId) : undefined,
+            lead_number: meeting.leadNumber || null,
+            actor,
+          });
+        } else {
+          const emailData = {
+            leadName,
+            meetingDate: meeting.meetingDate ?? '',
+            meetingTime: meeting.meetingTime ?? '',
+            mode: meeting.mode,
+            reason: reason.trim(),
+            cancelledBy: by,
+          };
+          if (recipientEmail) {
+            await notify('meeting_cancelled', recipientEmail, emailData);
+          }
+          await notifyInApp(supabase, recipientUserId, {
+            status: 'Meeting Cancelled',
+            notif_descr: `Meeting with ${leadName} has been cancelled. Reason: ${reason.trim()}`,
+            route,
+            meeting_id: Number(meeting.id),
+            lead_id: meeting.leadId ? Number(meeting.leadId) : undefined,
+            lead_number: meeting.leadNumber || null,
+            actor,
+          });
+        }
+      } catch {
+        /* non-fatal — never block or surface notification errors to the user */
+      }
+    })();
+
     onSaved();
   };
 

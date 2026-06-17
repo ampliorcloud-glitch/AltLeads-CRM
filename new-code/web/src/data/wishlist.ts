@@ -29,6 +29,7 @@
 
 import { supabase } from '../lib/supabase';
 import { insertLeadWithUniqueNumber } from '../lib/leadsApi';
+import { notify, notifyInApp, resolveUserEmailAndName } from '../lib/notify';
 
 /* ── Constants ───────────────────────────────────────────────────────────── */
 
@@ -488,6 +489,10 @@ export async function assignWishlist(input: {
   teamLeadId: number | null;
   addressId?: number | null;
   actor: string;
+  /** Optional context for notifications — passed in by the caller from the loaded item. */
+  leadName?: string;
+  company?: string;
+  isReassign?: boolean;
 }): Promise<{ error: string } | null> {
   const actorErr = assertNumericActor(input.actor);
   if (actorErr) return actorErr;
@@ -503,6 +508,40 @@ export async function assignWishlist(input: {
 
   const { error } = await supabase.from('wishlist').update(patch).eq('wishlist_id', input.wishlistId);
   if (error) return { error: error.message };
+
+  // Fire-and-forget: notify the assigned agent — BOTH email and in-app.
+  // TODO recipients: owner will tune per-action later
+  const agentId = input.agentId;
+  const eventName = input.isReassign ? 'lead_reassigned' : 'lead_assigned';
+  const leadName = input.leadName ?? '';
+  const company = input.company ?? '';
+  const wishlistId = input.wishlistId;
+  ;(async () => {
+    try {
+      // Recipient = the agent the wishlist is being assigned to.
+      const { email: agentEmail, name: agentName } = await resolveUserEmailAndName(supabase, agentId);
+      const actorInfo = await resolveUserEmailAndName(supabase, Number(input.actor));
+      const eventData = {
+        leadName: leadName || `Wishlist #${wishlistId}`,
+        company,
+        assignedByName: actorInfo.name || input.actor,
+      };
+      if (agentEmail) {
+        await notify(eventName, agentEmail, eventData);
+      }
+      void agentName; // resolved above; kept for future use
+      await notifyInApp(supabase, agentId, {
+        status: input.isReassign ? 'Wishlist Reassigned' : 'Wishlist Assigned',
+        notif_descr: input.isReassign
+          ? `A wishlist entry has been reassigned to you: "${leadName || `#${wishlistId}`}"`
+          : `A new wishlist entry has been assigned to you: "${leadName || `#${wishlistId}`}"`,
+        route: `/wishlist/${wishlistId}`,
+        actor: input.actor,
+      });
+    } catch {
+      /* non-fatal — never block the assignment */
+    }
+  })();
 
   // Mirror into the (legacy/dead) wishlist_assign table — non-fatal. Its columns
   // are NOT NULL incl. address_id, so we only write when we have one.

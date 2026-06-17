@@ -16,7 +16,7 @@
  */
 
 import { supabase } from '../lib/supabase';
-import { notify, resolveUserEmailAndName } from '../lib/notify';
+import { notify, notifyInApp, resolveUserEmailAndName } from '../lib/notify';
 
 /* ─────────────────────────── Types ─────────────────────────── */
 
@@ -364,12 +364,17 @@ export async function fetchSalespeople(projectId: number | null): Promise<Salesp
     .sort((a, b) => a.full_name.localeCompare(b.full_name));
 }
 
-/** Pre-sales questions for a domain (the "Discussion" one is flagged + sorted last). */
+/** Pre-sales questions for a domain (the "Discussion" one is flagged + sorted last).
+ *  Only returns is_active=true rows once the column has been added. If the column
+ *  doesn't exist yet (pre-migration), the eq filter is silently omitted and all
+ *  non-deleted questions are returned (same behaviour as before the feature).
+ */
 export async function fetchPreSalesQuestions(domainId: number | null): Promise<PreSalesQuestion[]> {
   let q = supabase
     .from('pre_sales_question')
-    .select('pre_sa_que_id, question, short_question, domain_id')
-    .is('deleted_date', null);
+    .select('pre_sa_que_id, question, short_question, domain_id, is_active')
+    .is('deleted_date', null)
+    .eq('is_active', true);
   if (domainId) q = q.eq('domain_id', domainId);
   const { data } = await q.order('pre_sa_que_id');
 
@@ -378,6 +383,7 @@ export async function fetchPreSalesQuestions(domainId: number | null): Promise<P
     question: string;
     short_question: string;
     domain_id: number | null;
+    is_active: boolean | null;
   }[];
 
   return rows
@@ -658,26 +664,40 @@ export async function saveReport(input: SaveReportInput): Promise<{ report_id: n
       await supabase.from('meeting_participant').insert(partRows);
     }
 
-    // Fire-and-forget: notify the assigned salesperson that a meeting was scheduled
+    // Fire-and-forget: email + in-app notification to the assigned salesperson.
+    // TODO recipients: owner will tune per-action (reschedule/cancel/etc.).
+    // Recipient = input.assignedUserId (the SP/SH from lead_report.user_id).
     if (input.assignedUserId) {
       const spId = input.assignedUserId;
       const meetingDate = m.date || '';
       const meetingTime = m.time || '';
       const mode = m.mode || '';
-      // Fetch lead name for the notification text
+      const capturedMeetingId = meetingId; // capture for closure
+      // Fetch lead name (and lead_number) for the notification text
       (async () => {
         try {
           const { data: leadRow } = await supabase
             .from('lead_master')
-            .select('lead_name')
+            .select('lead_name, lead_number')
             .eq('lead_id', input.leadId)
             .maybeSingle();
-          const leadName = (leadRow as { lead_name: string } | null)?.lead_name ?? '';
+          const leadName = (leadRow as { lead_name: string; lead_number: string | null } | null)?.lead_name ?? '';
+          const leadNumber = (leadRow as { lead_name: string; lead_number: string | null } | null)?.lead_number ?? null;
           const { email: spEmail } = await resolveUserEmailAndName(supabase, spId);
           const eventData = { leadName, meetingDate, meetingTime, mode };
           if (spEmail) {
             await notify('meeting_scheduled', spEmail, eventData);
           }
+          // In-app notification (was previously missing — added here)
+          await notifyInApp(supabase, spId, {
+            status: 'Meeting Scheduled',
+            notif_descr: `A meeting with ${leadName} has been scheduled for ${meetingDate}${meetingTime ? ' ' + meetingTime : ''}.`,
+            route: capturedMeetingId ? `/meetings/${capturedMeetingId}` : '/meetings',
+            meeting_id: capturedMeetingId ?? undefined,
+            lead_id: input.leadId,
+            lead_number: leadNumber,
+            actor,
+          });
         } catch {
           /* non-fatal */
         }

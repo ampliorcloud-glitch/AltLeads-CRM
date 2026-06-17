@@ -110,6 +110,59 @@ function meetingScheduled(data) {
   `);
 }
 
+function meetingRescheduled(data) {
+  const {
+    leadName = 'N/A',
+    oldDate = '', oldTime = '',
+    newDate = '', newTime = '',
+    mode = '', reason = '', rescheduledBy = '',
+  } = data;
+  return wrap('Meeting Rescheduled — AltLeads', `
+    <h2 style="margin-top:0;color:#D97706;font-size:20px;">Meeting Has Been Rescheduled</h2>
+    <div class="label">Lead</div>
+    <div class="value">${esc(leadName)}</div>
+    ${(oldDate || oldTime) ? `
+    <div class="label">Previous Date &amp; Time</div>
+    <div class="value">${[esc(oldDate), esc(oldTime)].filter(Boolean).join(' · ')}</div>` : ''}
+    ${(newDate || newTime) ? `
+    <div class="label">New Date &amp; Time</div>
+    <div class="value" style="font-weight:600;">${[esc(newDate), esc(newTime)].filter(Boolean).join(' · ')}</div>` : ''}
+    ${mode ? `<div class="label">Mode</div><div class="value">${esc(mode)}</div>` : ''}
+    ${rescheduledBy ? `<div class="label">Rescheduled By</div><div class="value">${esc(rescheduledBy)}</div>` : ''}
+    ${reason ? `<div class="label">Reason</div><div class="reason-box">${esc(reason)}</div>` : ''}
+    <br/><span class="badge badge-yellow">Rescheduled</span>
+    <br/>
+    <a class="cta" href="#">View Meeting Details</a>
+    <p style="margin-top:24px;font-size:13px;color:#555;">
+      Please note the updated meeting time and prepare accordingly.
+    </p>
+  `);
+}
+
+function meetingCancelled(data) {
+  const {
+    leadName = 'N/A',
+    meetingDate = '', meetingTime = '',
+    mode = '', reason = '', cancelledBy = '',
+  } = data;
+  return wrap('Meeting Cancelled — AltLeads', `
+    <h2 style="margin-top:0;color:#991B1B;font-size:20px;">Meeting Has Been Cancelled</h2>
+    <div class="label">Lead</div>
+    <div class="value">${esc(leadName)}</div>
+    ${meetingDate ? `<div class="label">Original Date</div><div class="value">${esc(meetingDate)}</div>` : ''}
+    ${meetingTime ? `<div class="label">Original Time</div><div class="value">${esc(meetingTime)}</div>` : ''}
+    ${mode ? `<div class="label">Mode</div><div class="value">${esc(mode)}</div>` : ''}
+    ${cancelledBy ? `<div class="label">Cancelled By</div><div class="value">${esc(cancelledBy)}</div>` : ''}
+    ${reason ? `<div class="label">Reason</div><div class="reason-box">${esc(reason)}</div>` : ''}
+    <br/><span class="badge badge-red">Cancelled</span>
+    <br/>
+    <a class="cta" href="#">View Meeting Details</a>
+    <p style="margin-top:24px;font-size:13px;color:#555;">
+      This meeting has been cancelled. Please follow up with the lead as needed.
+    </p>
+  `);
+}
+
 function approvalRequested(data) {
   const { leadName = 'N/A', agentName = '', leadNumber = '' } = data;
   return wrap('Approval Required — AltLeads', `
@@ -176,7 +229,9 @@ function subject(event, data) {
   switch (event) {
     case 'lead_assigned':       return `[AltLeads] New lead assigned: ${lead}`;
     case 'lead_reassigned':     return `[AltLeads] Lead reassigned to you: ${lead}`;
-    case 'meeting_scheduled':   return `[AltLeads] Meeting scheduled: ${lead}`;
+    case 'meeting_scheduled':    return `[AltLeads] Meeting scheduled: ${lead}`;
+    case 'meeting_rescheduled':  return `[AltLeads] Meeting rescheduled: ${lead}`;
+    case 'meeting_cancelled':    return `[AltLeads] Meeting cancelled: ${lead}`;
     case 'approval_requested':  return `[AltLeads] Approval required: ${lead}`;
     case 'approval_approved':   return `[AltLeads] Report approved — Meeting Scheduled: ${lead}`;
     case 'approval_rejected':   return `[AltLeads] Report rejected: ${lead}`;
@@ -191,7 +246,9 @@ function buildEmail(event, data) {
   switch (event) {
     case 'lead_assigned':       html = leadAssigned(data);       break;
     case 'lead_reassigned':     html = leadReassigned(data);     break;
-    case 'meeting_scheduled':   html = meetingScheduled(data);   break;
+    case 'meeting_scheduled':    html = meetingScheduled(data);    break;
+    case 'meeting_rescheduled':  html = meetingRescheduled(data);  break;
+    case 'meeting_cancelled':    html = meetingCancelled(data);    break;
     case 'approval_requested':  html = approvalRequested(data);  break;
     case 'approval_approved':   html = approvalApproved(data);   break;
     case 'approval_rejected':   html = approvalRejected(data);   break;

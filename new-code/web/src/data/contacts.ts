@@ -53,106 +53,40 @@ export function deriveLinkedinClean(url: string | null | undefined): string | nu
   return cleaned || null;
 }
 
-/** Fetch all contacts with company + city joins (max 1000 which covers 607) */
+/** Fetch all contacts via the masked view (company_name + city_name are flat columns). */
 export async function fetchAllContacts(): Promise<{
   contacts: Contact[];
   error: string | null;
 }> {
   const { data, error } = await supabase
-    .from('contact_master')
-    .select(`
-      contact_id,
-      full_name,
-      email,
-      mobile_no,
-      alt_mobile_no,
-      designation,
-      linkedin_url,
-      linkedin_clean,
-      company_id,
-      city_id,
-      is_demo,
-      created_by,
-      created_date,
-      company_master!contact_master_company_id_fkey(company_name),
-      city_master!contact_master_city_id_fkey(city_name)
-    `)
+    .from('contact_master_masked')
+    .select(
+      'contact_id, full_name, email, mobile_no, alt_mobile_no, designation, linkedin_url, linkedin_clean, company_id, city_id, is_demo, created_by, created_date, company_name, city_name',
+    )
     .limit(1000)
     .order('full_name', { ascending: true });
 
   if (error) {
-    // Fallback: join may fail if FK names differ — try without join
-    const { data: flat, error: flatErr } = await supabase
-      .from('contact_master')
-      .select('*')
-      .limit(1000)
-      .order('full_name', { ascending: true });
-
-    if (flatErr) {
-      return { contacts: [], error: flatErr.message };
-    }
-
-    // We'll need to do a separate company lookup
-    const { data: companies } = await supabase
-      .from('company_master')
-      .select('company_id, company_name')
-      .limit(5000);
-
-    const { data: cities } = await supabase
-      .from('city_master')
-      .select('city_id, city_name')
-      .limit(5000);
-
-    const companyMap = new Map<number, string>(
-      (companies ?? []).map((c: CompanyOption) => [c.company_id, c.company_name])
-    );
-    const cityMap = new Map<number, string>(
-      (cities ?? []).map((c: CityOption) => [c.city_id, c.city_name])
-    );
-
-    const contacts: Contact[] = (flat ?? []).map((row: Record<string, unknown>) => ({
-      contact_id: row.contact_id as number,
-      full_name: (row.full_name as string) ?? '',
-      email: row.email as string | null,
-      mobile_no: row.mobile_no as string | null,
-      alt_mobile_no: row.alt_mobile_no as string | null,
-      designation: row.designation as string | null,
-      linkedin_url: row.linkedin_url as string | null,
-      linkedin_clean: row.linkedin_clean as string | null,
-      company_id: row.company_id as number | null,
-      city_id: row.city_id as number | null,
-      is_demo: (row.is_demo as boolean) ?? false,
-      created_by: row.created_by as string | null,
-      created_date: row.created_date as string | null,
-      company_name: row.company_id ? (companyMap.get(row.company_id as number) ?? null) : null,
-      city_name: row.city_id ? (cityMap.get(row.city_id as number) ?? null) : null,
-    }));
-
-    return { contacts, error: null };
+    return { contacts: [], error: error.message };
   }
 
-  // Parse joined result
-  const contacts: Contact[] = (data ?? []).map((row: Record<string, unknown>) => {
-    const companyRel = row.company_master as Record<string, unknown> | null;
-    const cityRel = row.city_master as Record<string, unknown> | null;
-    return {
-      contact_id: row.contact_id as number,
-      full_name: (row.full_name as string) ?? '',
-      email: row.email as string | null,
-      mobile_no: row.mobile_no as string | null,
-      alt_mobile_no: row.alt_mobile_no as string | null,
-      designation: row.designation as string | null,
-      linkedin_url: row.linkedin_url as string | null,
-      linkedin_clean: row.linkedin_clean as string | null,
-      company_id: row.company_id as number | null,
-      city_id: row.city_id as number | null,
-      is_demo: (row.is_demo as boolean) ?? false,
-      created_by: row.created_by as string | null,
-      created_date: row.created_date as string | null,
-      company_name: companyRel ? (companyRel.company_name as string) : null,
-      city_name: cityRel ? (cityRel.city_name as string) : null,
-    };
-  });
+  const contacts: Contact[] = (data ?? []).map((row: Record<string, unknown>) => ({
+    contact_id: row.contact_id as number,
+    full_name: (row.full_name as string) ?? '',
+    email: row.email as string | null,
+    mobile_no: row.mobile_no as string | null,
+    alt_mobile_no: row.alt_mobile_no as string | null,
+    designation: row.designation as string | null,
+    linkedin_url: row.linkedin_url as string | null,
+    linkedin_clean: row.linkedin_clean as string | null,
+    company_id: row.company_id as number | null,
+    city_id: row.city_id as number | null,
+    is_demo: (row.is_demo as boolean) ?? false,
+    created_by: row.created_by as string | null,
+    created_date: row.created_date as string | null,
+    company_name: (row.company_name as string | null) ?? null,
+    city_name: (row.city_name as string | null) ?? null,
+  }));
 
   return { contacts, error: null };
 }
@@ -218,68 +152,66 @@ export async function fetchCityOptions(): Promise<CityOption[]> {
   return (data ?? []) as CityOption[];
 }
 
-/** Helper: shape a partial dedup row into a Contact stub */
-function dupRowToContact(row: Record<string, unknown>): Contact {
-  const rel = row.company_master as Record<string, unknown> | null | undefined;
-  const companyName = Array.isArray(rel)
-    ? ((rel[0] as Record<string, unknown>)?.company_name as string | null) ?? null
-    : (rel?.company_name as string | null) ?? null;
+/** Check for duplicate contact via the find_contact_dup RPC (SECURITY DEFINER, no detail leak). */
+export async function findDuplicateContact(params: {
+  email?: string;
+  linkedinClean?: string;
+  mobileNo?: string;
+}): Promise<Contact | null> {
+  if (!params.email && !params.linkedinClean && !params.mobileNo) return null;
+
+  const { data, error } = await supabase.rpc('find_contact_dup', {
+    p_email: params.email ?? null,
+    p_linkedin: params.linkedinClean ?? null,
+    p_mobile: params.mobileNo ?? null,
+  });
+
+  if (error || !data || (data as unknown[]).length === 0) return null;
+
+  const row = (data as { contact_id: number; full_name: string; company_id: number; company_name: string }[])[0];
   return {
-    contact_id: row.contact_id as number,
-    full_name: (row.full_name as string) ?? '',
+    contact_id: row.contact_id,
+    full_name: row.full_name ?? '',
     email: null,
     mobile_no: null,
     alt_mobile_no: null,
     designation: null,
     linkedin_url: null,
     linkedin_clean: null,
-    company_id: (row.company_id as number) ?? null,
+    company_id: row.company_id ?? null,
     city_id: null,
     is_demo: false,
     created_by: null,
     created_date: null,
-    company_name: companyName,
+    company_name: row.company_name ?? null,
     city_name: null,
   };
 }
 
-/** Check for duplicate contact (real rows only) */
-export async function findDuplicateContact(params: {
-  email?: string;
-  linkedinClean?: string;
-  mobileNo?: string;
-}): Promise<Contact | null> {
-  if (params.email) {
-    const { data } = await supabase
-      .from('contact_master')
-      .select('contact_id, full_name, company_id, company_master(company_name)')
-      .eq('is_demo', false)
-      .ilike('email', params.email)
-      .limit(1)
-      .maybeSingle();
-    if (data) return dupRowToContact(data as Record<string, unknown>);
+/** Update company_id on an existing contact (set null to unlink) */
+export async function updateContactCompany(
+  contactId: number,
+  companyId: number | null,
+): Promise<{ error: string | null }> {
+  const { data, error } = await supabase
+    .from('contact_master')
+    .update({
+      company_id: companyId,
+      updated_date: new Date().toISOString(),
+    })
+    .eq('contact_id', contactId)
+    .select('contact_id');
+
+  if (error) {
+    if (error.code === '42501') {
+      return { error: "You can only edit records you own (ask an admin or the owner's manager)." };
+    }
+    return { error: error.message };
   }
-  if (params.linkedinClean) {
-    const { data } = await supabase
-      .from('contact_master')
-      .select('contact_id, full_name, company_id, company_master(company_name)')
-      .eq('is_demo', false)
-      .eq('linkedin_clean', params.linkedinClean)
-      .limit(1)
-      .maybeSingle();
-    if (data) return dupRowToContact(data as Record<string, unknown>);
+  if (!data || (data as { contact_id: number }[]).length === 0) {
+    return { error: "You can only edit records you own (ask an admin or the owner's manager)." };
   }
-  if (params.mobileNo) {
-    const { data } = await supabase
-      .from('contact_master')
-      .select('contact_id, full_name, company_id, company_master(company_name)')
-      .eq('is_demo', false)
-      .eq('mobile_no', params.mobileNo)
-      .limit(1)
-      .maybeSingle();
-    if (data) return dupRowToContact(data as Record<string, unknown>);
-  }
-  return null;
+  return { error: null };
 }
 
 /** Insert a new contact */

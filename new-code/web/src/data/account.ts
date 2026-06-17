@@ -96,6 +96,21 @@ export async function markNotificationSeen(
   return { error: error ? error.message : null };
 }
 
+/**
+ * Count of unread (is_seen = false) in_app_notification rows for the current user.
+ * Used by the Sidebar bell badge — mirrors fetchPendingCount() from approvals.ts.
+ */
+export async function fetchUnreadNotifCount(userId: number | null): Promise<number> {
+  if (userId == null) return 0;
+  const { count } = await supabase
+    .from('in_app_notification')
+    .select('notification_id', { count: 'exact', head: true })
+    .eq('user_id', userId)
+    .eq('is_seen', false)
+    .is('deleted_date', null);
+  return count ?? 0;
+}
+
 /** Mark every unread notification for the user as seen. */
 export async function markAllNotificationsSeen(
   userId: number,
