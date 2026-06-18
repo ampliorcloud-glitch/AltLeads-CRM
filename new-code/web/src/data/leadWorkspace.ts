@@ -1108,3 +1108,133 @@ export async function fetchFeedbackAnswers(meetingId: number): Promise<FeedbackA
     .is('deleted_date', null);
   return ((data ?? []) as FeedbackAnswerRow[]);
 }
+
+/* ─────────────── MEETING TAB: feedback WRITE (submit) ─────────────── */
+
+/**
+ * Decide whether a feedback question is FREE-TEXT (textarea) vs a Yes/No toggle.
+ *
+ * The vendor mobile app hard-coded `feed_que_id === 7` as the only free-text
+ * ("discussion / comments") question. We deliberately do NOT hard-code the id —
+ * questions are server-driven and could be re-numbered. Instead we treat a
+ * question as free-text when its WORDING implies a written answer (discussion /
+ * comment / note / detail / remark / suggestion / "please specify", etc.). The
+ * legacy id 7 is kept only as a last-resort fallback so existing data still
+ * renders a textarea even if the master question text is ever changed.
+ *
+ * If a future schema adds an explicit flag column (e.g. `is_free_text`/`answer_type`)
+ * on feedback_question_master, prefer that here over the keyword heuristic.
+ */
+const FREE_TEXT_QUESTION_KEYWORDS = [
+  'discuss',
+  'comment',
+  'remark',
+  'note',
+  'detail',
+  'suggest',
+  'feedback',
+  'describe',
+  'explain',
+  'specify',
+  'elaborate',
+  'other',
+  'reason',
+];
+
+export function isFreeTextQuestion(q: FeedbackQuestion): boolean {
+  const text = (q.feed_que ?? '').toLowerCase();
+  if (FREE_TEXT_QUESTION_KEYWORDS.some((kw) => text.includes(kw))) return true;
+  // Last-resort fallback: the vendor's legacy free-text question id.
+  return q.feed_que_id === 7;
+}
+
+export interface FeedbackAnswerInput {
+  feed_que_id: number;
+  feed_ans: string;
+}
+
+/**
+ * Submit the "Successful" meeting outcome: persist one feedback_answer row per
+ * question, then mark the meeting Completed and stamp the follow-up date.
+ *
+ * UPSERT semantics: feedback_answer has NO unique constraint on
+ * (meeting_id, feed_que_id) — only a serial PK (feed_ans_id) — so PostgREST
+ * `upsert(onConflict)` is not usable. We instead read the live rows for this
+ * meeting and UPDATE the ones that already exist (keyed by meeting_id +
+ * feed_que_id) / INSERT the rest. Audit columns are written as TEXT user_id,
+ * matching projectStatus.ts and the existing meeting writers.
+ *
+ * Reschedule / Cancel are NOT handled here — the UI reuses the existing
+ * `updateMeeting()` flow for those outcomes.
+ *
+ * Returns { error } on failure; a Postgres 42501 (RLS) is surfaced as a friendly
+ * message, mirroring data/projectStatus.ts.
+ */
+export async function submitMeetingFeedback(params: {
+  meetingId: number;
+  answers: FeedbackAnswerInput[];
+  followUpDate?: string | null;
+  actorId: string;
+}): Promise<{ error: string | null }> {
+  const { meetingId, answers, followUpDate, actorId } = params;
+  const now = new Date().toISOString();
+
+  const friendly = (err: { code?: string; message: string }): string =>
+    err.code === '42501'
+      ? 'You can only submit feedback for meetings assigned to you (ask an admin or the owner’s manager).'
+      : err.message;
+
+  // 1) Read existing answers so we update-in-place rather than duplicate rows.
+  const { data: existingRaw, error: readErr } = await supabase
+    .from('feedback_answer')
+    .select('feed_ans_id, feed_que_id')
+    .eq('meeting_id', meetingId)
+    .is('deleted_date', null);
+  if (readErr) return { error: friendly(readErr) };
+  const existingByQue = new Map<number, number>(); // feed_que_id -> feed_ans_id
+  ((existingRaw ?? []) as { feed_ans_id: number; feed_que_id: number }[]).forEach((r) =>
+    existingByQue.set(r.feed_que_id, r.feed_ans_id)
+  );
+
+  // 2) Update existing rows / collect new rows to insert.
+  const toInsert: Record<string, unknown>[] = [];
+  for (const a of answers) {
+    // feed_ans is NOT NULL in the schema; never write a null/blank-as-null.
+    const ans = (a.feed_ans ?? '').trim();
+    const existingId = existingByQue.get(a.feed_que_id);
+    if (existingId != null) {
+      const { error } = await supabase
+        .from('feedback_answer')
+        .update({ feed_ans: ans, updated_by: actorId, updated_date: now })
+        .eq('feed_ans_id', existingId);
+      if (error) return { error: friendly(error) };
+    } else {
+      toInsert.push({
+        meeting_id: meetingId,
+        feed_que_id: a.feed_que_id,
+        feed_ans: ans,
+        created_by: actorId,
+        created_date: now,
+      });
+    }
+  }
+  if (toInsert.length > 0) {
+    const { error } = await supabase.from('feedback_answer').insert(toInsert);
+    if (error) return { error: friendly(error) };
+  }
+
+  // 3) Mark the meeting Completed + stamp the follow-up date.
+  const patch: Record<string, unknown> = {
+    meeting_status: 'Completed',
+    updated_by: actorId,
+    updated_date: now,
+  };
+  if (followUpDate !== undefined) patch.follow_up_date = followUpDate || null;
+  const { error: mErr } = await supabase
+    .from('meeting_master')
+    .update(patch)
+    .eq('meeting_id', meetingId);
+  if (mErr) return { error: friendly(mErr) };
+
+  return { error: null };
+}

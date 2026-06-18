@@ -4,7 +4,10 @@
  *  - "Meeting confirmed by prospect" checkbox (one-way)
  *  - Upcoming + Past meetings for the current user
  *  - per-meeting Update modal (Reschedule / Cancel)
- *  - past meetings: Salesperson Feedback (read-only) + Agent Feedback (editable once)
+ *  - past meetings: an editable Salesperson Feedback form (Yes/No toggles + a
+ *    free-text question + follow-up date) with three submit outcomes — Successful
+ *    (save + mark Completed), Reschedule, Cancel/Drop — then locks to read-only.
+ *    Plus Agent Feedback (editable once).
  */
 import React, { useEffect, useState, useCallback } from 'react';
 import { Calendar, Clock, Link2, CheckCircle2, X, Loader2 } from 'lucide-react';
@@ -16,6 +19,8 @@ import {
   updateMeetingUrl,
   confirmMeeting,
   saveAgentFeedback,
+  submitMeetingFeedback,
+  isFreeTextQuestion,
   updateMeeting,
   fmtDate,
   POSTPONED_BY,
@@ -301,7 +306,17 @@ export function MeetingTab({
         ) : (
           <div className="space-y-3">
             {past.map((m) => (
-              <PastMeetingCard key={m.meeting_id} m={m} feedbackQs={feedbackQs} actor={actor} />
+              <PastMeetingCard
+                key={m.meeting_id}
+                m={m}
+                feedbackQs={feedbackQs}
+                reportId={reportId}
+                actor={actor}
+                onChanged={async () => {
+                  onChanged();
+                  await load();
+                }}
+              />
             ))}
           </div>
         )}
@@ -367,49 +382,165 @@ function MeetingListRow({ m, onUpdate }: { m: MeetingListItem; onUpdate: () => v
 function PastMeetingCard({
   m,
   feedbackQs,
+  reportId,
   actor,
+  onChanged,
 }: {
   m: MeetingListItem;
   feedbackQs: FeedbackQuestion[];
+  reportId: number | null;
   actor: string;
+  onChanged: () => void | Promise<void>;
 }) {
   const [open, setOpen] = useState(false);
   const [answers, setAnswers] = useState<FeedbackAnswerRow[]>([]);
   const [loadingFb, setLoadingFb] = useState(false);
+  const [loadedFb, setLoadedFb] = useState(false);
+
+  // Meeting status drives whether feedback is editable or already submitted.
+  const status = (m.status || m.meeting_status || '').trim().toLowerCase();
+  const isCompleted = status === 'completed';
+  const isCancelled = status === 'cancelled';
+  // Feedback already exists once the meeting is Completed OR rows are on file.
+  const feedbackSubmitted = isCompleted || (loadedFb && answers.length > 0);
+
+  // Editable form state ----------------------------------------------------
+  // Yes/No toggle answers + free-text answers, keyed by feed_que_id.
+  const [draft, setDraft] = useState<Record<number, string>>({});
+  const [followUp, setFollowUp] = useState('');
+  const [outcome, setOutcome] = useState<'successful' | 'reschedule' | 'cancel'>('successful');
+  // Reschedule / cancel sub-fields (reuse the same option sets as the modal).
+  const [by, setBy] = useState(POSTPONED_BY[0].value);
+  const [reason, setReason] = useState('');
+  const [newDate, setNewDate] = useState('');
+  const [newTime, setNewTime] = useState('');
+  const [newDuration, setNewDuration] = useState(m.duration ?? '00:30');
+
+  const [submitting, setSubmitting] = useState(false);
+  const [fbErr, setFbErr] = useState('');
+
+  // Agent feedback (editable once) -----------------------------------------
   const [agentFb, setAgentFb] = useState(m.agent_feedback ?? '');
   const [savingFb, setSavingFb] = useState(false);
   const [savedFb, setSavedFb] = useState(!!m.agent_feedback);
-  const [fbErr, setFbErr] = useState('');
+  const [agentErr, setAgentErr] = useState('');
+
+  const today = new Date().toISOString().slice(0, 10);
 
   const toggle = async () => {
     const next = !open;
     setOpen(next);
-    if (next && answers.length === 0) {
+    if (next && !loadedFb) {
       setLoadingFb(true);
       const a = await fetchFeedbackAnswers(m.meeting_id);
       setAnswers(a);
+      // Seed the editable draft: existing answers, else default Yes/No to "Yes"
+      // (matches the vendor app) and free-text to blank.
+      const seed: Record<number, string> = {};
+      feedbackQs.forEach((q) => {
+        const existing = a.find((x) => x.feed_que_id === q.feed_que_id)?.feed_ans;
+        seed[q.feed_que_id] = existing ?? (isFreeTextQuestion(q) ? '' : 'Yes');
+      });
+      setDraft(seed);
+      setLoadedFb(true);
       setLoadingFb(false);
     }
   };
 
   const ansFor = (qid: number) => answers.find((a) => a.feed_que_id === qid)?.feed_ans ?? '';
 
-  const handleSaveAgentFb = async () => {
-    if (!agentFb.trim()) return;
+  const switchBy = (next: 'reschedule' | 'cancel') => {
+    setOutcome(next);
+    setBy((next === 'reschedule' ? POSTPONED_BY : CANCELLED_BY)[0].value);
+  };
+
+  const handleSubmit = async () => {
     if (!actor) {
       setFbErr('Your account isn’t linked to a user profile yet, so feedback can’t be saved.');
       return;
     }
-    setSavingFb(true);
     setFbErr('');
-    const res = await saveAgentFeedback(m.meeting_id, agentFb, actor);
-    setSavingFb(false);
+
+    if (outcome === 'successful') {
+      // Every question must be answered (Yes/No always has a value; free-text required).
+      const missing = feedbackQs.some((q) => !(draft[q.feed_que_id] ?? '').trim());
+      if (missing) {
+        setFbErr('Please answer all feedback questions before submitting.');
+        return;
+      }
+      setSubmitting(true);
+      const res = await submitMeetingFeedback({
+        meetingId: m.meeting_id,
+        answers: feedbackQs.map((q) => ({
+          feed_que_id: q.feed_que_id,
+          feed_ans: (draft[q.feed_que_id] ?? '').trim(),
+        })),
+        followUpDate: followUp || null,
+        actorId: actor,
+      });
+      setSubmitting(false);
+      if (res.error) {
+        setFbErr(res.error);
+        return;
+      }
+      // Reflect the submitted answers locally + lock the form.
+      setAnswers(
+        feedbackQs.map((q) => ({
+          feed_que_id: q.feed_que_id,
+          feed_ans: (draft[q.feed_que_id] ?? '').trim(),
+        }))
+      );
+      await onChanged();
+      return;
+    }
+
+    // Reschedule / Cancel — feedback answers are optional; reuse the existing flow.
+    if (!reason.trim()) {
+      setFbErr('Please provide a reason.');
+      return;
+    }
+    if (outcome === 'reschedule' && !newDate) {
+      setFbErr('Please choose a new date.');
+      return;
+    }
+    setSubmitting(true);
+    const res = await updateMeeting({
+      meetingId: m.meeting_id,
+      reportId,
+      action: outcome,
+      by,
+      reason,
+      newDate: outcome === 'reschedule' ? newDate : undefined,
+      newTime: outcome === 'reschedule' ? newTime : undefined,
+      newDuration: outcome === 'reschedule' ? newDuration : undefined,
+      actor,
+    });
+    setSubmitting(false);
     if (res?.error) {
       setFbErr(res.error);
       return;
     }
+    await onChanged();
+  };
+
+  const handleSaveAgentFb = async () => {
+    if (!agentFb.trim()) return;
+    if (!actor) {
+      setAgentErr('Your account isn’t linked to a user profile yet, so feedback can’t be saved.');
+      return;
+    }
+    setSavingFb(true);
+    setAgentErr('');
+    const res = await saveAgentFeedback(m.meeting_id, agentFb, actor);
+    setSavingFb(false);
+    if (res?.error) {
+      setAgentErr(res.error);
+      return;
+    }
     setSavedFb(true);
   };
+
+  const byOptions = outcome === 'reschedule' ? POSTPONED_BY : CANCELLED_BY;
 
   return (
     <div className="border border-zinc-200 rounded-lg">
@@ -435,29 +566,228 @@ function PastMeetingCard({
 
       {open && (
         <div className="px-4 pb-4 border-t border-zinc-100 pt-3 space-y-4">
-          {/* Salesperson feedback (read-only) */}
+          {/* Salesperson feedback */}
           <div>
             <h4 className="font-semibold text-zinc-600 mb-2" style={{ fontSize: 12 }}>
               Salesperson Feedback
             </h4>
+
             {loadingFb ? (
               <LoadingBlock />
-            ) : answers.length === 0 ? (
-              <p className="text-zinc-400" style={{ fontSize: 12 }}>
-                No salesperson feedback submitted yet.
-              </p>
-            ) : (
+            ) : feedbackSubmitted ? (
+              /* Locked read-only view (reuses the existing question/answer display). */
               <div className="space-y-2">
                 {feedbackQs.map((q) => (
                   <div key={q.feed_que_id}>
                     <p className="text-zinc-500" style={{ fontSize: 12 }}>
                       {q.feed_que}
                     </p>
-                    <p className="text-zinc-800" style={{ fontSize: 13 }}>
+                    <p className="text-zinc-800 whitespace-pre-wrap" style={{ fontSize: 13 }}>
                       {ansFor(q.feed_que_id) || <span className="text-zinc-300">—</span>}
                     </p>
                   </div>
                 ))}
+                <p className="text-zinc-400 pt-1" style={{ fontSize: 11 }}>
+                  Feedback submitted — this meeting is marked Completed.
+                </p>
+              </div>
+            ) : isCancelled ? (
+              <p className="text-zinc-400" style={{ fontSize: 12 }}>
+                This meeting was cancelled — feedback can no longer be submitted.
+              </p>
+            ) : (
+              /* Editable form: Yes/No toggles, free-text, follow-up + 3 outcomes. */
+              <div className="space-y-3">
+                {outcome === 'successful' && (
+                  <>
+                    {feedbackQs.map((q) => {
+                      const freeText = isFreeTextQuestion(q);
+                      const val = draft[q.feed_que_id] ?? '';
+                      return (
+                        <div key={q.feed_que_id}>
+                          <p className="text-zinc-600 mb-1" style={{ fontSize: 12 }}>
+                            {q.feed_que}
+                          </p>
+                          {freeText ? (
+                            <textarea
+                              value={val}
+                              onChange={(e) =>
+                                setDraft((d) => ({ ...d, [q.feed_que_id]: e.target.value }))
+                              }
+                              rows={3}
+                              maxLength={1000}
+                              placeholder="Type here..."
+                              className={`${inputCls} resize-y`}
+                              style={{ fontSize: 13 }}
+                            />
+                          ) : (
+                            <div className="flex gap-2">
+                              {(['Yes', 'No'] as const).map((opt) => {
+                                const active = (val || 'Yes') === opt;
+                                return (
+                                  <button
+                                    key={opt}
+                                    type="button"
+                                    onClick={() =>
+                                      setDraft((d) => ({ ...d, [q.feed_que_id]: opt }))
+                                    }
+                                    className="rounded-md px-4 py-1.5 font-medium transition-colors"
+                                    style={{
+                                      fontSize: 13,
+                                      border: '1px solid',
+                                      borderColor: active ? '#1A7EE8' : '#d4d4d8',
+                                      background: active ? '#EBF4FD' : '#fff',
+                                      color: active ? '#1568C8' : '#52525b',
+                                    }}
+                                  >
+                                    {opt}
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+
+                    <div>
+                      <FieldLabel>Next meeting / follow-up date</FieldLabel>
+                      <input
+                        type="date"
+                        value={followUp}
+                        min={today}
+                        onChange={(e) => setFollowUp(e.target.value)}
+                        className={inputCls}
+                        style={{ fontSize: 13 }}
+                      />
+                    </div>
+                  </>
+                )}
+
+                {/* Outcome selector */}
+                <div>
+                  <FieldLabel>Meeting outcome</FieldLabel>
+                  <div className="flex gap-2">
+                    {([
+                      ['successful', 'Successful'],
+                      ['reschedule', 'Reschedule'],
+                      ['cancel', 'Cancel / Drop'],
+                    ] as const).map(([val, label]) => {
+                      const active = outcome === val;
+                      return (
+                        <button
+                          key={val}
+                          type="button"
+                          onClick={() => (val === 'successful' ? setOutcome('successful') : switchBy(val))}
+                          className="flex-1 rounded-md py-2 font-medium transition-colors"
+                          style={{
+                            fontSize: 13,
+                            border: '1px solid',
+                            borderColor: active ? '#1A7EE8' : '#d4d4d8',
+                            background: active ? '#EBF4FD' : '#fff',
+                            color: active ? '#1568C8' : '#52525b',
+                          }}
+                        >
+                          {label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* Reschedule / Cancel sub-fields */}
+                {outcome !== 'successful' && (
+                  <div className="space-y-3 rounded-md bg-zinc-50 border border-zinc-100 p-3">
+                    <div>
+                      <FieldLabel required>
+                        {outcome === 'reschedule' ? 'Postponed by' : 'Cancelled by'}
+                      </FieldLabel>
+                      <select
+                        value={by}
+                        onChange={(e) => setBy(e.target.value)}
+                        className={inputCls}
+                        style={{ fontSize: 13 }}
+                      >
+                        {byOptions.map((o) => (
+                          <option key={o.value} value={o.value}>
+                            {o.label}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    {outcome === 'reschedule' && (
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                        <div>
+                          <FieldLabel required>New date</FieldLabel>
+                          <input
+                            type="date"
+                            value={newDate}
+                            min={today}
+                            onChange={(e) => setNewDate(e.target.value)}
+                            className={inputCls}
+                            style={{ fontSize: 13 }}
+                          />
+                        </div>
+                        <div>
+                          <FieldLabel>New time</FieldLabel>
+                          <input
+                            type="time"
+                            value={newTime}
+                            onChange={(e) => setNewTime(e.target.value)}
+                            className={inputCls}
+                            style={{ fontSize: 13 }}
+                          />
+                        </div>
+                        <div>
+                          <FieldLabel>Duration</FieldLabel>
+                          <input
+                            type="time"
+                            value={newDuration}
+                            onChange={(e) => setNewDuration(e.target.value)}
+                            className={inputCls}
+                            style={{ fontSize: 13 }}
+                          />
+                        </div>
+                      </div>
+                    )}
+
+                    <div>
+                      <FieldLabel required>Reason</FieldLabel>
+                      <textarea
+                        value={reason}
+                        onChange={(e) => setReason(e.target.value)}
+                        rows={2}
+                        placeholder={
+                          outcome === 'reschedule'
+                            ? 'Why is the meeting being rescheduled?'
+                            : 'Why is the meeting being cancelled / dropped?'
+                        }
+                        className={`${inputCls} resize-y`}
+                        style={{ fontSize: 13 }}
+                      />
+                    </div>
+                  </div>
+                )}
+
+                <div>
+                  <PrimaryButton onClick={handleSubmit} loading={submitting}>
+                    {outcome === 'successful' ? (
+                      <>
+                        <CheckCircle2 size={14} /> Submit Feedback
+                      </>
+                    ) : outcome === 'reschedule' ? (
+                      <>
+                        <CheckCircle2 size={14} /> Reschedule
+                      </>
+                    ) : (
+                      <>
+                        <X size={14} /> Cancel Meeting
+                      </>
+                    )}
+                  </PrimaryButton>
+                </div>
+                {fbErr && <InlineNote kind="error">{fbErr}</InlineNote>}
               </div>
             )}
           </div>
@@ -486,7 +816,7 @@ function PastMeetingCard({
                     Save Feedback
                   </PrimaryButton>
                 </div>
-                {fbErr && <InlineNote kind="error">{fbErr}</InlineNote>}
+                {agentErr && <InlineNote kind="error">{agentErr}</InlineNote>}
               </>
             )}
           </div>
