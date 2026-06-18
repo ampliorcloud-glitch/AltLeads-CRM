@@ -43,7 +43,8 @@ export interface CompanyProjectStatus {
   company_id: number;
   project_id: number;
   account_status: string | null;
-  is_feasible: boolean | null;
+  // 'feasible' | 'not_feasible' | 'unknown' (text in DB; matches the feasibility dropdown values)
+  is_feasible: string | null;
   decision_power: string | null;
   description: string | null;
   comments: string | null;
@@ -65,7 +66,7 @@ export interface ContactStatusPatch {
 
 export interface CompanyStatusPatch {
   account_status?: string | null;
-  is_feasible?: boolean | null;
+  is_feasible?: string | null;
   decision_power?: string | null;
   description?: string | null;
   comments?: string | null;

@@ -1,14 +1,21 @@
 /**
  * email-templates.js — branded HTML email builder for Amplior CRM notifications.
  *
- * Brand colours:
- *   "Alt" / accent  = #1A7EE8 (blue)
- *   "Leads" / text  = #111111
- *   Background      = #F4F6FA
- *   Card            = #FFFFFF
+ * Brand:
+ *   accent  = #1A7EE8 (blue)   text = #111111   bg = #F4F6FA   card = #FFFFFF
+ *
+ * Every template takes a `data` object. Common OPTIONAL fields supported across
+ * all templates (callers may pass them; everything degrades gracefully):
+ *   toName   — recipient's first name, used for the greeting ("Hi Priya,")
+ *   ctaUrl   — deep link for the button (e.g. https://crm.altleads.com/leads/123).
+ *              Falls back to APP_URL so the button always opens the CRM.
  */
 
 'use strict';
+
+// Base URL the action buttons point at. Override per-email via data.ctaUrl, or
+// globally via the APP_BASE_URL env var. Defaults to production.
+const APP_URL = process.env.APP_BASE_URL || 'https://crm.altleads.com';
 
 /* ── Shared layout wrapper ─────────────────────────────────────── */
 
@@ -18,7 +25,7 @@ function wrap(title, bodyHtml) {
 <head>
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>${title}</title>
+  <title>${esc(title)}</title>
   <style>
     body { margin:0; padding:0; background:#F4F6FA; font-family:'Segoe UI',Arial,sans-serif; }
     .shell { max-width:600px; margin:32px auto; background:#FFFFFF; border-radius:10px;
@@ -27,6 +34,8 @@ function wrap(title, bodyHtml) {
     .logo   { font-size:22px; font-weight:700; color:#FFFFFF; letter-spacing:-0.5px; }
     .logo span { color:#DDEEFF; }
     .body   { padding:32px; color:#111111; }
+    .greeting { font-size:15px; color:#111111; margin:0 0 18px; }
+    .lead-in  { font-size:15px; color:#333; margin:0 0 22px; line-height:1.5; }
     .label  { font-size:12px; font-weight:600; text-transform:uppercase;
               color:#1A7EE8; letter-spacing:.8px; margin-bottom:4px; }
     .value  { font-size:15px; color:#111111; margin-bottom:18px; }
@@ -42,8 +51,9 @@ function wrap(title, bodyHtml) {
     .cta    { display:inline-block; margin-top:24px; padding:12px 28px;
               background:#1A7EE8; color:#FFFFFF; text-decoration:none;
               border-radius:6px; font-weight:600; font-size:14px; }
+    .note   { margin-top:24px; font-size:13px; color:#555; line-height:1.5; }
     .footer { padding:20px 32px; background:#F4F6FA; font-size:12px; color:#888;
-              border-top:1px solid #E5E7EB; text-align:center; }
+              border-top:1px solid #E5E7EB; text-align:center; line-height:1.6; }
   </style>
 </head>
 <body>
@@ -55,11 +65,33 @@ function wrap(title, bodyHtml) {
       ${bodyHtml}
     </div>
     <div class="footer">
-      This is an automated notification from Amplior CRM. Do not reply to this email.
+      You're receiving this because you're part of the team on AltLeads CRM.<br/>
+      This is an automated message — please don't reply to this email.
     </div>
   </div>
 </body>
 </html>`;
+}
+
+/* ── Small builders ────────────────────────────────────────────── */
+
+function greeting(data) {
+  const name = (data.toName || '').trim();
+  return `<p class="greeting">Hi ${name ? esc(name) : 'there'},</p>`;
+}
+
+function leadIn(text) {
+  return `<p class="lead-in">${text}</p>`;
+}
+
+function row(label, value) {
+  if (value === undefined || value === null || value === '') return '';
+  return `<div class="label">${esc(label)}</div><div class="value">${esc(value)}</div>`;
+}
+
+function button(label, data) {
+  const url = data.ctaUrl || APP_URL;
+  return `<a class="cta" href="${esc(url)}">${esc(label)}</a>`;
 }
 
 /* ── Template builders ─────────────────────────────────────────── */
@@ -67,46 +99,49 @@ function wrap(title, bodyHtml) {
 function leadAssigned(data) {
   const { leadName = 'N/A', company = '', assignedByName = '' } = data;
   return wrap('New Lead Assigned — AltLeads', `
-    <h2 style="margin-top:0;color:#1A7EE8;font-size:20px;">New Lead Assigned to You</h2>
-    <div class="label">Lead Name</div>
-    <div class="value">${esc(leadName)}</div>
-    ${company ? `<div class="label">Company</div><div class="value">${esc(company)}</div>` : ''}
-    ${assignedByName ? `<div class="label">Assigned By</div><div class="value">${esc(assignedByName)}</div>` : ''}
+    <h2 style="margin-top:0;color:#1A7EE8;font-size:20px;">A new lead is yours</h2>
+    ${greeting(data)}
+    ${leadIn(`${assignedByName ? `${esc(assignedByName)} has assigned` : 'You have been assigned'} a new lead in AltLeads. Here are the details:`)}
+    ${row('Lead', leadName)}
+    ${row('Company', company)}
+    ${row('Assigned By', assignedByName)}
     <span class="badge badge-blue">New Assignment</span>
     <br/>
-    <a class="cta" href="#">View Lead in AltLeads</a>
-    <p style="margin-top:24px;font-size:13px;color:#555;">
-      Please review the lead details and begin the qualification process.
-    </p>
+    ${button('Open lead in AltLeads', data)}
+    <p class="note">Give them a call or drop an email to start the conversation — you can log your first call straight from the lead.</p>
   `);
 }
 
 function leadReassigned(data) {
   const { leadName = 'N/A', company = '', assignedByName = '' } = data;
   return wrap('Lead Reassigned — AltLeads', `
-    <h2 style="margin-top:0;color:#1A7EE8;font-size:20px;">Lead Has Been Reassigned to You</h2>
-    <div class="label">Lead Name</div>
-    <div class="value">${esc(leadName)}</div>
-    ${company ? `<div class="label">Company</div><div class="value">${esc(company)}</div>` : ''}
-    ${assignedByName ? `<div class="label">Reassigned By</div><div class="value">${esc(assignedByName)}</div>` : ''}
+    <h2 style="margin-top:0;color:#1A7EE8;font-size:20px;">A lead has been moved to you</h2>
+    ${greeting(data)}
+    ${leadIn(`This lead has been reassigned to you${assignedByName ? ` by ${esc(assignedByName)}` : ''}. It's now in your pipeline:`)}
+    ${row('Lead', leadName)}
+    ${row('Company', company)}
+    ${row('Reassigned By', assignedByName)}
     <span class="badge badge-yellow">Reassigned</span>
     <br/>
-    <a class="cta" href="#">View Lead in AltLeads</a>
+    ${button('Open lead in AltLeads', data)}
+    <p class="note">Review the history so far, then pick up the outreach from where it stands.</p>
   `);
 }
 
 function meetingScheduled(data) {
   const { leadName = 'N/A', meetingDate = '', meetingTime = '', mode = '' } = data;
   return wrap('Meeting Scheduled — AltLeads', `
-    <h2 style="margin-top:0;color:#1A7EE8;font-size:20px;">Meeting Scheduled</h2>
-    <div class="label">Lead</div>
-    <div class="value">${esc(leadName)}</div>
-    ${meetingDate ? `<div class="label">Date</div><div class="value">${esc(meetingDate)}</div>` : ''}
-    ${meetingTime ? `<div class="label">Time</div><div class="value">${esc(meetingTime)}</div>` : ''}
-    ${mode ? `<div class="label">Mode</div><div class="value">${esc(mode)}</div>` : ''}
+    <h2 style="margin-top:0;color:#1A7EE8;font-size:20px;">Your meeting is confirmed</h2>
+    ${greeting(data)}
+    ${leadIn('A meeting has been scheduled. Here are the details:')}
+    ${row('Lead', leadName)}
+    ${row('Date', meetingDate)}
+    ${row('Time', meetingTime)}
+    ${row('Mode', mode)}
     <span class="badge badge-blue">Meeting Scheduled</span>
     <br/>
-    <a class="cta" href="#">View Meeting Details</a>
+    ${button('View meeting details', data)}
+    <p class="note">Add it to your calendar and prepare your talking points ahead of time.</p>
   `);
 }
 
@@ -117,25 +152,22 @@ function meetingRescheduled(data) {
     newDate = '', newTime = '',
     mode = '', reason = '', rescheduledBy = '',
   } = data;
+  const oldWhen = [oldDate, oldTime].filter(Boolean).join(' · ');
+  const newWhen = [newDate, newTime].filter(Boolean).join(' · ');
   return wrap('Meeting Rescheduled — AltLeads', `
-    <h2 style="margin-top:0;color:#D97706;font-size:20px;">Meeting Has Been Rescheduled</h2>
-    <div class="label">Lead</div>
-    <div class="value">${esc(leadName)}</div>
-    ${(oldDate || oldTime) ? `
-    <div class="label">Previous Date &amp; Time</div>
-    <div class="value">${[esc(oldDate), esc(oldTime)].filter(Boolean).join(' · ')}</div>` : ''}
-    ${(newDate || newTime) ? `
-    <div class="label">New Date &amp; Time</div>
-    <div class="value" style="font-weight:600;">${[esc(newDate), esc(newTime)].filter(Boolean).join(' · ')}</div>` : ''}
-    ${mode ? `<div class="label">Mode</div><div class="value">${esc(mode)}</div>` : ''}
-    ${rescheduledBy ? `<div class="label">Rescheduled By</div><div class="value">${esc(rescheduledBy)}</div>` : ''}
+    <h2 style="margin-top:0;color:#D97706;font-size:20px;">Your meeting has moved</h2>
+    ${greeting(data)}
+    ${leadIn('The meeting time has changed. Please note the new slot:')}
+    ${row('Lead', leadName)}
+    ${oldWhen ? `<div class="label">Was</div><div class="value" style="color:#888;text-decoration:line-through;">${esc(oldWhen)}</div>` : ''}
+    ${newWhen ? `<div class="label">Now</div><div class="value" style="font-weight:600;">${esc(newWhen)}</div>` : ''}
+    ${row('Mode', mode)}
+    ${row('Rescheduled By', rescheduledBy)}
     ${reason ? `<div class="label">Reason</div><div class="reason-box">${esc(reason)}</div>` : ''}
     <br/><span class="badge badge-yellow">Rescheduled</span>
     <br/>
-    <a class="cta" href="#">View Meeting Details</a>
-    <p style="margin-top:24px;font-size:13px;color:#555;">
-      Please note the updated meeting time and prepare accordingly.
-    </p>
+    ${button('View meeting details', data)}
+    <p class="note">Update your calendar with the new time so nothing slips.</p>
   `);
 }
 
@@ -146,69 +178,67 @@ function meetingCancelled(data) {
     mode = '', reason = '', cancelledBy = '',
   } = data;
   return wrap('Meeting Cancelled — AltLeads', `
-    <h2 style="margin-top:0;color:#991B1B;font-size:20px;">Meeting Has Been Cancelled</h2>
-    <div class="label">Lead</div>
-    <div class="value">${esc(leadName)}</div>
-    ${meetingDate ? `<div class="label">Original Date</div><div class="value">${esc(meetingDate)}</div>` : ''}
-    ${meetingTime ? `<div class="label">Original Time</div><div class="value">${esc(meetingTime)}</div>` : ''}
-    ${mode ? `<div class="label">Mode</div><div class="value">${esc(mode)}</div>` : ''}
-    ${cancelledBy ? `<div class="label">Cancelled By</div><div class="value">${esc(cancelledBy)}</div>` : ''}
+    <h2 style="margin-top:0;color:#991B1B;font-size:20px;">A meeting has been cancelled</h2>
+    ${greeting(data)}
+    ${leadIn('The following meeting has been cancelled:')}
+    ${row('Lead', leadName)}
+    ${row('Was scheduled for', [meetingDate, meetingTime].filter(Boolean).join(' · '))}
+    ${row('Mode', mode)}
+    ${row('Cancelled By', cancelledBy)}
     ${reason ? `<div class="label">Reason</div><div class="reason-box">${esc(reason)}</div>` : ''}
     <br/><span class="badge badge-red">Cancelled</span>
     <br/>
-    <a class="cta" href="#">View Meeting Details</a>
-    <p style="margin-top:24px;font-size:13px;color:#555;">
-      This meeting has been cancelled. Please follow up with the lead as needed.
-    </p>
+    ${button('Open lead in AltLeads', data)}
+    <p class="note">Follow up with the contact to find a new time when you can.</p>
   `);
 }
 
 function approvalRequested(data) {
   const { leadName = 'N/A', agentName = '', leadNumber = '' } = data;
+  const leadLabel = leadName + (leadNumber ? ` (${leadNumber})` : '');
   return wrap('Approval Required — AltLeads', `
-    <h2 style="margin-top:0;color:#1A7EE8;font-size:20px;">Lead Report Awaiting Your Approval</h2>
-    <div class="label">Lead</div>
-    <div class="value">${esc(leadName)}${leadNumber ? ` <span style="color:#888;font-size:13px;">(${esc(leadNumber)})</span>` : ''}</div>
-    ${agentName ? `<div class="label">Requested By</div><div class="value">${esc(agentName)}</div>` : ''}
+    <h2 style="margin-top:0;color:#1A7EE8;font-size:20px;">A lead report needs your approval</h2>
+    ${greeting(data)}
+    ${leadIn(`${agentName ? `${esc(agentName)} has submitted` : 'A lead report has been submitted'} a report for your review.`)}
+    ${row('Lead', leadLabel)}
+    ${row('Submitted By', agentName)}
     <span class="badge badge-yellow">Pending Approval</span>
     <br/>
-    <a class="cta" href="#">Review &amp; Approve</a>
-    <p style="margin-top:24px;font-size:13px;color:#555;">
-      Please review the lead report and take action at your earliest convenience.
-    </p>
+    ${button('Review & approve', data)}
+    <p class="note">Please review and approve or send it back with feedback at your earliest convenience.</p>
   `);
 }
 
 function approvalApproved(data) {
   const { leadName = 'N/A', leadNumber = '', approvedByName = '' } = data;
+  const leadLabel = leadName + (leadNumber ? ` (${leadNumber})` : '');
   return wrap('Lead Report Approved — AltLeads', `
-    <h2 style="margin-top:0;color:#065F46;font-size:20px;">Your Lead Report Was Approved</h2>
-    <div class="label">Lead</div>
-    <div class="value">${esc(leadName)}${leadNumber ? ` <span style="color:#888;font-size:13px;">(${esc(leadNumber)})</span>` : ''}</div>
-    ${approvedByName ? `<div class="label">Approved By</div><div class="value">${esc(approvedByName)}</div>` : ''}
+    <h2 style="margin-top:0;color:#065F46;font-size:20px;">Your report was approved 🎉</h2>
+    ${greeting(data)}
+    ${leadIn(`Good news — your lead report has been approved${approvedByName ? ` by ${esc(approvedByName)}` : ''} and the meeting is scheduled.`)}
+    ${row('Lead', leadLabel)}
+    ${row('Approved By', approvedByName)}
     <span class="badge badge-green">Approved — Meeting Scheduled</span>
     <br/>
-    <a class="cta" href="#">View Lead</a>
-    <p style="margin-top:24px;font-size:13px;color:#555;">
-      Great work! The meeting has been scheduled. Please prepare accordingly.
-    </p>
+    ${button('View lead', data)}
+    <p class="note">Nice work. Prepare for the meeting and keep the momentum going.</p>
   `);
 }
 
 function approvalRejected(data) {
   const { leadName = 'N/A', leadNumber = '', reason = '', rejectedByName = '' } = data;
-  return wrap('Lead Report Rejected — AltLeads', `
-    <h2 style="margin-top:0;color:#991B1B;font-size:20px;">Your Lead Report Was Rejected</h2>
-    <div class="label">Lead</div>
-    <div class="value">${esc(leadName)}${leadNumber ? ` <span style="color:#888;font-size:13px;">(${esc(leadNumber)})</span>` : ''}</div>
-    ${rejectedByName ? `<div class="label">Rejected By</div><div class="value">${esc(rejectedByName)}</div>` : ''}
-    ${reason ? `<div class="label">Reason</div><div class="reason-box">${esc(reason)}</div>` : ''}
-    <br/><span class="badge badge-red">Rejected</span>
+  const leadLabel = leadName + (leadNumber ? ` (${leadNumber})` : '');
+  return wrap('Lead Report Needs Changes — AltLeads', `
+    <h2 style="margin-top:0;color:#991B1B;font-size:20px;">Your report needs a few changes</h2>
+    ${greeting(data)}
+    ${leadIn(`Your lead report was sent back${rejectedByName ? ` by ${esc(rejectedByName)}` : ''} with feedback. Please update it and resubmit.`)}
+    ${row('Lead', leadLabel)}
+    ${row('Reviewed By', rejectedByName)}
+    ${reason ? `<div class="label">What to fix</div><div class="reason-box">${esc(reason)}</div>` : ''}
+    <br/><span class="badge badge-red">Changes Requested</span>
     <br/>
-    <a class="cta" href="#">Edit &amp; Resubmit</a>
-    <p style="margin-top:24px;font-size:13px;color:#555;">
-      Please address the feedback above and resubmit the report for approval.
-    </p>
+    ${button('Edit & resubmit', data)}
+    <p class="note">Address the feedback above and resubmit — you've got this.</p>
   `);
 }
 
@@ -227,14 +257,14 @@ function esc(str) {
 function subject(event, data) {
   const lead = data.leadName || 'Lead';
   switch (event) {
-    case 'lead_assigned':       return `[AltLeads] New lead assigned: ${lead}`;
-    case 'lead_reassigned':     return `[AltLeads] Lead reassigned to you: ${lead}`;
-    case 'meeting_scheduled':    return `[AltLeads] Meeting scheduled: ${lead}`;
-    case 'meeting_rescheduled':  return `[AltLeads] Meeting rescheduled: ${lead}`;
-    case 'meeting_cancelled':    return `[AltLeads] Meeting cancelled: ${lead}`;
-    case 'approval_requested':  return `[AltLeads] Approval required: ${lead}`;
-    case 'approval_approved':   return `[AltLeads] Report approved — Meeting Scheduled: ${lead}`;
-    case 'approval_rejected':   return `[AltLeads] Report rejected: ${lead}`;
+    case 'lead_assigned':       return `[AltLeads] New lead assigned to you: ${lead}`;
+    case 'lead_reassigned':     return `[AltLeads] A lead was moved to you: ${lead}`;
+    case 'meeting_scheduled':   return `[AltLeads] Meeting confirmed: ${lead}`;
+    case 'meeting_rescheduled': return `[AltLeads] Meeting time changed: ${lead}`;
+    case 'meeting_cancelled':   return `[AltLeads] Meeting cancelled: ${lead}`;
+    case 'approval_requested':  return `[AltLeads] Approval needed: ${lead}`;
+    case 'approval_approved':   return `[AltLeads] Approved — meeting scheduled: ${lead}`;
+    case 'approval_rejected':   return `[AltLeads] Changes requested on your report: ${lead}`;
     default:                    return `[AltLeads] Notification`;
   }
 }
@@ -246,14 +276,14 @@ function buildEmail(event, data) {
   switch (event) {
     case 'lead_assigned':       html = leadAssigned(data);       break;
     case 'lead_reassigned':     html = leadReassigned(data);     break;
-    case 'meeting_scheduled':    html = meetingScheduled(data);    break;
-    case 'meeting_rescheduled':  html = meetingRescheduled(data);  break;
-    case 'meeting_cancelled':    html = meetingCancelled(data);    break;
+    case 'meeting_scheduled':   html = meetingScheduled(data);    break;
+    case 'meeting_rescheduled': html = meetingRescheduled(data);  break;
+    case 'meeting_cancelled':   html = meetingCancelled(data);    break;
     case 'approval_requested':  html = approvalRequested(data);  break;
     case 'approval_approved':   html = approvalApproved(data);   break;
     case 'approval_rejected':   html = approvalRejected(data);   break;
     default:
-      html = wrap('AltLeads Notification', `<p>You have a new notification from AltLeads.</p>`);
+      html = wrap('AltLeads Notification', `${greeting(data)}<p>You have a new notification from AltLeads.</p>`);
   }
   return { subject: subject(event, data), html };
 }

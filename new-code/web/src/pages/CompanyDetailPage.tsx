@@ -235,7 +235,7 @@ function AccountPanel({ companyId, projectId, actorId }: AccountPanelProps) {
   // Form state (local draft)
   const [draft, setDraft] = useState<{
     account_status: string;
-    is_feasible: string; // 'true' | 'false' | ''
+    is_feasible: string; // 'feasible' | 'not_feasible' | 'unknown' | ''
     decision_power: string;
     description: string;
     comments: string;
@@ -262,7 +262,7 @@ function AccountPanel({ companyId, projectId, actorId }: AccountPanelProps) {
       setStatus(s);
       setDraft({
         account_status: s?.account_status ?? '',
-        is_feasible: s?.is_feasible == null ? '' : s.is_feasible ? 'true' : 'false',
+        is_feasible: s?.is_feasible ?? '',
         decision_power: s?.decision_power ?? '',
         description: s?.description ?? '',
         comments: s?.comments ?? '',
@@ -279,7 +279,7 @@ function AccountPanel({ companyId, projectId, actorId }: AccountPanelProps) {
     setSaveOk(false);
     const patch = {
       account_status: draft.account_status || null,
-      is_feasible: draft.is_feasible === '' ? null : draft.is_feasible === 'true',
+      is_feasible: draft.is_feasible || null,
       decision_power: draft.decision_power || null,
       description: draft.description || null,
       comments: draft.comments || null,
@@ -362,8 +362,9 @@ function AccountPanel({ companyId, projectId, actorId }: AccountPanelProps) {
                   ))
                 : (
                   <>
-                    <option value="true">Yes</option>
-                    <option value="false">No</option>
+                    <option value="feasible">Feasible</option>
+                    <option value="not_feasible">Not Feasible</option>
+                    <option value="unknown">Unknown</option>
                   </>
                 )}
             </select>
@@ -371,7 +372,7 @@ function AccountPanel({ companyId, projectId, actorId }: AccountPanelProps) {
           </div>
           {draft.is_feasible !== '' && (
             <div style={{ marginTop: 4 }}>
-              <StatusBadge value={draft.is_feasible === 'true' ? 'feasible' : 'not_feasible'} category="feasibility" />
+              <StatusBadge value={draft.is_feasible} category="feasibility" />
             </div>
           )}
         </div>
