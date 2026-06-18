@@ -1400,6 +1400,58 @@ const TICKETS = [
     owner:'Claude',
     notes:'Company ID column in export; service-role POST /api/companies/bulk-update (match id/domain/cin, update-only, skip-blanks, dry-run diff, per-row report); admin import wizard. Phase 2 -> contacts. See BULK-IMPORT-EXPORT.md.'
   },
+
+  // ══════════════════════════════════════════════════════════════════════
+  // EPIC: North-star ecosystem & roadmap (2026-06-18)
+  // ══════════════════════════════════════════════════════════════════════
+  {
+    id:'ALT-160', title:'Task Manager — scheduled tasks as tickets, associated to records (HubSpot/Zoho-style)',
+    type:'Feature', module:'Tasks', wave:'Roadmap',
+    priority:'P1', status:'Planned',
+    created: d(2026,6,18), updated: d(2026,6,18), finished: null,
+    owner:'Claude',
+    notes:'New task + task_association tables; schedule task -> ticket linked to contact/company/lead + attach more records from other modules; reminders -> notifications; per-record Tasks tab + global My Tasks. See VISION.md.'
+  },
+  {
+    id:'ALT-161', title:'Client portal — clients see scheduled/success post-scheduling + dashboard',
+    type:'Feature', module:'Client Portal', wave:'Roadmap',
+    priority:'P2', status:'Planned',
+    created: d(2026,6,18), updated: d(2026,6,18), finished: null,
+    owner:'Claude',
+    notes:'Priority #2 after internal launch. Client-scoped read views of scheduled/successful outcomes + dashboard. Needs client-role + row scoping.'
+  },
+  {
+    id:'ALT-162', title:'Chrome extension — LinkedIn contact details + inline CRM edit (writes back live)',
+    type:'Feature', module:'Extension', wave:'Roadmap',
+    priority:'P2', status:'Planned',
+    created: d(2026,6,18), updated: d(2026,6,18), finished: null,
+    owner:'Claude',
+    notes:'Priority #3. Extension reads the same Supabase backend; show contact details over an open LinkedIn profile + small editable controls that reflect in the CRM. Reuse the CRM data layer/API.'
+  },
+  {
+    id:'ALT-163', title:'Market-mapping data per city (enrich base + targeting)',
+    type:'Feature', module:'Data', wave:'Roadmap',
+    priority:'P3', status:'Planned',
+    created: d(2026,6,18), updated: d(2026,6,18), finished: null,
+    owner:'Claude',
+    notes:'Priority #4. City-wise company/site dataset feeding targeting + enriching the RAG base.'
+  },
+  {
+    id:'ALT-164', title:'AI / RAG suggestion engine (who/when/what to reach out; targeting)',
+    type:'Feature', module:'AI', wave:'Roadmap',
+    priority:'P3', status:'Planned',
+    created: d(2026,6,18), updated: d(2026,6,18), finished: null,
+    owner:'Claude',
+    notes:'Priority #5, gradual. pgvector embeddings over interaction history; suggestions per contact (best time/what to say) + targeting ("100 companies whose contracts renew next month"). DEPENDS on rich interaction capture from day one (ALT-152/foundations). See AI-PGVECTOR-PLAN.md + VISION.md.'
+  },
+  {
+    id:'ALT-165', title:'Leadership decks — Product & Launch + Product Guide (HTML/PDF)',
+    type:'Docs', module:'Docs', wave:'Roadmap',
+    priority:'P1', status:'Done',
+    created: d(2026,6,18), updated: d(2026,6,18), finished: d(2026,6,18),
+    owner:'Claude',
+    notes:'docs/product/deck-product-launch.(html|pdf) + deck-product-guide.(html|pdf). Branded 10-slide decks, rendered via Playwright. Show impact, best+upcoming features, ecosystem/RAG north-star, roadmap, launch decisions.'
+  },
 ];
 
 // ─── MERGE LOGIC ─────────────────────────────────────────────────────────────
