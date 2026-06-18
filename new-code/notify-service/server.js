@@ -40,6 +40,68 @@ function getSupabaseAdmin() {
   return supabaseAdmin;
 }
 
+/* ── User-management helpers ─────────────────────────────────────── */
+
+/** Generate a strong 12-char temp password (guaranteed mixed character classes). */
+function genTempPassword() {
+  const upper = 'ABCDEFGHJKLMNPQRSTUVWXYZ';
+  const lower = 'abcdefghjkmnpqrstuvwxyz';
+  const digits = '23456789';
+  const special = '!@#$%&*';
+  const all = upper + lower + digits + special;
+  const pick = (s) => s[Math.floor(Math.random() * s.length)];
+  let pw = pick(upper) + pick(lower) + pick(digits) + pick(special);
+  for (let i = 4; i < 12; i++) pw += pick(all);
+  return pw.split('').sort(() => Math.random() - 0.5).join('');
+}
+
+/**
+ * Find a Supabase Auth user by email. The admin API has no get-by-email, so we
+ * page through listUsers (cap at 20 pages / 20k users — far above our scale).
+ * Returns the auth user object or null.
+ */
+async function findAuthUserByEmail(admin, email) {
+  const target = String(email).trim().toLowerCase();
+  for (let page = 1; page <= 20; page++) {
+    const { data, error } = await admin.auth.admin.listUsers({ page, perPage: 1000 });
+    if (error || !data) return null;
+    const hit = (data.users || []).find((u) => (u.email || '').toLowerCase() === target);
+    if (hit) return hit;
+    if (!data.users || data.users.length < 1000) break; // last page
+  }
+  return null;
+}
+
+/**
+ * Ensure the profiles row linking auth uid -> numeric user_id exists & is correct,
+ * so RLS helpers (current_user_id / is_admin) and requireAdmin work for this user.
+ * Resolves profiles.role from the user's most-privileged (lowest role_id) role.
+ * Best-effort: logs and continues on failure (never blocks the password action).
+ */
+async function ensureProfileLink(admin, { authUid, userId, email, fullName }) {
+  try {
+    let roleName = null;
+    if (userId != null) {
+      const { data: roleRows } = await admin
+        .from('user_role').select('role_id').eq('user_id', userId).is('deleted_date', null);
+      if (roleRows && roleRows.length) {
+        const minRole = Math.min(...roleRows.map((r) => Number(r.role_id)));
+        const { data: rm } = await admin
+          .from('role_master').select('name').eq('role_id', minRole).single();
+        roleName = rm && rm.name ? rm.name : null;
+      }
+    }
+    const row = { id: authUid, email: String(email).trim().toLowerCase() };
+    if (userId != null) row.user_id = userId;
+    if (fullName) row.full_name = fullName;
+    if (roleName) row.role = roleName;
+    const { error } = await admin.from('profiles').upsert(row, { onConflict: 'id' });
+    if (error) console.error('[users] ensureProfileLink upsert failed:', error.message);
+  } catch (e) {
+    console.error('[users] ensureProfileLink threw:', e.message);
+  }
+}
+
 /* ── SMTP transporter (lazy — created once) ──────────────────────── */
 
 let transporter = null;
@@ -317,16 +379,7 @@ app.post('/api/users/create', requireAdmin, async (req, res) => {
   }
 
   /* 8. Generate temp password */
-  const upper = 'ABCDEFGHJKLMNPQRSTUVWXYZ';
-  const lower = 'abcdefghjkmnpqrstuvwxyz';
-  const digits = '23456789';
-  const special = '!@#$%&*';
-  const all = upper + lower + digits + special;
-  const pick = (s) => s[Math.floor(Math.random() * s.length)];
-  let tempPassword = pick(upper) + pick(lower) + pick(digits) + pick(special);
-  for (let i = 4; i < 12; i++) tempPassword += pick(all);
-  // Shuffle
-  tempPassword = tempPassword.split('').sort(() => Math.random() - 0.5).join('');
+  const tempPassword = genTempPassword();
 
   /* 9. Create Supabase Auth user */
   const { data: authData, error: authErr } = await supabaseAdmin.auth.admin.createUser({
@@ -346,6 +399,16 @@ app.post('/api/users/create', requireAdmin, async (req, res) => {
     return res.status(500).json({ error: `Failed to create auth user: ${msg}` });
   }
 
+  /* 10b. Explicitly link auth uid -> numeric user_id in profiles. Don't rely on
+     the email-matching onboarding trigger — guarantee the link so reset-password,
+     RLS (current_user_id/is_admin) and the created_by audit all work immediately. */
+  await ensureProfileLink(supabaseAdmin, {
+    authUid: authData.user.id,
+    userId: newUser.user_id,
+    email: trimmedEmail,
+    fullName: trimmedName,
+  });
+
   console.log(`[users/create] Created user ${newUser.user_id} (${trimmedEmail}) with role ${roleIdInt}`);
 
   /* 11. Return success */
@@ -354,13 +417,20 @@ app.post('/api/users/create', requireAdmin, async (req, res) => {
 
 /* ── POST /api/users/reset-password ─────────────────────────────── */
 /**
+ * Set or reset a user's login password (admin only).
+ *
  * Auth: requireAdmin (valid Supabase JWT belonging to a profiles.role==='ADMIN').
- * Body: { user_id } (bigint/number)
- * Response 200: { ok: true, tempPassword: string }
- * Response 400: { error: string }  (validation)
- * Response 404: { error: string }  (user not found in profiles)
- * Response 500: { error: string }  (auth update failure)
- * Response 503: { error: string }  (missing env vars)
+ * Body: { user_id } (bigint/number) and/or { email }
+ *
+ * Behaviour: resolves the user's email from user_master, then finds their
+ * Supabase Auth account by email.
+ *   - If a login exists  -> reset its password.
+ *   - If NO login exists -> CREATE one with the new password (most legacy users
+ *     migrated from the old system have no login yet; this is how an admin grants
+ *     access). Either way we (re)link profiles so RLS works immediately.
+ *
+ * Response 200: { ok: true, tempPassword: string, created: boolean }
+ * Response 400/404: { error }   500: { error }   503: { error } (missing env)
  */
 app.post('/api/users/reset-password', requireAdmin, async (req, res) => {
   const { user_id, email } = req.body || {};
@@ -376,49 +446,67 @@ app.post('/api/users/reset-password', requireAdmin, async (req, res) => {
     return res.status(503).json({ error: 'Supabase env vars not set (SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)' });
   }
 
-  /* 3. Resolve auth UID — look up profiles table by user_id (or email fallback) */
-  let profileQuery = supabaseAdmin.from('profiles').select('id, email');
-  if (user_id !== undefined && user_id !== null && user_id !== '') {
-    profileQuery = profileQuery.eq('user_id', user_id);
+  /* 3. Resolve the user's email + numeric id + name from user_master. The email
+        (not a fragile profiles link) is the authoritative key to the auth account. */
+  let targetUserId = (user_id !== undefined && user_id !== null && user_id !== '') ? user_id : null;
+  let targetEmail = email ? String(email).trim().toLowerCase() : null;
+  let fullName = null;
+  if (targetUserId !== null) {
+    const { data: um } = await supabaseAdmin
+      .from('user_master').select('user_id, email, full_name').eq('user_id', targetUserId).single();
+    if (um) {
+      if (um.email) targetEmail = String(um.email).trim().toLowerCase();
+      fullName = um.full_name || null;
+    }
+  } else if (targetEmail) {
+    const { data: um } = await supabaseAdmin
+      .from('user_master').select('user_id, full_name').eq('email', targetEmail).limit(1).maybeSingle();
+    if (um) { targetUserId = um.user_id; fullName = um.full_name || null; }
+  }
+  if (!targetEmail) {
+    return res.status(404).json({ error: 'This user has no email on file — add an email before setting a password.' });
+  }
+
+  /* 4. Strong temp password. */
+  const tempPassword = genTempPassword();
+
+  /* 5. Find an existing auth account by email; reset it, or create a fresh login. */
+  const existingAuth = await findAuthUserByEmail(supabaseAdmin, targetEmail);
+  let authUid;
+  let created = false;
+  if (existingAuth) {
+    authUid = existingAuth.id;
+    const { error: updateErr } = await supabaseAdmin.auth.admin.updateUserById(authUid, {
+      password: tempPassword,
+      email_confirm: true,
+    });
+    if (updateErr) {
+      console.error('[users/reset-password] updateUserById failed:', updateErr.message);
+      return res.status(500).json({ error: `Failed to reset password: ${updateErr.message}` });
+    }
   } else {
-    profileQuery = profileQuery.eq('email', String(email).trim().toLowerCase());
-  }
-  const { data: profileRows, error: profileErr } = await profileQuery.limit(1);
-
-  if (profileErr) {
-    console.error('[users/reset-password] profiles lookup failed:', profileErr.message);
-    return res.status(500).json({ error: `Failed to look up user: ${profileErr.message}` });
-  }
-  if (!profileRows || profileRows.length === 0) {
-    return res.status(404).json({ error: 'No login found for this user.' });
-  }
-  const authUid = profileRows[0].id;
-
-  /* 5. Generate strong 12-char temp password */
-  const upper = 'ABCDEFGHJKLMNPQRSTUVWXYZ';
-  const lower = 'abcdefghjkmnpqrstuvwxyz';
-  const digits = '23456789';
-  const special = '!@#$%&*';
-  const all = upper + lower + digits + special;
-  const pick = (s) => s[Math.floor(Math.random() * s.length)];
-  let tempPassword = pick(upper) + pick(lower) + pick(digits) + pick(special);
-  for (let i = 4; i < 12; i++) tempPassword += pick(all);
-  tempPassword = tempPassword.split('').sort(() => Math.random() - 0.5).join('');
-
-  /* 6. Update auth user password */
-  const { error: updateErr } = await supabaseAdmin.auth.admin.updateUserById(authUid, {
-    password: tempPassword,
-  });
-
-  if (updateErr) {
-    console.error('[users/reset-password] auth.admin.updateUserById failed:', updateErr.message);
-    return res.status(500).json({ error: `Failed to reset password: ${updateErr.message}` });
+    const { data: authData, error: createErr } = await supabaseAdmin.auth.admin.createUser({
+      email: targetEmail,
+      password: tempPassword,
+      email_confirm: true,
+      user_metadata: fullName ? { full_name: fullName } : undefined,
+    });
+    if (createErr || !authData?.user) {
+      const msg = createErr ? createErr.message : 'auth user creation returned no user';
+      console.error('[users/reset-password] createUser failed:', msg);
+      return res.status(500).json({ error: `Failed to create login: ${msg}` });
+    }
+    authUid = authData.user.id;
+    created = true;
   }
 
-  console.log(`[users/reset-password] Reset password for user_id=${user_id} (auth uid=${authUid})`);
+  /* 6. (Re)link the auth account to the numeric user_id so RLS + future resets work. */
+  await ensureProfileLink(supabaseAdmin, { authUid, userId: targetUserId, email: targetEmail, fullName });
+
+  console.log(`[users/reset-password] ${created ? 'Created login + set' : 'Reset'} password for ${targetEmail} (user_id=${targetUserId}, auth uid=${authUid})`);
 
   /* 7. Return success */
-  return res.status(200).json({ ok: true, tempPassword });
+  return res.status(200).json({ ok: true, tempPassword, created });
 });
 
 /* ── Serve React web app (static + SPA fallback) ─────────────────── */

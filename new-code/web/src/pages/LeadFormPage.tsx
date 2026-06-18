@@ -14,7 +14,7 @@
  */
 
 import React, { useEffect, useState, useCallback } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { ArrowLeft, Loader2, ChevronRight, AlertCircle, Check } from 'lucide-react';
 import { AppShell } from '../components/layout/AppShell';
 import {
@@ -218,6 +218,7 @@ type Errors = Partial<Record<keyof LeadFormData | 'submit', string>>;
 
 export function LeadFormPage() {
   const { id } = useParams<{ id: string }>();
+  const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const { profile } = useAuth();
   const isEdit = Boolean(id);
@@ -317,15 +318,43 @@ export function LeadFormPage() {
       // Default the Agent (Owner) to the current user. Match by user_id (the lookup
       // option id IS user_master.user_id) — matching by full_name is ambiguous and
       // breaks for blank/duplicate names.
-      if (profile?.user_id != null) {
-        const currentUser = lookupsData.users.find((u) => u.id === profile.user_id);
-        if (currentUser) {
-          setForm((prev) => ({ ...prev, agent_id: currentUser.id }));
+      const currentUser =
+        profile?.user_id != null ? lookupsData.users.find((u) => u.id === profile.user_id) : undefined;
+
+      // Prefill from query params when launched via "+ New Lead" from a contact or
+      // company detail page: /leads/new?contact=<id>&company=<id>.
+      const contactParam = searchParams.get('contact');
+      const companyParam = searchParams.get('company');
+      const prefillContact = contactParam
+        ? contactsResult.contacts.find((c) => c.contact_id === Number(contactParam))
+        : undefined;
+      if (prefillContact) setPickedContact(prefillContact);
+
+      setForm((prev) => {
+        const next = { ...prev };
+        if (currentUser) next.agent_id = currentUser.id;
+        if (prefillContact) {
+          next.contact_id = prefillContact.contact_id;
+          next.lead_name = prefillContact.full_name || '';
+          next.email = prefillContact.email || '';
+          next.mobile_no = prefillContact.mobile_no || '';
+          next.designation = prefillContact.designation || '';
+          next.linkedin_url = prefillContact.linkedin_url || '';
+          if (prefillContact.company_id) {
+            next.company_id = prefillContact.company_id;
+            next.new_company_name = '';
+          }
         }
-      }
+        // Direct ?company= (e.g. launched from a company page) — only if a contact
+        // didn't already set one.
+        if (companyParam && next.company_id == null) {
+          next.company_id = Number(companyParam);
+        }
+        return next;
+      });
     }
     setLoading(false);
-  }, [isEdit, leadId, profile]);
+  }, [isEdit, leadId, profile, searchParams]);
 
   useEffect(() => { load(); }, [load]);
 

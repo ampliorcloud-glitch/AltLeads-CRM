@@ -62,7 +62,7 @@ export function UsersTab({ lookups, actorId }: { lookups: AdminLookups; actorId:
   const [resetUser, setResetUser] = useState<AdminUser | null>(null);
   const [resetLoading, setResetLoading] = useState(false);
   const [resetError, setResetError] = useState<string | null>(null);
-  const [resetSuccess, setResetSuccess] = useState<{ tempPassword: string } | null>(null);
+  const [resetSuccess, setResetSuccess] = useState<{ tempPassword: string; created: boolean } | null>(null);
   const [resetPwCopied, setResetPwCopied] = useState(false);
 
   // Web-assignable roles only (is_web). Non-web roles (SALES_HEAD, SALES_PERSON)
@@ -192,7 +192,7 @@ export function UsersTab({ lookups, actorId }: { lookups: AdminLookups; actorId:
     setResetLoading(true);
     try {
       const result = await resetUserPassword(resetUser.user_id);
-      setResetSuccess({ tempPassword: result.tempPassword });
+      setResetSuccess({ tempPassword: result.tempPassword, created: result.created });
     } catch (err) {
       setResetError(err instanceof Error ? err.message : 'Failed to reset password');
     } finally {
@@ -542,10 +542,12 @@ export function UsersTab({ lookups, actorId }: { lookups: AdminLookups; actorId:
                 }}
               >
                 <p style={{ fontSize: 13, fontWeight: 600, color: '#15803D', margin: '0 0 6px' }}>
-                  Password reset successfully!
+                  {resetSuccess.created ? 'Login created successfully!' : 'Password reset successfully!'}
                 </p>
                 <p style={{ fontSize: 12, color: '#374151', margin: '0 0 10px' }}>
-                  Share this temporary password with {resetUser.full_name} — they can change it in Settings.
+                  {resetSuccess.created
+                    ? `${resetUser.full_name} had no login yet — one was created. Share this temporary password; they can change it in Settings.`
+                    : `Share this temporary password with ${resetUser.full_name} — they can change it in Settings.`}
                 </p>
                 <div
                   style={{
@@ -601,7 +603,8 @@ export function UsersTab({ lookups, actorId }: { lookups: AdminLookups; actorId:
                 </div>
               </div>
               <p style={{ fontSize: 13, color: '#374151', margin: 0 }}>
-                This will generate a new temporary password for this user. Their current password will stop working immediately.
+                This generates a new temporary password. If this user has no login yet (most users migrated from the
+                old system don't), their login is created now. Any current password stops working immediately.
               </p>
               {resetError && (
                 <p style={{ fontSize: 12, color: '#EF4444', margin: 0 }}>{resetError}</p>

@@ -22,7 +22,7 @@ const OUT_PATH = path.resolve(
 
 // ─── DATE HELPERS ─────────────────────────────────────────────────────────────
 const d = (y, m, day) => y + '-' + String(m).padStart(2, '0') + '-' + String(day).padStart(2, '0');
-const TODAY = d(2026, 6, 17);
+const TODAY = d(2026, 6, 18);
 
 // ─── TICKET DATA ──────────────────────────────────────────────────────────────
 // Columns: ID, Title, Type, Module, Wave/Epic, Priority, Status,
@@ -1243,10 +1243,62 @@ const TICKETS = [
   {
     id:'ALT-141', title:'First production deploy / push to live (owner-gated)',
     type:'Task', module:'Deploy/Infra', wave:'Deploy',
-    priority:'P0', status:'Planned',
-    created: d(2026,6,17), updated: d(2026,6,17), finished: null,
+    priority:'P0', status:'Done',
+    created: d(2026,6,17), updated: d(2026,6,17), finished: d(2026,6,17),
     owner:'Mohit',
-    notes:'All security hardening (v1/v1b/v2) in place. Owner to authorize git push + Hostinger deploy of latest code.'
+    notes:'Pushed commit 3c0c2ba on 2026-06-17 → Hostinger auto-deploy. Owner must add SUPABASE_URL + SUPABASE_SERVICE_ROLE_KEY env vars for email/add-user to work.'
+  },
+
+  // ══════════════════════════════════════════════════════════════════════
+  // EPIC: Post-deploy fixes & HubSpot-style associations (2026-06-18)
+  // ══════════════════════════════════════════════════════════════════════
+  {
+    id:'ALT-142', title:'Fix: user edit/reset failed with "No login found"',
+    type:'Bug', module:'Admin', wave:'Post-deploy fixes',
+    priority:'P0', status:'Done',
+    created: d(2026,6,18), updated: d(2026,6,18), finished: d(2026,6,18),
+    owner:'Claude',
+    notes:'110/111 users had no auth login (only 1 profiles row). Reset now resolves auth account by email, AUTO-CREATES a login when none exists, and self-heals the profiles id↔user_id link. Create-user now upserts profiles explicitly (no longer relies on the email trigger).'
+  },
+  {
+    id:'ALT-143', title:'Fix: Pre-Sales Questions tab broken (missing is_active column)',
+    type:'Bug', module:'Admin', wave:'Post-deploy fixes',
+    priority:'P0', status:'Done',
+    created: d(2026,6,18), updated: d(2026,6,18), finished: d(2026,6,18),
+    owner:'Claude',
+    notes:'pre_sales_question.is_active never existed (42703 → empty tab, no edits). Added column via fix-questions-domains.sql + admin-only write RLS (everyone reads).'
+  },
+  {
+    id:'ALT-144', title:'Fix: Domain reference data add/edit not wired',
+    type:'Bug', module:'Admin', wave:'Post-deploy fixes',
+    priority:'P1', status:'Done',
+    created: d(2026,6,18), updated: d(2026,6,18), finished: d(2026,6,18),
+    owner:'Claude',
+    notes:'Domain table was read-only and edit pencil was a no-op. Added addDomain/updateDomain (+ updateSource/updateDesignation) and wired ReferenceDataTab add+edit modal; admin-only write RLS on domain_master.'
+  },
+  {
+    id:'ALT-145', title:'Company detail: rename "Deals" tab → "Leads" + New Lead action',
+    type:'Feature', module:'Companies', wave:'HubSpot associations',
+    priority:'P1', status:'Done',
+    created: d(2026,6,18), updated: d(2026,6,18), finished: d(2026,6,18),
+    owner:'Claude',
+    notes:'Owner: "those deals in contact are same of our leads." Tab key+label now Leads; empty/placeholder copy updated; added "New lead" button (prefills company).'
+  },
+  {
+    id:'ALT-146', title:'Create a Lead from within a Contact or Company (prefilled)',
+    type:'Feature', module:'Leads', wave:'HubSpot associations',
+    priority:'P1', status:'Done',
+    created: d(2026,6,18), updated: d(2026,6,18), finished: d(2026,6,18),
+    owner:'Claude',
+    notes:'LeadFormPage reads /leads/new?contact=&company= and prefills person+company (mirrors ContactFormPage). Launch buttons on both detail pages. Uses lead_master.contact_id (confirmed present in live DB).'
+  },
+  {
+    id:'ALT-147', title:'Contact detail: associated Leads + Colleagues panels',
+    type:'Feature', module:'Contacts', wave:'HubSpot associations',
+    priority:'P1', status:'Done',
+    created: d(2026,6,18), updated: d(2026,6,18), finished: d(2026,6,18),
+    owner:'Claude',
+    notes:'New fetchContactLeads (by contact_id + source_lead_id). Contact page now shows associated Leads and Colleagues (other contacts at same company), matching the company page associations.'
   },
 ];
 

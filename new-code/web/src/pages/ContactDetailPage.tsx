@@ -13,6 +13,7 @@ import {
   Check,
   X,
   Save,
+  Plus,
 } from 'lucide-react';
 import { AppShell } from '../components/layout/AppShell';
 import { useAuth } from '../contexts/AuthContext';
@@ -20,12 +21,16 @@ import {
   fetchContactById,
   fetchCompanyOptions,
   fetchCityOptions,
+  fetchContactLeads,
   updateContactCompany,
   deriveLinkedinClean,
   type Contact,
   type CompanyOption,
   type CityOption,
+  type ContactLead,
 } from '../data/contacts';
+import { fetchCompanyContacts, type CompanyContact } from '../data/companies';
+import { StageBadge } from '../components/ui/Badge';
 import {
   getContactStatus,
   upsertContactStatus,
@@ -169,6 +174,10 @@ export function ContactDetailPage() {
   // Activity timeline
   const [activity, setActivity] = useState<Interaction[]>([]);
 
+  // Associations (HubSpot-style): leads for this contact + colleagues at the same company
+  const [leads, setLeads] = useState<ContactLead[]>([]);
+  const [siblings, setSiblings] = useState<CompanyContact[]>([]);
+
   /* ---------------------------------------------------------------- */
   /*  Load contact + reference data                                    */
   /* ---------------------------------------------------------------- */
@@ -194,6 +203,22 @@ export function ContactDetailPage() {
   }, [contactId]);
 
   useEffect(() => { loadContact(); }, [loadContact]);
+
+  // Load associated leads + colleagues once the contact (and its company) is known.
+  useEffect(() => {
+    if (!contact) return;
+    let cancelled = false;
+    (async () => {
+      const [ld, sib] = await Promise.all([
+        fetchContactLeads(contact.contact_id),
+        contact.company_id ? fetchCompanyContacts(contact.company_id) : Promise.resolve([] as CompanyContact[]),
+      ]);
+      if (cancelled) return;
+      setLeads(ld);
+      setSiblings(sib.filter((s) => s.id !== String(contact.contact_id)));
+    })();
+    return () => { cancelled = true; };
+  }, [contact]);
 
   // Load contact_status dropdown options once
   useEffect(() => {
@@ -450,22 +475,42 @@ export function ContactDetailPage() {
             )}
           </div>
 
-          {/* Edit / Save / Cancel buttons */}
+          {/* New Lead / Edit / Save / Cancel buttons */}
           <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
             {!editing ? (
-              <button
-                type="button"
-                onClick={startEdit}
-                style={{
-                  display: 'inline-flex', alignItems: 'center', gap: 5,
-                  fontSize: 12, fontWeight: 500,
-                  background: '#F3F4F6', color: '#374151',
-                  border: '1px solid #E5E7EB', borderRadius: 6,
-                  padding: '6px 12px', cursor: 'pointer',
-                }}
-              >
-                <Pencil size={13} /> Edit
-              </button>
+              <>
+                <button
+                  type="button"
+                  onClick={() =>
+                    navigate(
+                      `/leads/new?contact=${contact.contact_id}` +
+                        (contact.company_id ? `&company=${contact.company_id}` : ''),
+                    )
+                  }
+                  style={{
+                    display: 'inline-flex', alignItems: 'center', gap: 5,
+                    fontSize: 12, fontWeight: 500,
+                    background: '#1A7EE8', color: '#fff',
+                    border: 'none', borderRadius: 6,
+                    padding: '6px 12px', cursor: 'pointer',
+                  }}
+                >
+                  <Plus size={13} /> New Lead
+                </button>
+                <button
+                  type="button"
+                  onClick={startEdit}
+                  style={{
+                    display: 'inline-flex', alignItems: 'center', gap: 5,
+                    fontSize: 12, fontWeight: 500,
+                    background: '#F3F4F6', color: '#374151',
+                    border: '1px solid #E5E7EB', borderRadius: 6,
+                    padding: '6px 12px', cursor: 'pointer',
+                  }}
+                >
+                  <Pencil size={13} /> Edit
+                </button>
+              </>
             ) : (
               <>
                 <button
@@ -747,6 +792,102 @@ export function ContactDetailPage() {
                 Save status
               </button>
             </div>
+          </SectionCard>
+        </div>
+
+        {/* Associations — leads for this contact + colleagues at the same company */}
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+          <SectionCard
+            title={`Leads (${leads.length})`}
+            action={
+              <button
+                type="button"
+                onClick={() =>
+                  navigate(
+                    `/leads/new?contact=${contact.contact_id}` +
+                      (contact.company_id ? `&company=${contact.company_id}` : ''),
+                  )
+                }
+                style={{
+                  display: 'inline-flex', alignItems: 'center', gap: 4,
+                  fontSize: 12, fontWeight: 500, color: '#1A7EE8',
+                  background: 'none', border: 'none', cursor: 'pointer',
+                }}
+              >
+                <Plus size={13} /> New
+              </button>
+            }
+          >
+            {leads.length === 0 ? (
+              <p style={{ fontSize: 13, color: '#9CA3AF', margin: 0 }}>
+                No leads linked to this contact yet.
+              </p>
+            ) : (
+              <div className="space-y-2">
+                {leads.map((l) => (
+                  <div
+                    key={l.id}
+                    onClick={() => navigate(`/leads/${l.id}`)}
+                    className="flex items-center justify-between gap-3 rounded-lg px-3 py-2 cursor-pointer"
+                    style={{ border: '1px solid #E5E7EB', background: '#fff' }}
+                    onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = '#F9FAFB'; }}
+                    onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = '#fff'; }}
+                  >
+                    <div className="min-w-0">
+                      <p className="truncate" style={{ fontSize: 13, fontWeight: 500, color: '#111827', margin: 0 }}>
+                        {l.leadName || <span style={{ color: '#9CA3AF' }}>Untitled lead</span>}
+                      </p>
+                      {l.leadNumber && (
+                        <p style={{ fontSize: 11, color: '#9CA3AF', margin: 0, fontFamily: 'monospace' }}>
+                          {l.leadNumber}
+                        </p>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-3 shrink-0">
+                      {l.stage && <StageBadge stage={l.stage} />}
+                      <span style={{ fontSize: 11, color: '#9CA3AF' }}>{l.createdDate || '—'}</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </SectionCard>
+
+          <SectionCard
+            title={`Colleagues${contact.company_name ? ' · ' + contact.company_name : ''} (${siblings.length})`}
+          >
+            {!contact.company_id ? (
+              <p style={{ fontSize: 13, color: '#9CA3AF', margin: 0 }}>
+                Link a company to see colleagues.
+              </p>
+            ) : siblings.length === 0 ? (
+              <p style={{ fontSize: 13, color: '#9CA3AF', margin: 0 }}>
+                No other contacts at this company yet.
+              </p>
+            ) : (
+              <div className="space-y-1">
+                {siblings.map((s) => (
+                  <Link
+                    key={s.id}
+                    to={`/contacts/${s.id}`}
+                    style={{
+                      display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8,
+                      fontSize: 13, color: '#374151', textDecoration: 'none',
+                      padding: '6px 8px', borderRadius: 6,
+                    }}
+                    onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = '#F9FAFB'; }}
+                    onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = 'transparent'; }}
+                  >
+                    <span className="truncate" style={{ fontWeight: 500, color: '#111827' }}>
+                      {s.fullName || '—'}
+                    </span>
+                    <span className="truncate" style={{ color: '#9CA3AF', fontSize: 12 }}>
+                      {s.designation || ''}
+                    </span>
+                  </Link>
+                ))}
+              </div>
+            )}
           </SectionCard>
         </div>
 

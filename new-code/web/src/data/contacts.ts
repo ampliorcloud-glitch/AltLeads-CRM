@@ -97,6 +97,45 @@ export async function fetchContactById(contactId: number): Promise<Contact | nul
   return contacts.find((c) => c.contact_id === contactId) ?? null;
 }
 
+/** A lead associated with a contact (HubSpot-style "associated leads" panel). */
+export interface ContactLead {
+  id: string;
+  leadNumber: string;
+  leadName: string;
+  stage: string;
+  createdDate: string;
+}
+
+/**
+ * Leads directly associated with a contact.
+ * Primary link is lead_master.contact_id (set when a lead is created from a
+ * contact). If the contact was migrated from a lead, source_lead_id points back
+ * at that originating lead, so include it too.
+ */
+export async function fetchContactLeads(
+  contactId: number,
+  sourceLeadId?: number | null,
+): Promise<ContactLead[]> {
+  const ors = [`contact_id.eq.${contactId}`];
+  if (sourceLeadId != null) ors.push(`lead_id.eq.${sourceLeadId}`);
+
+  const { data, error } = await supabase
+    .from('lead_master')
+    .select('lead_id, lead_number, lead_name, stage, created_date')
+    .or(ors.join(','))
+    .is('deleted_date', null)
+    .order('created_date', { ascending: false, nullsFirst: false });
+
+  if (error) return [];
+  return (data ?? []).map((r: Record<string, unknown>) => ({
+    id: String(r.lead_id),
+    leadNumber: (r.lead_number as string | null) ?? '',
+    leadName: (r.lead_name as string | null) ?? '',
+    stage: (r.stage as string | null) ?? '',
+    createdDate: r.created_date ? String(r.created_date).substring(0, 10) : '',
+  }));
+}
+
 /** Fetch interactions for a contact */
 export async function fetchContactInteractions(contactId: number): Promise<Interaction[]> {
   const { data, error } = await supabase

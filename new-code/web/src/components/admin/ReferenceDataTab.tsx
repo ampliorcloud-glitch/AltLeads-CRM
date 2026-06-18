@@ -4,6 +4,10 @@ import {
   fetchReferenceData,
   addSource,
   addDesignation,
+  addDomain,
+  updateSource,
+  updateDesignation,
+  updateDomain,
   type RefRow,
 } from '../../data/admin';
 import {
@@ -16,7 +20,7 @@ import {
 } from './primitives';
 import { Modal, Field, TextInput, PrimaryButton, GhostButton } from './Modal';
 
-type AddKind = 'source' | 'designation';
+type RefKind = 'source' | 'designation' | 'domain';
 
 /** Figma-style reference table: Sr. No. | Name | Edit */
 function FigmaRefTable({
@@ -25,17 +29,19 @@ function FigmaRefTable({
   loading,
   emptyLabel,
   onAdd,
+  onEdit,
 }: {
   title: string;
   rows: RefRow[];
   loading: boolean;
   emptyLabel: string;
   onAdd?: () => void;
+  onEdit?: (row: RefRow) => void;
 }) {
   const columns = [
     { key: 'sr',   label: 'Sr. No.', width: 72 },
     { key: 'name', label: `${title} Name` },
-    ...(onAdd ? [{ key: 'edit', label: 'Edit', align: 'right' as const, width: 60 }] : []),
+    ...(onEdit ? [{ key: 'edit', label: 'Edit', align: 'right' as const, width: 60 }] : []),
   ];
 
   return (
@@ -107,7 +113,7 @@ function FigmaRefTable({
                     </td>
 
                     {/* Edit icon (only for editable tables) */}
-                    {onAdd && (
+                    {onEdit && (
                       <td
                         style={{
                           padding: '0 16px',
@@ -116,8 +122,7 @@ function FigmaRefTable({
                           width: 60,
                         }}
                       >
-                        {/* Pencil is display-only here (no edit form yet) */}
-                        <EditIconButton onClick={() => {}} />
+                        <EditIconButton onClick={() => onEdit(r)} />
                       </td>
                     )}
                   </tr>
@@ -139,10 +144,18 @@ export function ReferenceDataTab({ actorId }: { actorId: string }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const [addKind, setAddKind] = useState<AddKind | null>(null);
+  // Single modal drives both Add (no editId) and Edit (editId set).
+  const [modalKind, setModalKind] = useState<RefKind | null>(null);
+  const [editId, setEditId] = useState<number | null>(null);
   const [addName, setAddName] = useState('');
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
+
+  const KIND_LABEL: Record<RefKind, string> = {
+    source: 'Source',
+    designation: 'Designation',
+    domain: 'Domain',
+  };
 
   const load = async () => {
     setLoading(true);
@@ -159,27 +172,53 @@ export function ReferenceDataTab({ actorId }: { actorId: string }) {
     load();
   }, []);
 
-  const openAdd = (kind: AddKind) => {
-    setAddKind(kind);
+  const openAdd = (kind: RefKind) => {
+    setModalKind(kind);
+    setEditId(null);
     setAddName('');
     setSaveError(null);
   };
 
-  const handleAdd = async () => {
-    if (!addKind || !addName.trim()) return;
+  const openEdit = (kind: RefKind, row: RefRow) => {
+    setModalKind(kind);
+    setEditId(row.id);
+    setAddName(row.name);
+    setSaveError(null);
+  };
+
+  const closeModal = () => {
+    setModalKind(null);
+    setEditId(null);
+  };
+
+  const handleSave = async () => {
+    if (!modalKind || !addName.trim()) return;
     setSaving(true);
     setSaveError(null);
-    const err =
-      addKind === 'source'
-        ? await addSource(addName.trim(), actorId)
-        : await addDesignation(addName.trim(), actorId);
+    const name = addName.trim();
+    let err: string | null;
+    if (editId !== null) {
+      err =
+        modalKind === 'source'
+          ? await updateSource(editId, name, actorId)
+          : modalKind === 'designation'
+            ? await updateDesignation(editId, name, actorId)
+            : await updateDomain(editId, name, actorId);
+    } else {
+      err =
+        modalKind === 'source'
+          ? await addSource(name, actorId)
+          : modalKind === 'designation'
+            ? await addDesignation(name, actorId)
+            : await addDomain(name, actorId);
+    }
     if (err) {
       setSaveError(err);
       setSaving(false);
       return;
     }
     setSaving(false);
-    setAddKind(null);
+    closeModal();
     await load();
   };
 
@@ -212,12 +251,15 @@ export function ReferenceDataTab({ actorId }: { actorId: string }) {
           loading={loading}
           emptyLabel="No designations."
           onAdd={() => openAdd('designation')}
+          onEdit={(row) => openEdit('designation', row)}
         />
         <FigmaRefTable
           title="Domain"
           rows={domains}
           loading={loading}
           emptyLabel="No domains."
+          onAdd={() => openAdd('domain')}
+          onEdit={(row) => openEdit('domain', row)}
         />
         <FigmaRefTable
           title="Source"
@@ -225,6 +267,7 @@ export function ReferenceDataTab({ actorId }: { actorId: string }) {
           loading={loading}
           emptyLabel="No sources."
           onAdd={() => openAdd('source')}
+          onEdit={(row) => openEdit('source', row)}
         />
         <FigmaRefTable
           title="Industry"
@@ -234,18 +277,23 @@ export function ReferenceDataTab({ actorId }: { actorId: string }) {
         />
       </div>
 
-      {/* Add modal */}
+      {/* Add / Edit modal */}
       <Modal
-        open={addKind !== null}
-        title={addKind === 'source' ? 'Add Source' : 'Add Designation'}
-        onClose={() => setAddKind(null)}
+        open={modalKind !== null}
+        title={
+          modalKind
+            ? `${editId !== null ? 'Edit' : 'Add'} ${KIND_LABEL[modalKind]}`
+            : ''
+        }
+        onClose={closeModal}
         footer={
           <>
-            <GhostButton onClick={() => setAddKind(null)} disabled={saving}>
+            <GhostButton onClick={closeModal} disabled={saving}>
               Cancel
             </GhostButton>
-            <PrimaryButton onClick={handleAdd} disabled={saving || !addName.trim()}>
-              {saving && <Loader2 size={13} className="animate-spin" />} Add
+            <PrimaryButton onClick={handleSave} disabled={saving || !addName.trim()}>
+              {saving && <Loader2 size={13} className="animate-spin" />}
+              {editId !== null ? 'Save' : 'Add'}
             </PrimaryButton>
           </>
         }
@@ -255,7 +303,11 @@ export function ReferenceDataTab({ actorId }: { actorId: string }) {
             value={addName}
             onChange={setAddName}
             placeholder={
-              addKind === 'source' ? 'e.g. Referral' : 'e.g. Account Executive'
+              modalKind === 'source'
+                ? 'e.g. Referral'
+                : modalKind === 'domain'
+                  ? 'e.g. Facility Management'
+                  : 'e.g. Account Executive'
             }
           />
         </Field>

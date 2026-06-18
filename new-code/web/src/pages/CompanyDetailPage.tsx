@@ -62,10 +62,10 @@ function fullUrl(webUrl: string): string {
   return /^https?:\/\//.test(webUrl) ? webUrl : `https://${webUrl}`;
 }
 
-type TabKey = 'contacts' | 'deals' | 'activity';
+type TabKey = 'contacts' | 'leads' | 'activity';
 const TABS: { key: TabKey; label: string }[] = [
   { key: 'contacts', label: 'Contacts' },
-  { key: 'deals', label: 'Deals' },
+  { key: 'leads', label: 'Leads' },
   { key: 'activity', label: 'Activity' },
 ];
 
@@ -898,7 +898,7 @@ function DealsTab({ deals }: { deals: CompanyDeal[] }) {
     return (
       <div className="flex flex-col items-center justify-center gap-2 py-12 text-center">
         <Hash size={28} className="text-zinc-300" />
-        <p className="text-zinc-500" style={{ fontSize: 14 }}>No deals linked to this company yet.</p>
+        <p className="text-zinc-500" style={{ fontSize: 14 }}>No leads linked to this company yet.</p>
       </div>
     );
   }
@@ -915,7 +915,7 @@ function DealsTab({ deals }: { deals: CompanyDeal[] }) {
         >
           <div className="min-w-0">
             <p className="font-medium text-zinc-900 truncate" style={{ fontSize: 14 }}>
-              {d.leadName || <span className="text-zinc-400">Untitled deal</span>}
+              {d.leadName || <span className="text-zinc-400">Untitled lead</span>}
             </p>
             {d.leadNumber && (
               <p className="text-zinc-400 font-mono" style={{ fontSize: 11 }}>{d.leadNumber}</p>
@@ -1131,7 +1131,7 @@ export function CompanyDetailPage() {
             <div className="flex items-center">
               {TABS.map((t) => {
                 const isActive = tab === t.key;
-                const count = t.key === 'contacts' ? contacts.length : t.key === 'deals' ? deals.length : null;
+                const count = t.key === 'contacts' ? contacts.length : t.key === 'leads' ? deals.length : null;
                 return (
                   <button
                     key={t.key}
@@ -1170,6 +1170,18 @@ export function CompanyDetailPage() {
                 </button>
               </div>
             )}
+            {tab === 'leads' && (
+              <div className="flex items-center gap-2" style={{ paddingRight: 6 }}>
+                <button
+                  onClick={() => navigate(`/leads/new?company=${company.id}`)}
+                  className="inline-flex items-center gap-1.5 text-blue-600 hover:text-blue-700 font-medium transition-colors"
+                  style={{ fontSize: 12 }}
+                >
+                  <Plus size={13} />
+                  New lead
+                </button>
+              </div>
+            )}
           </div>
 
           <div className="p-4">
@@ -1181,7 +1193,7 @@ export function CompanyDetailPage() {
                 actorId={actorId}
               />
             )}
-            {tab === 'deals' && <DealsTab deals={deals} />}
+            {tab === 'leads' && <DealsTab deals={deals} />}
             {tab === 'activity' && (
               <ActivityTab companyId={companyId} projectId={projectId} />
             )}

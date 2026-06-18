@@ -185,6 +185,7 @@ Status: PLANNED for per-user saved views across all modules; export and column-t
 - **New company with dedup** — blocks creation if a company with the same cleaned website domain or CIN already exists; surfaces the existing record instead.
 - Per-project account fields: Account Status, Feasibility, Decision-making power, Description, Comments (all stored in `company_project_status`).
 - Link an existing contact into the company from the company detail page.
+- **Associations (HubSpot-style):** a Contacts tab and a **Leads** tab (the latter was previously mislabelled "Deals" — leads *are* our deals). Each tab shows the count; the Leads tab has a **+ New lead** action that opens the lead form pre-filled with this company.
 
 ### Contacts (DONE)
 - Directory of 607 contacts (migrated from `lead_master`; 417/608 now have a linked company via email-domain sync).
@@ -193,11 +194,14 @@ Status: PLANNED for per-user saved views across all modules; export and column-t
 - **New contact with dedup** — blocks creation if a contact with the same professional email (or LinkedIn, or phone) already exists. Demo mode skips dedup.
 - Change or clear a contact's company from their detail page.
 - Per-project contact fields: Contact Status, Description, Comments (stored in `contact_project_status`).
+- **Associations (HubSpot-style):** the contact's parent **Company**, its associated **Leads** (linked by `lead_master.contact_id`, plus the originating lead via `source_lead_id`), and **Colleagues** (other contacts at the same company). A **+ New Lead** action opens the lead form pre-filled with this contact and their company.
 
 ### Admin Panel (ADMIN only — DONE)
-- **Users** — Add User (creates Supabase Auth account + `user_master` row via service-role endpoint); Reset Password (same endpoint, `auth.admin.updateUserById`).
+- **Users** — Add User (creates Supabase Auth account + `user_master` row via service-role endpoint). **Set / Reset password**: resolves the user's Auth account by email; if the user has no login yet (true for users migrated from the old system), it **creates the login** with the new password and links the profile so their role-based access works immediately. Shows "Login created" vs "Password reset".
 - **Dropdown option lists** — admin can edit the pick-list values for ALL dropdowns: contact status, account status, call disposition, decision power, feasibility, and others. Changes take effect immediately across the app.
-- **Projects**, **Clients**, and **Reference/lookup lists** — create and edit supporting data.
+- **Pre-Sales Questions** — per-domain question editor (add / edit / enable-disable / delete). Reads & writes `pre_sales_question` (now includes an `is_active` column); writes are admin-only.
+- **Reference data** — Designation, Domain, Source are now fully **add + edit**; writes to Domain are admin-only. Industry is read-only.
+- **Projects** and **Clients** — create and edit supporting data.
 
 ### Settings (DONE)
 - Edit own profile; change own password.

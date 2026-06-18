@@ -651,6 +651,41 @@ export async function addDesignation(name: string, actorId: string): Promise<str
   return error?.message ?? null;
 }
 
+export async function addDomain(name: string, actorId: string): Promise<string | null> {
+  const { error } = await supabase.from('domain_master').insert({
+    domain_name: name,
+    created_by: actorId,
+    created_date: new Date().toISOString(),
+  });
+  return error?.message ?? null;
+}
+
+/* Edit existing reference-data rows. Writes are admin-gated by RLS (is_admin());
+   a non-admin gets a Postgres 42501 which is surfaced as the error string. */
+export async function updateSource(id: number, name: string, actorId: string): Promise<string | null> {
+  const { error } = await supabase
+    .from('source_master')
+    .update({ source_name: name, updated_by: actorId, updated_date: new Date().toISOString() })
+    .eq('source_id', id);
+  return error?.message ?? null;
+}
+
+export async function updateDesignation(id: number, name: string, actorId: string): Promise<string | null> {
+  const { error } = await supabase
+    .from('designation_master')
+    .update({ designation_name: name, updated_by: actorId, updated_date: new Date().toISOString() })
+    .eq('designation_id', id);
+  return error?.message ?? null;
+}
+
+export async function updateDomain(id: number, name: string, actorId: string): Promise<string | null> {
+  const { error } = await supabase
+    .from('domain_master')
+    .update({ domain_name: name, updated_by: actorId, updated_date: new Date().toISOString() })
+    .eq('domain_id', id);
+  return error?.message ?? null;
+}
+
 /* ------------------------------------------------------------------ */
 /*  Create User (via notify-service backend — uses service-role key)  */
 /* ------------------------------------------------------------------ */
@@ -680,7 +715,9 @@ export async function createUser(input: {
   return data as { ok: boolean; user_id: number; tempPassword: string };
 }
 
-export async function resetUserPassword(userId: number): Promise<{ ok: boolean; tempPassword: string }> {
+export async function resetUserPassword(
+  userId: number
+): Promise<{ ok: boolean; tempPassword: string; created: boolean }> {
   const { data: sessionData } = await supabase.auth.getSession();
   const accessToken = sessionData?.session?.access_token;
   if (!accessToken) throw new Error('Not authenticated: please log in before resetting a password.');
@@ -696,7 +733,7 @@ export async function resetUserPassword(userId: number): Promise<{ ok: boolean; 
   });
   const data = await res.json();
   if (!res.ok) throw new Error(data.error || 'Failed to reset password');
-  return data as { ok: boolean; tempPassword: string };
+  return data as { ok: boolean; tempPassword: string; created: boolean };
 }
 
 /* ------------------------------------------------------------------ */
