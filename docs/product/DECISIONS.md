@@ -2,7 +2,7 @@
 
 *Purpose: A running record of the important architecture and product decisions on the rebuild — what we chose, why, what we rejected, and whether the decision still stands. So nobody re-litigates a settled question, and a future developer understands the "why".*
 
-*Last updated 2026-06-17*
+*Last updated 2026-06-19*
 
 ---
 
@@ -220,6 +220,39 @@ The numbering (ADR-01, ADR-02 …) is just an index; it is not a priority order.
 
 ---
 
+## ADR-21 — Internal-launch role & access decisions (2026-06-19)
+
+- **Context:** Outreach-only model + bulk-migrated data forced four go-live decisions: who can create, what agents may edit, manager visibility, and deploy posture.
+- **Decision:**
+  1. **Create rights are a configurable per-project SETTING, default = ADMIN only.** Admin can grant create (and the CRUD options) to **Team Leads** (or others) via the per-project access/CRUD settings (the existing "Project Access" dials). Not hardcoded. Outreach roles (Agent/Sales) are update-only.
+  2. **Agents update records ASSIGNED to them** (assignment-based write), not records they "created" — because migrated data has no agent as creator. Implementation: drive edit permission from assignment (`lead_report.user_id` / a record owner field), re-point/derive ownership for migrated rows, and **validate with a real agent login before launch**. This clears the write-path blocker (see Risk / REBUILD_LOG 2026-06-18).
+  3. **Manager visibility:** Team Leads / Sales Heads CAN see their team's contact details — but via the masking UX in **ADR-22**, not in the clear.
+  4. **Deploys are MANUAL during launch week** (commit locally; push only on owner go).
+- **Why:** Matches the outreach-only north-star, keeps creation tight by default but flexible per project, and unblocks the day-one update loop without exposing data or risking the live app mid-launch.
+- **Status:** Accepted. Build pending (role posture ALT-150, ownership ALT-152, settings-driven CRUD).
+
+---
+
+## ADR-22 — Contact-detail masking = partial mask + click-to-reveal
+
+- **Context:** Owner wants privacy *and* usability: "no one should see anyone's full contact details by default," but reps must still be able to use the number/email.
+- **Decision:** For viewers who are **permitted** to see a record's details (owner + their team/manager + admin), phone and email render **partially masked by default** — phone shows the **first 3 and last 3 digits with the middle blurred**; email shows a similar partial mask. **Clicking the value reveals it fully, and it stays revealed until the page is refreshed.** For viewers **not permitted** (record isn't theirs/their team's — i.e. "public"), the detail stays **hidden always** (the DB `contact_master_masked` view returns null, so there's nothing to reveal).
+- **Why:** Discourages casual/bulk exposure and eyeball-scraping (you must deliberately click each one, and a refresh re-hides), while still letting the rep do their job. The blur+reveal is a UI layer on top of values the user is already allowed to fetch.
+- **Alternatives considered:** Binary "owner sees full / others see nothing" (rejected — managers need team visibility, and full plaintext on load is over-exposed). Fully hidden until reveal with nothing visible (rejected — owner wants the first/last digits visible for recognition).
+- **Supersedes** the display half of the earlier masking model (the DB-level owner/manager gating via `contact_master_masked` stays; this changes how permitted values are *displayed*).
+- **Status:** Accepted. Build pending.
+
+---
+
+## ADR-23 — Sales/client access is a WEB portal (two logins, one app) — amends ADR-11
+
+- **Context:** ADR-11 put the client sales team on a mobile app only. The owner now wants a client-facing **web Sales Portal**, with mobile as the lowest priority.
+- **Decision:** Build the sales side as a **web portal** in the same app: a separate **Sales login** and a `/sales` area. Sales users see only their project(s)' leads (**Sales Person = own**, **Sales Head = their downline**, with the head able to grant a wider "senior viewer" share). Internal Amplior users may enter the sales portal (leads only); **sales users cannot reach internal screens.** Multiple Sales Heads per project (executive views). Mobile app deferred (least priority; same backend later).
+- **Why:** A web portal ships faster, reuses the same backend/components, and matches the "ecosystem on one backend" north-star. The vendor's sales app was meeting/feedback-centric, which fits outreach-only.
+- **Status:** Accepted. **Amends ADR-11** (two-app split → two-portal-in-one-web-app now, mobile later). Shell shipped; data-scoping (RLS) + feedback CRUD in progress. See `SALES-PORTAL.md`.
+
+---
+
 ## Quick index
 
 | ADR | Decision | Status |
@@ -244,3 +277,6 @@ The numbering (ADR-01, ADR-02 …) is just an index; it is not a priority order.
 | ADR-18 | Admin-editable dropdown option lists in DB | Accepted |
 | ADR-19 | Contact-company linking via email-domain sync | Accepted / Done |
 | ADR-20 | New clean GitHub repo (AltLeads-CRM) | Accepted / Done |
+| ADR-21 | Launch role/access: create=admin-only-by-default (settings-configurable), agents edit ASSIGNED records, manual deploy | Accepted |
+| ADR-22 | Contact masking = partial mask + click-to-reveal (first/last 3 visible, reveal until refresh) | Accepted |
+| ADR-23 | Sales = web portal (two logins, one app); amends ADR-11; mobile deferred | Accepted |

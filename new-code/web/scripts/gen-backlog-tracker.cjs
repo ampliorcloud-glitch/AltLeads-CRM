@@ -1512,6 +1512,26 @@ const TICKETS = [
     owner:'Claude',
     notes:'In scope (owner): integrate with other CRMs/tools via our own workflow engine, public APIs, and an MCP server (two-way sync, webhooks, automation). Design after internal launch + portal v1.'
   },
+
+  // ══════════════════════════════════════════════════════════════════════
+  // EPIC: 2026-06-19 owner decisions (see DECISIONS.md ADR-21/22)
+  // ══════════════════════════════════════════════════════════════════════
+  {
+    id:'ALT-173', title:'Contact masking redesign — partial mask + click-to-reveal (ADR-22)',
+    type:'Feature', module:'Security', wave:'Launch polish',
+    priority:'P1', status:'Planned',
+    created: d(2026,6,19), updated: d(2026,6,19), finished: null,
+    owner:'Claude',
+    notes:'Phone: first 3 + last 3 visible, middle blurred; email similar; click reveals full until page refresh. Non-permitted viewers = hidden always (masked view returns null). UI layer over contact_master_masked. See DECISIONS.md ADR-22.'
+  },
+  {
+    id:'ALT-174', title:'Create rights as configurable per-project setting (default admin-only)',
+    type:'Feature', module:'Admin', wave:'Internal launch',
+    priority:'P1', status:'Planned',
+    created: d(2026,6,19), updated: d(2026,6,19), finished: null,
+    owner:'Claude',
+    notes:'Default CREATE = ADMIN only; admin can grant create + CRUD to Team Leads (others) via the Project Access dials. Not hardcoded. Ties to accessSettings + role posture ALT-150. See DECISIONS.md ADR-21.'
+  },
 ];
 
 // ─── MERGE LOGIC ─────────────────────────────────────────────────────────────
