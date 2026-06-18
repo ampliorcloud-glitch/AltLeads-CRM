@@ -27,6 +27,8 @@ No manager/parent column exists anywhere today. Add an explicit, project-scoped 
 - **Preferred:** add `sales_head_user_id bigint NULL` to **`project_user`** (a Sales Person's row points at their Sales Head, per project). Supports multiple heads per project; keeps scoping project-aware. (Also add a partial UNIQUE on active `(project_id, user_id)` — today only JS-guarded.)
 - New RLS helpers: `is_sales_person()`, `is_sales_head()` (role 5/4), `sales_downline_ids()` (user_ids reporting to me).
 
+**Owner decision (2026-06-18): default = own team, but the Head can SHARE wider.** By default a Sales Head sees only *their* team (their `sales_head_user_id` reports). But a Head can grant another Head/person a broader **"senior viewer"** scope (e.g. see across teams / the whole project) — the Head decides, via an option in the portal. Model this with an explicit **grant table** (`sales_view_grant`: grantee_user_id, project_id, scope `team|project`, optional granted-by) layered into `sales_downline_ids()`/the lead SELECT term, so visibility = (my team) ∪ (anything granted to me). Keeps the default tight while letting Heads open it up case-by-case.
+
 ## Data scoping (RLS — additive, keeps internal rules intact)
 The authoritative "lead belongs to sales person" link is **`lead_report.user_id`** (NOT `created_by`, which is the internal owner). Add an **additive** SELECT term to `lead_master` (and the reads it drives) — never remove the existing internal floor:
 ```
@@ -41,10 +43,14 @@ The authoritative "lead belongs to sales person" link is **`lead_report.user_id`
 - ⚠️ These RLS edits touch `lead_master` — **validate with throwaway SP/SH logins before applying to prod**, especially during internal-launch week.
 
 ## First CRUD — Feedback (matches "start with feedback")
-Recreate the vendor's feedback flow on the web:
+Recreate the vendor's feedback flow on the web. **Feedback questions apply when the meeting actually happened** (a successful/completed meeting), but the screen must also let the user **reschedule** or **cancel/drop** instead.
 1. Questions are server-driven from **`feedback_question_master`** (`feed_que_id, feed_que`). Render Yes/No toggles; the free-text question (vendor hardcoded `feed_que_id == 7`) is a textarea — **don't hardcode the id; treat any non-boolean/feedback question as text, or flag it in data**. Capture the real question set from the live DB.
 2. Plus a **Next Meeting / follow-up date** picker.
-3. **Submit** → INSERT rows into **`feedback_answer`** (one per question, keyed by `meeting_id`), set `meeting_master.meeting_status='Completed'` + `follow_up_date`. Lock after submit. *(This write path does not exist in new-code yet — it's read-only today; build it + its RLS.)*
+3. **Outcome at the Submit button (owner, 2026-06-18) — the user picks the meeting outcome:**
+   - **Successful** (meeting happened) → save feedback answers + set `meeting_master.meeting_status='Completed'` + `follow_up_date`. *(default once feedback is filled.)*
+   - **Reschedule** → date/time + reason → status `Rescheduled` (reuse the existing internal reschedule flow / `updateMeetingStatus`).
+   - **Cancel / Drop** ("meeting drop" = cancelled) → reason → status `Cancelled`. *(owner is adding "Drop" as an explicit option now.)*
+4. **Submit (Successful)** → INSERT rows into **`feedback_answer`** (one per question, keyed by `meeting_id`), set the meeting Completed + follow-up. Lock after submit. *(This write path does not exist in new-code yet — it's read-only today; build it + its RLS. Reschedule/Cancel reuse existing meeting actions.)*
 
 ## Sales-editable fields (from the vendor app) — confirm scope with owner
 Sales users were **read/outreach-only** except: **feedback** (above), **meeting reschedule/cancel/complete**, **assign/reassign salesperson** (head only), **wishlist add** (prospect capture), profile photo. Lead/company fields themselves were **not** editable. → **Start with Feedback**; owner to confirm which others (meeting actions next most likely).
