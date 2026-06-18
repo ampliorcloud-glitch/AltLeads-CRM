@@ -1300,6 +1300,106 @@ const TICKETS = [
     owner:'Claude',
     notes:'New fetchContactLeads (by contact_id + source_lead_id). Contact page now shows associated Leads and Colleagues (other contacts at same company), matching the company page associations.'
   },
+
+  // ══════════════════════════════════════════════════════════════════════
+  // EPIC: Outreach-first pivot — bug fixes + internal-launch workstreams (2026-06-18)
+  // ══════════════════════════════════════════════════════════════════════
+  {
+    id:'ALT-148', title:'Fix: Company Feasibility saved/showed wrong value (boolean vs 3-value text)',
+    type:'Bug', module:'Companies', wave:'Post-deploy fixes',
+    priority:'P1', status:'Done',
+    created: d(2026,6,18), updated: d(2026,6,18), finished: d(2026,6,18),
+    owner:'Claude',
+    notes:'is_feasible modeled as boolean while dropdown+DB column are text (feasible/not_feasible/unknown). Picking Feasible showed+saved not_feasible. Fixed end-to-end. Commit 19021cf, pushed.'
+  },
+  {
+    id:'ALT-149', title:'Email templates improved (copy + working CTA buttons)',
+    type:'Feature', module:'Notifications', wave:'Post-deploy fixes',
+    priority:'P2', status:'Done',
+    created: d(2026,6,18), updated: d(2026,6,18), finished: d(2026,6,18),
+    owner:'Claude',
+    notes:'All 8 rewritten: warmer copy, better subjects, greeting, working buttons (ctaUrl/APP_URL). Baseline; owner to send final wording. Commit 19021cf.'
+  },
+  {
+    id:'ALT-150', title:'Role posture — outreach team is update-only (hide create + gate /admin route)',
+    type:'Feature', module:'Security', wave:'Internal launch',
+    priority:'P0', status:'Planned',
+    created: d(2026,6,18), updated: d(2026,6,18), finished: null,
+    owner:'Claude',
+    notes:'canCreate/isAdmin in AuthContext; hide +New buttons; RoleProtectedRoute on /leads-new,/contacts-new,/companies-new,/leads/:id/edit and /admin. See UX-REDESIGN.md A. Owner decision: who can create.'
+  },
+  {
+    id:'ALT-151', title:'Bulk login provisioning for the launch team',
+    type:'Task', module:'Admin', wave:'Internal launch',
+    priority:'P0', status:'Planned',
+    created: d(2026,6,18), updated: d(2026,6,18), finished: null,
+    owner:'Claude',
+    notes:'~110 users, only 1 has a login. Bulk create-logins admin action + temp-password CSV + forced first-login change. Owner: provide 15-20 launch users + roles.'
+  },
+  {
+    id:'ALT-152', title:'BLOCKER: agent write-path / ownership model (edit ASSIGNED not CREATED records)',
+    type:'Bug', module:'Security', wave:'Internal launch',
+    priority:'P0', status:'Planned',
+    created: d(2026,6,18), updated: d(2026,6,18), finished: null,
+    owner:'Claude',
+    notes:'LAUNCH-STOPPER. status/disposition/notes/interaction writes gate on contact/company created_by=current_user_id; bulk-migrated data => agents hit 42501 on their call-list. Re-point created_by to assignees OR widen WITH CHECK to assignment/membership. Validate with REAL agent login. Owner: confirm assignment model.'
+  },
+  {
+    id:'ALT-153', title:'RLS + masking validation with real non-admin logins',
+    type:'Task', module:'Security', wave:'Internal launch',
+    priority:'P0', status:'Planned',
+    created: d(2026,6,18), updated: d(2026,6,18), finished: null,
+    owner:'Claude',
+    notes:'Throwaway AGENT/TEAM_LEAD/QC logins. NOTE: leads are ROW-scoped; contacts/companies are ROW-public + COLUMN-masked. Confirm friendly 42501 on all write paths. Depends on ALT-151/152.'
+  },
+  {
+    id:'ALT-154', title:'Email sign-off: wording + recipient + Gmail rotation + links',
+    type:'Task', module:'Notifications', wave:'Internal launch',
+    priority:'P0', status:'Planned',
+    created: d(2026,6,18), updated: d(2026,6,18), finished: null,
+    owner:'Mohit',
+    notes:'Owner approves wording; confirm recipient=user_master.email; rotate Gmail app password (env key GMAIL_APP_PASSWORD, not GMAIL_PASS); wire record deep-links. See ALT-137.'
+  },
+  {
+    id:'ALT-155', title:'Record UX pass (action bar, click-to-call/email, ProjectStatusPanel)',
+    type:'Feature', module:'Companies', wave:'Launch polish',
+    priority:'P1', status:'Planned',
+    created: d(2026,6,18), updated: d(2026,6,18), finished: null,
+    owner:'Claude',
+    notes:'Unify Company+Contact detail on 3-zone layout; OutreachActionBar; ContactMethods (tel:/mailto:, masked=locked); read-first ProjectStatusPanel. See UX-REDESIGN.md B. Can trail go-live.'
+  },
+  {
+    id:'ALT-156', title:'Lead form reorg (Client/Source/Project on top) + autopopulate from company',
+    type:'Feature', module:'Leads', wave:'Launch polish',
+    priority:'P1', status:'Planned',
+    created: d(2026,6,18), updated: d(2026,6,18), finished: null,
+    owner:'Claude',
+    notes:'Deal Setup section at top; enrich company lookup; autopopulate city/blank fields on company-select; industry/domain/CIN read-only. See UX-REDESIGN.md C.'
+  },
+  {
+    id:'ALT-157', title:'Inline grid editing from lists (EditableCell family)',
+    type:'Feature', module:'Contacts', wave:'Post-launch',
+    priority:'P2', status:'Planned',
+    created: d(2026,6,18), updated: d(2026,6,18), finished: null,
+    owner:'Claude',
+    notes:'Extract EditableSelectCell/EditableTextCell; wire Contacts notes/comments + Companies status/feasibility inline via existing upserts. See UX-REDESIGN.md D. Deferred post-launch.'
+  },
+  {
+    id:'ALT-158', title:'Owner + next-step schema & inline setters',
+    type:'Feature', module:'Data', wave:'Post-launch',
+    priority:'P2', status:'Planned',
+    created: d(2026,6,18), updated: d(2026,6,18), finished: null,
+    owner:'Claude',
+    notes:'Migration: next_step/next_step_date (+ optional last_disposition) on *_project_status; patch types + setStatusOwner. Gated on ownership-model decision. See UX-REDESIGN.md E.'
+  },
+  {
+    id:'ALT-159', title:'Bulk Export->edit->Import (UPDATE) for companies (admin-only)',
+    type:'Feature', module:'Companies', wave:'Post-launch',
+    priority:'P2', status:'Planned',
+    created: d(2026,6,18), updated: d(2026,6,18), finished: null,
+    owner:'Claude',
+    notes:'Company ID column in export; service-role POST /api/companies/bulk-update (match id/domain/cin, update-only, skip-blanks, dry-run diff, per-row report); admin import wizard. Phase 2 -> contacts. See BULK-IMPORT-EXPORT.md.'
+  },
 ];
 
 // ─── MERGE LOGIC ─────────────────────────────────────────────────────────────
