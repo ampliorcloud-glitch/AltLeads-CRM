@@ -30,6 +30,7 @@ import { ActivityTab } from '../components/lead/ActivityTab';
 import { ReportTab } from '../components/lead/ReportTab';
 import { MeetingTab } from '../components/lead/MeetingTab';
 import { useAuth } from '../contexts/AuthContext';
+import { useIsSalesShell } from '../contexts/SalesShellContext';
 
 /* ── Progress stepper: Pre-Sales → Meeting → Closing ─────────────────────── */
 
@@ -165,6 +166,9 @@ export function LeadDetailPage() {
   const navigate = useNavigate();
   const location = useLocation();
   const { profile } = useAuth();
+  // When reused inside the Sales Portal, keep "back to Leads" within /sales/*.
+  const isSalesShell = useIsSalesShell();
+  const leadsBase = isSalesShell ? '/sales' : '/leads';
   const leadId = Number(id);
 
   const [lead, setLead] = useState<LeadDetail | null>(null);
@@ -255,7 +259,7 @@ export function LeadDetailPage() {
           <AlertCircle size={24} />
           <p style={{ fontSize: 14 }}>{leadError || 'Lead not found.'}</p>
           <button
-            onClick={() => navigate('/leads')}
+            onClick={() => navigate(leadsBase)}
             className="text-blue-600 hover:text-blue-700 font-medium transition-colors"
             style={{ fontSize: 13 }}
           >
@@ -275,7 +279,7 @@ export function LeadDetailPage() {
         {/* Breadcrumb */}
         <div className="flex items-center gap-2 text-zinc-400" style={{ fontSize: 12 }}>
           <button
-            onClick={() => navigate('/leads')}
+            onClick={() => navigate(leadsBase)}
             className="flex items-center gap-1 hover:text-zinc-700 transition-colors"
           >
             <ArrowLeft size={13} />

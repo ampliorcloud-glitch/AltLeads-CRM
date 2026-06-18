@@ -2,10 +2,15 @@ import React, { useEffect, useState } from 'react';
 import type { FormEvent } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Loader2 } from 'lucide-react';
-import { supabase } from '../lib/supabase';
-import { Logo } from '../components/ui/Logo';
+import { supabase } from '../../lib/supabase';
+import { Logo } from '../../components/ui/Logo';
 
-export function LoginPage() {
+/**
+ * Sales Portal sign-in. Same Supabase password auth as the internal LoginPage,
+ * but branded "Sales Login" and routes to /sales on success. Visually consistent
+ * with LoginPage (shared markup/styles); only copy + the success route differ.
+ */
+export function SalesLoginPage() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
@@ -45,7 +50,6 @@ export function LoginPage() {
       });
 
       if (signInError) {
-        // Supabase returns "Invalid login credentials" for bad email/password
         if (
           signInError.message.toLowerCase().includes('invalid login credentials') ||
           signInError.message.toLowerCase().includes('invalid credentials')
@@ -59,8 +63,8 @@ export function LoginPage() {
         return;
       }
 
-      // Auth state change triggers AuthProvider update; navigate to dashboard
-      navigate('/dashboard', { replace: true });
+      // Auth state change triggers AuthProvider update; navigate to the sales home.
+      navigate('/sales', { replace: true });
     } finally {
       setLoading(false);
     }
@@ -119,7 +123,7 @@ export function LoginPage() {
               color: 'var(--color-gray-900)',
             }}
           >
-            Sign in
+            Sales Login
           </h1>
           <p
             style={{
@@ -128,7 +132,7 @@ export function LoginPage() {
               color: 'var(--color-gray-500)',
             }}
           >
-            Welcome back. Enter your credentials to continue.
+            Sign in to the Sales Portal to manage your leads and meetings.
           </p>
 
           <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
@@ -212,6 +216,7 @@ export function LoginPage() {
             </button>
           </form>
 
+          {/* Footer: link across to the internal login */}
           <p
             style={{
               display: 'flex',
@@ -222,8 +227,8 @@ export function LoginPage() {
               marginTop: 28,
             }}
           >
-            <Link to="/sales/login" style={{ color: 'var(--color-brand)', textDecoration: 'none' }}>
-              Sales login
+            <Link to="/login" style={{ color: 'var(--color-brand)', textDecoration: 'none' }}>
+              Internal staff login
             </Link>
             <span>Altleads Help desk</span>
           </p>
@@ -232,99 +237,100 @@ export function LoginPage() {
 
       {/* RIGHT — branded blue panel (hidden on narrow screens) */}
       {wide && (
-      <div
-        style={{
-          flex: '1 1 50%',
-          position: 'relative',
-          overflow: 'hidden',
-          display: 'flex',
-          flexDirection: 'column',
-          justifyContent: 'center',
-          padding: '64px',
-          color: '#fff',
-          background:
-            'linear-gradient(135deg, #1A7EE8 0%, #1568C8 55%, #0F4C97 100%)',
-        }}
-      >
-        {/* Subtle decorative shapes */}
         <div
-          aria-hidden
           style={{
-            position: 'absolute',
-            top: -120,
-            right: -100,
-            width: 360,
-            height: 360,
-            borderRadius: '50%',
-            background: 'rgba(255,255,255,0.08)',
+            flex: '1 1 50%',
+            position: 'relative',
+            overflow: 'hidden',
+            display: 'flex',
+            flexDirection: 'column',
+            justifyContent: 'center',
+            padding: '64px',
+            color: '#fff',
+            background: 'linear-gradient(135deg, #1A7EE8 0%, #1568C8 55%, #0F4C97 100%)',
           }}
-        />
-        <div
-          aria-hidden
-          style={{
-            position: 'absolute',
-            bottom: -140,
-            left: -80,
-            width: 300,
-            height: 300,
-            borderRadius: '50%',
-            background: 'rgba(255,255,255,0.06)',
-          }}
-        />
-        <div
-          aria-hidden
-          style={{
-            position: 'absolute',
-            top: '40%',
-            right: 120,
-            width: 140,
-            height: 140,
-            borderRadius: 28,
-            transform: 'rotate(18deg)',
-            background: 'rgba(255,255,255,0.05)',
-          }}
-        />
-
-        <div style={{ position: 'relative', zIndex: 1, maxWidth: 440 }}>
-          {/* White wordmark */}
+        >
+          {/* Subtle decorative shapes */}
           <div
+            aria-hidden
             style={{
-              fontWeight: 700,
-              fontSize: 28,
-              letterSpacing: '-0.02em',
-              lineHeight: 1,
-              color: '#fff',
-              marginBottom: 28,
+              position: 'absolute',
+              top: -120,
+              right: -100,
+              width: 360,
+              height: 360,
+              borderRadius: '50%',
+              background: 'rgba(255,255,255,0.08)',
             }}
-          >
-            AltLeads
-          </div>
+          />
+          <div
+            aria-hidden
+            style={{
+              position: 'absolute',
+              bottom: -140,
+              left: -80,
+              width: 300,
+              height: 300,
+              borderRadius: '50%',
+              background: 'rgba(255,255,255,0.06)',
+            }}
+          />
+          <div
+            aria-hidden
+            style={{
+              position: 'absolute',
+              top: '40%',
+              right: 120,
+              width: 140,
+              height: 140,
+              borderRadius: 28,
+              transform: 'rotate(18deg)',
+              background: 'rgba(255,255,255,0.05)',
+            }}
+          />
 
-          <h2
-            style={{
-              margin: '0 0 14px',
-              fontSize: 30,
-              fontWeight: 700,
-              lineHeight: 1.2,
-              letterSpacing: '-0.01em',
-            }}
-          >
-            Sales intelligence for Indian B2B teams
-          </h2>
-          <p
-            style={{
-              margin: 0,
-              fontSize: 15,
-              lineHeight: 1.6,
-              color: 'rgba(255,255,255,0.82)',
-            }}
-          >
-            Track leads, schedule meetings, and close deals faster — all from one
-            workspace built for your sales motion.
-          </p>
+          <div style={{ position: 'relative', zIndex: 1, maxWidth: 440 }}>
+            {/* White wordmark */}
+            <div
+              style={{
+                fontWeight: 700,
+                fontSize: 28,
+                letterSpacing: '-0.02em',
+                lineHeight: 1,
+                color: '#fff',
+                marginBottom: 28,
+              }}
+            >
+              AltLeads
+            </div>
+
+            <h2
+              style={{
+                margin: '0 0 14px',
+                fontSize: 30,
+                fontWeight: 700,
+                lineHeight: 1.2,
+                letterSpacing: '-0.01em',
+              }}
+            >
+              Your leads, meetings, and feedback in one place
+            </h2>
+            <p
+              style={{
+                margin: 0,
+                fontSize: 15,
+                lineHeight: 1.6,
+                color: 'rgba(255,255,255,0.82)',
+              }}
+            >
+              The Sales Portal gives your field team a focused workspace to work
+              their pipeline and report back from the ground.
+            </p>
+          </div>
         </div>
-      </div>
       )}
     </div>
   );
 }
+
+export default SalesLoginPage;

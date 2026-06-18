@@ -1452,6 +1452,66 @@ const TICKETS = [
     owner:'Claude',
     notes:'docs/product/deck-product-launch.(html|pdf) + deck-product-guide.(html|pdf). Branded 10-slide decks, rendered via Playwright. Show impact, best+upcoming features, ecosystem/RAG north-star, roadmap, launch decisions.'
   },
+
+  // ══════════════════════════════════════════════════════════════════════
+  // EPIC: Sales / Client Portal (priority #2) — see SALES-PORTAL.md (2026-06-18)
+  // ══════════════════════════════════════════════════════════════════════
+  {
+    id:'ALT-166', title:'Sales Portal shell — second login + /sales routes + sales nav (reuse leads)',
+    type:'Feature', module:'Sales Portal', wave:'Sales portal',
+    priority:'P2', status:'In Progress',
+    created: d(2026,6,18), updated: d(2026,6,18), finished: null,
+    owner:'Claude',
+    notes:'/sales/login + SalesProtectedRoute + sales AppShell/Sidebar (Leads/Meetings/Feedback); block sales users from internal routes; expose full role set in AuthContext. Additive, no DB risk. See SALES-PORTAL.md build step 1.'
+  },
+  {
+    id:'ALT-167', title:'Sales downline hierarchy + RLS scoping (SP=own, SH=downline)',
+    type:'Feature', module:'Security', wave:'Sales portal',
+    priority:'P2', status:'Planned',
+    created: d(2026,6,18), updated: d(2026,6,18), finished: null,
+    owner:'Claude',
+    notes:'Add project_user.sales_head_user_id + partial UNIQUE(project_id,user_id). RLS helpers is_sales_person/is_sales_head/sales_downline_ids; additive SELECT term on lead_master keyed on lead_report.user_id in {self,downline}. VALIDATE with real SP/SH logins before prod. Owner: confirm downline model.'
+  },
+  {
+    id:'ALT-168', title:'Feedback CRUD (first sales write) — feedback_answer + complete meeting',
+    type:'Feature', module:'Sales Portal', wave:'Sales portal',
+    priority:'P2', status:'Planned',
+    created: d(2026,6,18), updated: d(2026,6,18), finished: null,
+    owner:'Claude',
+    notes:'Server-driven questions (feedback_question_master), Yes/No + free-text + follow-up date; INSERT feedback_answer per question, set meeting Completed + follow_up_date; write RLS for assigned SP/SH. Write path does NOT exist yet (read-only today). Capture real question set from live DB.'
+  },
+  {
+    id:'ALT-169', title:'Sales Head adds Sales Person (/api/sales/users/create + requireSalesHead)',
+    type:'Feature', module:'Sales Portal', wave:'Sales portal',
+    priority:'P2', status:'Planned',
+    created: d(2026,6,18), updated: d(2026,6,18), finished: null,
+    owner:'Claude',
+    notes:'New endpoint forces role_id=5, assigns caller projects via project_user, records downline link. Reuse genTempPassword/findAuthUserByEmail/ensureProfileLink. Admin provisions first SALES_HEAD per project from Settings.'
+  },
+  {
+    id:'ALT-170', title:'Provision client/sales users from Admin Settings',
+    type:'Feature', module:'Admin', wave:'Sales portal',
+    priority:'P2', status:'Planned',
+    created: d(2026,6,18), updated: d(2026,6,18), finished: null,
+    owner:'Claude',
+    notes:'Make SALES_HEAD/SALES_PERSON web-assignable in the right context; assign to project(s); the SALES roles are is_web=false today and hidden from the picker.'
+  },
+  {
+    id:'ALT-171', title:'Sales Head executive dashboard + assign/reassign salesperson',
+    type:'Feature', module:'Sales Portal', wave:'Sales portal',
+    priority:'P3', status:'Planned',
+    created: d(2026,6,18), updated: d(2026,6,18), finished: null,
+    owner:'Claude',
+    notes:'Recreate vendor head dashboard: meeting-status strip, revenue potential, hot prospects, meetings-by-city, F2F vs virtual %, industry spread, pipeline funnel; SP gets simple today-view. Assign/reassign via lead_report.user_id. Date-range filter.'
+  },
+  {
+    id:'ALT-172', title:'Integrations: own workflow engine + public APIs + MCP (other CRMs/tools)',
+    type:'Feature', module:'Integrations', wave:'Roadmap',
+    priority:'P3', status:'Planned',
+    created: d(2026,6,18), updated: d(2026,6,18), finished: null,
+    owner:'Claude',
+    notes:'In scope (owner): integrate with other CRMs/tools via our own workflow engine, public APIs, and an MCP server (two-way sync, webhooks, automation). Design after internal launch + portal v1.'
+  },
 ];
 
 // ─── MERGE LOGIC ─────────────────────────────────────────────────────────────

@@ -14,6 +14,7 @@ import { AppShell } from '../components/layout/AppShell';
 import { StageBadge } from '../components/ui/Badge';
 import { fetchLeadsFallback, type RealLead } from '../data/realLeads';
 import { useAuth } from '../contexts/AuthContext';
+import { useIsSalesShell } from '../contexts/SalesShellContext';
 import { useRowSelection } from '../components/ui/useRowSelection';
 import { ExportButton } from '../components/ui/ExportButton';
 import {
@@ -254,6 +255,9 @@ export function LeadsPage() {
   const navigate = useNavigate();
   const { profile } = useAuth();
   const userId = profile?.user_id ?? null;
+  // When reused inside the Sales Portal, keep navigation within /sales/*.
+  const isSalesShell = useIsSalesShell();
+  const leadBase = isSalesShell ? '/sales/leads' : '/leads';
 
   const [filters, setFilters] = useState<Filters>(defaultFilters);
   const [sorting, setSorting] = useState<SortingState>([]);
@@ -794,7 +798,7 @@ export function LeadsPage() {
                   table.getRowModel().rows.map((row) => (
                     <tr
                       key={row.id}
-                      onClick={() => navigate(`/leads/${row.original.id}`)}
+                      onClick={() => navigate(`${leadBase}/${row.original.id}`)}
                       style={{
                         borderBottom: '1px solid var(--color-gray-100)',
                         height: 44,
