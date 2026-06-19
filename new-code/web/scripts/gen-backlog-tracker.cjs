@@ -1532,6 +1532,26 @@ const TICKETS = [
     owner:'Claude',
     notes:'Default CREATE = ADMIN only; admin can grant create + CRUD to Team Leads (others) via the Project Access dials. Not hardcoded. Ties to accessSettings + role posture ALT-150. See DECISIONS.md ADR-21.'
   },
+
+  // ══════════════════════════════════════════════════════════════════════
+  // EPIC: Planned (not started) — owner asked to "plan somewhere", 2026-06-19
+  // ══════════════════════════════════════════════════════════════════════
+  {
+    id:'ALT-175', title:'Email templates v2 — re-engineer + attachments (e.g. meeting-schedule PDF report)',
+    type:'Feature', module:'Notifications', wave:'Backlog (planned)',
+    priority:'P3', status:'Planned',
+    created: d(2026,6,19), updated: d(2026,6,19), finished: null,
+    owner:'Claude',
+    notes:'Owner wants richer emails per event, possibly a generated PDF report attached (e.g. meeting-schedule confirmation as a PDF). Current emails = improved copy + working buttons only (ALT-149). v2 = re-engineered layouts per event + PDF/attachment generation (reuse the Playwright HTML->PDF method from render-decks.cjs). PLAN ONLY for now.'
+  },
+  {
+    id:'ALT-176', title:'Bulk USER import (admin) — provision many users from a sheet',
+    type:'Feature', module:'Admin', wave:'Backlog (planned)',
+    priority:'P3', status:'Planned',
+    created: d(2026,6,19), updated: d(2026,6,19), finished: null,
+    owner:'Claude',
+    notes:'Future: import users (name/email/role/project) from CSV/XLSX to bulk-create logins + roles + project membership (extends the bulk-login work ALT-151 and the bulk import engine ALT-159). Launch-user list not needed now; this is the durable mechanism. PLAN ONLY.'
+  },
 ];
 
 // ─── MERGE LOGIC ─────────────────────────────────────────────────────────────
