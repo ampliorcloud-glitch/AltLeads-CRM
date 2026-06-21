@@ -19,16 +19,25 @@ export function Modal({ open, title, onClose, children, footer, width = 460 }: M
   // Keep Tab focus inside the dialog while open (ALT-203).
   useFocusTrap(dialogRef, open);
 
-  // Escape closes; focus moves into the dialog on open (a11y — UX-AUDIT Top#26).
+  // Escape closes. (Re-registers when onClose changes — harmless; just a listener.)
   useEffect(() => {
     if (!open) return;
     function onKey(e: KeyboardEvent) {
       if (e.key === 'Escape') { e.preventDefault(); onClose(); }
     }
     document.addEventListener('keydown', onKey);
-    const t = window.setTimeout(() => dialogRef.current?.focus(), 0);
-    return () => { document.removeEventListener('keydown', onKey); window.clearTimeout(t); };
+    return () => document.removeEventListener('keydown', onKey);
   }, [open, onClose]);
+
+  // Move focus into the dialog ONCE when it opens (a11y — UX-AUDIT Top#26).
+  // CRITICAL: depend on `open` ONLY. If onClose were a dep, the parent re-rendering
+  // on every keystroke (new onClose identity) would re-run this and re-focus the
+  // dialog, stealing focus from inputs after each character typed.
+  useEffect(() => {
+    if (!open) return;
+    const t = window.setTimeout(() => dialogRef.current?.focus(), 0);
+    return () => window.clearTimeout(t);
+  }, [open]);
 
   if (!open) return null;
   return (

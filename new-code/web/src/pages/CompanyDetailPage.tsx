@@ -20,9 +20,14 @@ import {
   ExternalLink,
   Users,
   IndianRupee,
+  PhoneCall,
+  CalendarPlus,
+  ListPlus,
 } from 'lucide-react';
 import { AppShell } from '../components/layout/AppShell';
 import { StageBadge } from '../components/ui/Badge';
+import { CreateTaskModal, type TaskAssociation } from '../components/tasks/CreateTaskModal';
+import type { TaskType } from '../data/tasks';
 import { StatusBadge } from '../components/ui/StatusBadge';
 import { ProjectSelect } from '../components/ui/ProjectSelect';
 import { DispositionForm } from '../components/ui/DispositionForm';
@@ -988,6 +993,78 @@ function ActivityTab({ companyId, projectId }: ActivityTabProps) {
 }
 
 /* ------------------------------------------------------------------
+   One-click task actions — schedule a follow-up tied to this company.
+   Reuses the shared CreateTaskModal; no task logic duplicated here.
+------------------------------------------------------------------ */
+function QuickTaskActions({
+  association,
+  recordName,
+}: {
+  association: TaskAssociation;
+  recordName: string;
+}) {
+  const [modal, setModal] = useState<{ type: TaskType; subject: string } | null>(null);
+
+  const name = recordName || 'this record';
+  const variants: {
+    key: string;
+    label: string;
+    icon: React.ReactNode;
+    type: TaskType;
+    subject: string;
+  }[] = [
+    { key: 'call', label: 'Call back', icon: <PhoneCall size={13} />, type: 'CALL', subject: `Call back — ${name}` },
+    { key: 'meeting', label: 'Schedule meeting', icon: <CalendarPlus size={13} />, type: 'MEETING', subject: `Meeting — ${name}` },
+    { key: 'task', label: 'Add task', icon: <ListPlus size={13} />, type: 'TODO', subject: '' },
+  ];
+
+  return (
+    <>
+      <div className="flex items-center gap-2 flex-wrap">
+        {variants.map((v) => (
+          <button
+            key={v.key}
+            type="button"
+            onClick={() => setModal({ type: v.type, subject: v.subject })}
+            className="inline-flex items-center gap-1.5 font-medium transition-colors"
+            style={{
+              fontSize: 12,
+              padding: '5px 11px',
+              height: 30,
+              borderRadius: 6,
+              border: '1px solid #d4d4d8',
+              background: '#fff',
+              color: '#374151',
+              cursor: 'pointer',
+            }}
+            onMouseEnter={(e) => {
+              (e.currentTarget as HTMLElement).style.borderColor = '#1A7EE8';
+              (e.currentTarget as HTMLElement).style.color = '#1A7EE8';
+            }}
+            onMouseLeave={(e) => {
+              (e.currentTarget as HTMLElement).style.borderColor = '#d4d4d8';
+              (e.currentTarget as HTMLElement).style.color = '#374151';
+            }}
+            title={`${v.label} (creates a task tied to ${name})`}
+          >
+            {v.icon}
+            {v.label}
+          </button>
+        ))}
+      </div>
+
+      <CreateTaskModal
+        open={modal !== null}
+        onClose={() => setModal(null)}
+        association={association}
+        initialType={modal?.type}
+        initialSubject={modal?.subject}
+      />
+    </>
+  );
+}
+
+/* ------------------------------------------------------------------
    Page
 ------------------------------------------------------------------ */
 export function CompanyDetailPage() {
@@ -1122,7 +1199,7 @@ export function CompanyDetailPage() {
               </div>
             </div>
 
-            {/* Right block: project selector + owner */}
+            {/* Right block: project selector + owner + one-click task actions */}
             <div className="flex flex-col items-end gap-2 shrink-0">
               <ProjectSelect value={projectId} onChange={setProjectId} />
               <div className="flex items-center gap-1.5">
@@ -1130,6 +1207,16 @@ export function CompanyDetailPage() {
                 {/* Owner is always "Unassigned" for now. // TODO ownership */}
                 <span className="text-zinc-600 font-medium" style={{ fontSize: 12 }}>{company.owner}</span>
               </div>
+              {actorId && (
+                <QuickTaskActions
+                  association={{
+                    companyId: companyId,
+                    assocLabel: company.name,
+                    assocPhone: null,
+                  }}
+                  recordName={company.name}
+                />
+              )}
             </div>
           </div>
 

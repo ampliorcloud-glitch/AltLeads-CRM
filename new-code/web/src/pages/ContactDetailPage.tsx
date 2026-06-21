@@ -15,9 +15,14 @@ import {
   Save,
   Plus,
   ExternalLink,
+  PhoneCall,
+  CalendarPlus,
+  ListPlus,
 } from 'lucide-react';
 import { AppShell } from '../components/layout/AppShell';
 import { useAuth } from '../contexts/AuthContext';
+import { CreateTaskModal, type TaskAssociation } from '../components/tasks/CreateTaskModal';
+import type { TaskType } from '../data/tasks';
 import {
   fetchContactById,
   fetchCompanyOptions,
@@ -127,6 +132,64 @@ function InfoRow({ icon, label, value, href, copyValue }: {
         </span>
       </div>
     </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/*  One-click task actions — schedule a follow-up tied to this contact. */
+/*  Reuses the shared CreateTaskModal; no task logic duplicated here.    */
+/* ------------------------------------------------------------------ */
+
+function QuickTaskActions({
+  association,
+  recordName,
+}: {
+  association: TaskAssociation;
+  recordName: string;
+}) {
+  const [modal, setModal] = useState<{ type: TaskType; subject: string } | null>(null);
+
+  const name = recordName || 'this record';
+  const variants: {
+    key: string;
+    label: string;
+    icon: React.ReactNode;
+    type: TaskType;
+    subject: string;
+  }[] = [
+    { key: 'call', label: 'Call back', icon: <PhoneCall size={13} />, type: 'CALL', subject: `Call back — ${name}` },
+    { key: 'meeting', label: 'Schedule meeting', icon: <CalendarPlus size={13} />, type: 'MEETING', subject: `Meeting — ${name}` },
+    { key: 'task', label: 'Add task', icon: <ListPlus size={13} />, type: 'TODO', subject: '' },
+  ];
+
+  return (
+    <>
+      {variants.map((v) => (
+        <button
+          key={v.key}
+          type="button"
+          onClick={() => setModal({ type: v.type, subject: v.subject })}
+          style={{
+            display: 'inline-flex', alignItems: 'center', gap: 5,
+            fontSize: 12, fontWeight: 500,
+            background: '#F3F4F6', color: '#374151',
+            border: '1px solid #E5E7EB', borderRadius: 6,
+            padding: '6px 12px', cursor: 'pointer',
+          }}
+          title={`${v.label} (creates a task tied to ${name})`}
+        >
+          {v.icon} {v.label}
+        </button>
+      ))}
+
+      <CreateTaskModal
+        open={modal !== null}
+        onClose={() => setModal(null)}
+        association={association}
+        initialType={modal?.type}
+        initialSubject={modal?.subject}
+      />
+    </>
   );
 }
 
@@ -493,9 +556,21 @@ export function ContactDetailPage() {
           </div>
 
           {/* New Lead / Edit / Save / Cancel buttons */}
-          <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
+          <div style={{ display: 'flex', gap: 8, flexShrink: 0, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
             {!editing ? (
               <>
+                {/* One-click follow-up tasks tied to this contact. */}
+                {actorId && (
+                  <QuickTaskActions
+                    association={{
+                      contactId: contact.contact_id,
+                      companyId: contact.company_id ?? null,
+                      assocLabel: contact.full_name,
+                      assocPhone: contact.mobile_no || contact.alt_mobile_no || null,
+                    }}
+                    recordName={contact.full_name}
+                  />
+                )}
                 {/* Create is admin-only by default (ADR-21); hidden from outreach roles. */}
                 {canCreateData && (
                 <button

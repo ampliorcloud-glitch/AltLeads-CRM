@@ -2017,6 +2017,71 @@ const TICKETS = [
     owner:'Claude',
     notes:'Owner directive 2026-06-21: keep finding + fixing small things continuously. Each round = a read-only multi-dimension audit (adversarially verified) -> per-file fixes -> build -> commit. ROUND 1 DONE (24 files, build passes): icon-only close/clear buttons given aria-labels (EditMeeting/UpdateMeeting/MeetingTab/Approvals x2/SearchSelect/CompanyDetail/ColumnCustomizer); dead code removed (WishlistPage X import + stale marker, ContactsPage XLSX, ProjectSelect unused prop); PreSalesQuestionsTab last window.confirm -> ConfirmDialog; clipboard copy .catch (UsersTab); truncation title tooltips (CompanyDetail/ContactDetail/PreSales); REAL BUGS: IST/UTC week-bucket (realLeads.getWeekStart) + lead-meeting upcoming/past bucket (leadWorkspace) fixed to local date-string compare; stuck-spinner unhandled rejections caught (Dashboard/CommandPalette/LeadDetail/ContactDetail/ContactForm/Meetings + globalSearch inflight self-clear); ExportButton try/catch; approveReport no longer self-notifies the actor; EditMeeting time-field no longer blanks a non-HH:MM saved time. ROUND 2 DONE (12 files incl. backend, build + node --check pass): swallowed Supabase errors now logged/surfaced (contacts/leadWorkspace/projectStatus/meetings); AuthContext provider value memoized (useMemo) to cut needless re-renders; ReportTab new-question rows keyed on a stable _uid (was array index); ActivityTab + DispositionForm got load error/empty states; MeetingTab delete -> ConfirmDialog; WishlistDetail toast auto-dismiss; UsersTab Add-User validates email before enabling Create; notify-service hardened x8 (async route bodies wrapped in try/catch -> 503, input validation, no internal-error leakage). ROUND 3 DONE (21 files, build pass after 1 typing fix): form a11y (admin Field links label htmlFor->control id via useId+cloneElement; aria-required/invalid/describedby on Login/Reset/Convert/Disposition; SearchSelect role=combobox+listbox; AssignModal focus-trap+autofocus); route-id guards (LeadDetail/WishlistDetail/ContactDetail: non-numeric/0 id -> error state not stuck spinner); date-format consistency (LeadsPage/leadWorkspace/ContactDetail via formatDate; Dashboard count toLocaleString en-IN); friendlier error copy (SettingsPage password change, WishlistDetail status, CompanyDetail "Status saved"); dead code removed (useUrlState module [ALT-186 recreates when built], listViews, admin TableHead, TypeBadge, fetchStageHistory, resolveUserEmail/Name). More rounds to follow.'
   },
+  // ── Owner feedback batch 2026-06-21 (live testing of Task Manager) ──
+  {
+    id:'ALT-264', title:'BUG: modal inputs lose focus after 1 character (shared admin Modal)',
+    type:'Bug', module:'Web core', wave:'UX audit',
+    priority:'P0', status:'Done',
+    created: d(2026,6,21), updated: d(2026,6,21), finished: d(2026,6,21),
+    owner:'Claude',
+    notes:'DONE 2026-06-21 (owner found while testing My Tasks: "after 1 letter the cursor disappears"). Root cause: admin/Modal.tsx focus-on-open useEffect depended on [open, onClose]; onClose (handleClose) is a new fn identity each render, so every keystroke re-ran the effect and re-focused the dialog container, stealing focus from the input. Fix: split into two effects — Escape keydown ([open,onClose]) and focus-on-open ([open] ONLY). Affected EVERY modal form, not just tasks.'
+  },
+  {
+    id:'ALT-265', title:'Task Manager Inc2 — reminder scanner (email + in-app bell) + opt-in digest',
+    type:'Feature', module:'Tasks', wave:'Task manager',
+    priority:'P0', status:'In Progress',
+    created: d(2026,6,21), updated: d(2026,6,21), finished: null,
+    owner:'Claude',
+    notes:'BUILT + adversarially reviewed 2026-06-21 (node --check passes). notify-service scanner: every ~60s, service-role client finds OPEN tasks with reminder_at<=now() AND reminder_sent_at IS NULL (LIMIT cap 40, oldest first), sends a task_reminder email (new template) + inserts in_app_notification (bell), then sets reminder_sent_at (before send, so no double-fire). Per-tick try/catch can never crash the server; last_scan_at on /health. Opt-in DAILY DIGEST gated on task_user_pref.daily_digest_opt_in=true. ACTIVATES on notify-service restart/redeploy. Known minor: digest lastDigestDate is in-memory (a mid-day restart could re-send the digest) — acceptable for opt-in v1. Supersedes ALT-256/257.'
+  },
+  {
+    id:'ALT-266', title:'One-click task from a record (Call back / Schedule meeting / Add task)',
+    type:'Feature', module:'Tasks', wave:'Task manager',
+    priority:'P1', status:'In Progress',
+    created: d(2026,6,21), updated: d(2026,6,21), finished: null,
+    owner:'Claude',
+    notes:'BUILT for Lead/Company/Contact detail 2026-06-21 (owner ask #3: "no task can be created from company/contact/meeting/lead"): a Call back / Schedule meeting / Add task action row opens CreateTaskModal pre-filled with the record association + owner. PENDING: the MEETING detail page (next). Supersedes ALT-260.'
+  },
+  {
+    id:'ALT-267', title:'BUG: activity not recorded for company-related contacts (per-project)',
+    type:'Bug', module:'Companies', wave:'Companies & Contacts',
+    priority:'P1', status:'Planned',
+    created: d(2026,6,21), updated: d(2026,6,21), finished: null,
+    owner:'Mohit',
+    notes:'OWNER (#4) 2026-06-21: doing an activity inside a company\'s related contacts records NO activity — should log a project-scoped activity like a normal disposition (separate per project). Investigate the company->related-contacts write path (contact status/disposition inside CompanyDetailPage) and ensure it appends an interaction/activity scoped to the project, visible in that contact/company activity feed.'
+  },
+  {
+    id:'ALT-268', title:'Admin: all-projects activity view with detailed timeline',
+    type:'Feature', module:'Admin', wave:'Roadmap',
+    priority:'P1', status:'Planned',
+    created: d(2026,6,21), updated: d(2026,6,21), finished: null,
+    owner:'Mohit',
+    notes:'OWNER (#5, "big one") 2026-06-21: for ADMIN, an option to show ALL activity in detail across ALL projects (choose all / specific projects), with a chronological timeline + detailed activity timeline. A cross-project audit/timeline view reading the interaction/activity log; filter by project(s)/user/date; drill into each event.'
+  },
+  {
+    id:'ALT-269', title:'EPIC: Call module — schedule + log calls per record, dashboard, future call-tool integration',
+    type:'Feature', module:'Calls', wave:'Roadmap',
+    priority:'P1', status:'Planned',
+    created: d(2026,6,21), updated: d(2026,6,21), finished: null,
+    owner:'Mohit',
+    notes:'OWNER (#6) 2026-06-21: a CALL module like the Task Manager but call-specific — schedule + LOG calls for a particular lead/company/contact/meeting. All calls logged + visible on the dashboard. Designed to integrate a calling tool LATER (so every call is captured), with optional transcript or audio attached. Build: call table (assoc to lead/company/contact/meeting, direction, status scheduled/logged, outcome, duration, scheduled_at/logged_at, transcript_text, audio_url) + RLS (mirror task pattern); UI to schedule + log from a record + a My Calls view; dashboard call metrics; a clean seam for a future telephony/transcription integration. Reuse Task Manager scaffolding.'
+  },
+  {
+    id:'ALT-270', title:'Advanced per-field filters with multi-select (each column)',
+    type:'Feature', module:'Web core', wave:'UX audit',
+    priority:'P1', status:'Planned',
+    created: d(2026,6,21), updated: d(2026,6,21), finished: null,
+    owner:'Mohit',
+    notes:'OWNER (#1) 2026-06-21: cannot see an advanced filter for EACH field with multi-select. Extends ALT-184: a per-column advanced filter (multi-select chips + contains/is-empty where relevant) on every list field, not just the few facets. Builds on the existing SearchSelect multi-select filters (Top#6) -> make it comprehensive per-field.'
+  },
+  {
+    id:'ALT-271', title:'Research: basic B2B CRM feature list (non-sales) via websearch',
+    type:'Docs', module:'Docs', wave:'Roadmap',
+    priority:'P2', status:'Planned',
+    created: d(2026,6,21), updated: d(2026,6,21), finished: null,
+    owner:'Claude',
+    notes:'OWNER 2026-06-21: AFTER the feedback items (#1-6) are fixed/built, web-search the basic B2B CRM features; IGNORE sales features but STILL create a separate list of them (invoice, quotes, etc.). Produce a categorized feature inventory to gap-check AltLeads against.'
+  },
   ...uxAuditTickets(),
 ];
 

@@ -242,6 +242,69 @@ function approvalRejected(data) {
   `);
 }
 
+/* ── Task reminder (single task) ───────────────────────────────── */
+
+function taskTypeBadge(taskType) {
+  const t = String(taskType || '').toUpperCase();
+  if (t === 'CALL')    return '<span class="badge badge-blue">Call</span>';
+  if (t === 'MEETING') return '<span class="badge badge-yellow">Meeting</span>';
+  return '<span class="badge badge-blue">To-do</span>';
+}
+
+function taskReminder(data) {
+  const {
+    subject: taskSubject = 'A task',
+    taskType = 'TODO',
+    dueLabel = '',          // pre-formatted IST due time, e.g. "Today, 5:00 PM IST"
+    body = '',
+    assocLabel = '',        // linked lead/company/contact name
+    assocPhone = '',
+    priority = '',
+  } = data;
+  return wrap('Task Reminder — AltLeads', `
+    <h2 style="margin-top:0;color:#1A7EE8;font-size:20px;">A task is due</h2>
+    ${greeting(data)}
+    ${leadIn('This is a reminder for a task on your list in AltLeads:')}
+    ${row('Task', taskSubject)}
+    ${row('Due', dueLabel)}
+    ${row('Related to', assocLabel)}
+    ${row('Phone', assocPhone)}
+    ${row('Priority', priority)}
+    ${body ? `<div class="label">Notes</div><div class="reason-box">${esc(body)}</div><br/>` : ''}
+    ${taskTypeBadge(taskType)}
+    <br/>
+    ${button('Open task in AltLeads', data)}
+    <p class="note">Mark it done, snooze it, or jump to the linked record straight from your tasks.</p>
+  `);
+}
+
+/* ── Task daily digest (opt-in) ────────────────────────────────── */
+
+function taskDigest(data) {
+  const { tasks = [], dateLabel = '' } = data;
+  const items = Array.isArray(tasks) ? tasks : [];
+  const rows = items.map((t) => {
+    const subj = esc(t.subject || 'Task');
+    const due = t.dueLabel ? `<span style="color:#888;">${esc(t.dueLabel)}</span>` : '';
+    const overdue = t.overdue ? ' <span class="badge badge-red">Overdue</span>' : '';
+    const assoc = t.assocLabel ? `<div style="font-size:13px;color:#555;">${esc(t.assocLabel)}</div>` : '';
+    return `<tr><td style="padding:10px 0;border-bottom:1px solid #EEF1F5;">
+      <div style="font-size:15px;color:#111;font-weight:600;">${subj}${overdue}</div>
+      ${assoc}
+      <div style="font-size:13px;">${due}</div>
+    </td></tr>`;
+  }).join('');
+  return wrap('Your tasks for today — AltLeads', `
+    <h2 style="margin-top:0;color:#1A7EE8;font-size:20px;">Your tasks${dateLabel ? ` for ${esc(dateLabel)}` : ' for today'}</h2>
+    ${greeting(data)}
+    ${leadIn(`You have <strong>${items.length}</strong> open task${items.length === 1 ? '' : 's'} due today or overdue. Here they are:`)}
+    <table style="width:100%;border-collapse:collapse;">${rows}</table>
+    <br/>
+    ${button('Open my tasks', data)}
+    <p class="note">You're getting this daily summary because you opted in. You can turn it off any time in Settings.</p>
+  `);
+}
+
 /* ── HTML escape utility ───────────────────────────────────────── */
 
 function esc(str) {
@@ -265,6 +328,11 @@ function subject(event, data) {
     case 'approval_requested':  return `[AltLeads] Approval needed: ${lead}`;
     case 'approval_approved':   return `[AltLeads] Approved — meeting scheduled: ${lead}`;
     case 'approval_rejected':   return `[AltLeads] Changes requested on your report: ${lead}`;
+    case 'task_reminder':       return `[AltLeads] Task due: ${data.subject || 'A task'}`;
+    case 'task_digest': {
+      const n = Array.isArray(data.tasks) ? data.tasks.length : 0;
+      return `[AltLeads] You have ${n} task${n === 1 ? '' : 's'} due today`;
+    }
     default:                    return `[AltLeads] Notification`;
   }
 }
@@ -282,6 +350,8 @@ function buildEmail(event, data) {
     case 'approval_requested':  html = approvalRequested(data);  break;
     case 'approval_approved':   html = approvalApproved(data);   break;
     case 'approval_rejected':   html = approvalRejected(data);   break;
+    case 'task_reminder':       html = taskReminder(data);       break;
+    case 'task_digest':         html = taskDigest(data);         break;
     default:
       html = wrap('AltLeads Notification', `${greeting(data)}<p>You have a new notification from AltLeads.</p>`);
   }

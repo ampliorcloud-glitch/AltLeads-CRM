@@ -9,9 +9,14 @@ import {
   MapPin,
   Award,
   CheckCircle2,
+  PhoneCall,
+  CalendarPlus,
+  ListPlus,
 } from 'lucide-react';
 import { AppShell } from '../components/layout/AppShell';
 import { StageBadge } from '../components/ui/Badge';
+import { CreateTaskModal, type TaskAssociation } from '../components/tasks/CreateTaskModal';
+import type { TaskType } from '../data/tasks';
 import {
   fetchLeadDetail,
   fetchLookups,
@@ -160,6 +165,81 @@ const TABS: { key: TabKey; label: string }[] = [
   { key: 'report', label: 'Lead Report' },
   { key: 'meeting', label: 'Meeting' },
 ];
+
+/* ── One-click task actions (schedule a follow-up tied to this lead) ──────── */
+
+/**
+ * QuickTaskActions — three one-click buttons (Call back / Meeting / Task) that
+ * open the shared CreateTaskModal pre-filled with this record's association and
+ * a sensible type + subject. Reuses CreateTaskModal; no task logic duplicated.
+ */
+function QuickTaskActions({
+  association,
+  recordName,
+}: {
+  association: TaskAssociation;
+  recordName: string;
+}) {
+  const [modal, setModal] = useState<{ type: TaskType; subject: string } | null>(null);
+
+  const name = recordName || 'this record';
+  const variants: {
+    key: string;
+    label: string;
+    icon: React.ReactNode;
+    type: TaskType;
+    subject: string;
+  }[] = [
+    { key: 'call', label: 'Call back', icon: <PhoneCall size={13} />, type: 'CALL', subject: `Call back — ${name}` },
+    { key: 'meeting', label: 'Schedule meeting', icon: <CalendarPlus size={13} />, type: 'MEETING', subject: `Meeting — ${name}` },
+    { key: 'task', label: 'Add task', icon: <ListPlus size={13} />, type: 'TODO', subject: '' },
+  ];
+
+  return (
+    <>
+      <div className="flex items-center gap-2 flex-wrap">
+        {variants.map((v) => (
+          <button
+            key={v.key}
+            type="button"
+            onClick={() => setModal({ type: v.type, subject: v.subject })}
+            className="inline-flex items-center gap-1.5 font-medium transition-colors"
+            style={{
+              fontSize: 12,
+              padding: '5px 11px',
+              height: 30,
+              borderRadius: 6,
+              border: '1px solid #d4d4d8',
+              background: '#fff',
+              color: '#374151',
+              cursor: 'pointer',
+            }}
+            onMouseEnter={(e) => {
+              (e.currentTarget as HTMLElement).style.borderColor = '#1A7EE8';
+              (e.currentTarget as HTMLElement).style.color = '#1A7EE8';
+            }}
+            onMouseLeave={(e) => {
+              (e.currentTarget as HTMLElement).style.borderColor = '#d4d4d8';
+              (e.currentTarget as HTMLElement).style.color = '#374151';
+            }}
+            title={`${v.label} (creates a task tied to ${name})`}
+          >
+            {v.icon}
+            {v.label}
+          </button>
+        ))}
+      </div>
+
+      <CreateTaskModal
+        open={modal !== null}
+        onClose={() => setModal(null)}
+        association={association}
+        initialType={modal?.type}
+        initialSubject={modal?.subject}
+      />
+    </>
+  );
+}
 
 /* ── Page ────────────────────────────────────────────────────────────────── */
 
@@ -423,6 +503,16 @@ export function LeadDetailPage() {
             <div className="flex-1 min-w-[280px]">
               <ProgressStepper stage={lead.stage_name} isClosed={lead.is_closed} />
             </div>
+            {hasActor && (
+              <QuickTaskActions
+                association={{
+                  leadId: lead.lead_id,
+                  assocLabel: company?.client_name || lead.company_name || lead.lead_name,
+                  assocPhone: lead.mobile_no || lead.alt_mobile_no || null,
+                }}
+                recordName={company?.client_name || lead.company_name || lead.lead_name}
+              />
+            )}
             {canClinch && (
               <button
                 type="button"

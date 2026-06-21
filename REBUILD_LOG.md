@@ -749,3 +749,16 @@ Build pass (after a 1-line typing fix in admin/Modal.tsx Field cloneElement). AL
 - Copy: SettingsPage password-change error mapped to friendly text; WishlistDetail status error surfaced; CompanyDetail misleading "has data" placeholder -> gated "Status saved".
 - Dead code removed (zero importers verified): src/lib/useUrlState.ts (ALT-186 URL-persistence foundation — will be recreated when that feature is built), data/views.listViews, admin primitives TableHead, Badge TypeBadge, leadsApi.fetchStageHistory, notify.resolveUserEmail/resolveUserName.
 Loop continues. Nothing pushed.
+
+---
+## 2026-06-21 (cont. 18) — owner live-testing feedback: critical modal fix + Task Manager Inc2
+Owner tested My Tasks and reported 6 items. Captured all as ALT-264..271.
+- **ALT-264 (P0 BUG, FIXED):** typing in any modal lost focus after 1 char. Root cause = admin/Modal.tsx focus-on-open effect depended on [open, onClose]; onClose is a new fn each render so every keystroke re-ran it and re-focused the dialog, stealing input focus. Split into Escape effect ([open,onClose]) + focus-once effect ([open]). Fixes EVERY modal form. Build passes.
+- **ALT-265 (Task Manager Inc2 reminders, BUILT):** notify-service scanner (per-task email + in_app_notification bell, cap 40, reminder_sent_at set before send => no double-fire, per-tick try/catch, /health heartbeat) + opt-in daily digest (default off). Adversarial review passed 8/8. ACTIVATES on notify-service restart. New task_reminder email template.
+- **ALT-266 (one-click from record, BUILT for 3 of 4):** Call back / Schedule meeting / Add task on Lead/Company/Contact detail (opens CreateTaskModal pre-filled). Meeting detail pending.
+- **ALT-267 (#4 BUG, planned):** activities inside company-related contacts not recorded per-project — to investigate the write path + log a project-scoped interaction.
+- **ALT-268 (#5 big, planned):** admin all-projects detailed activity timeline.
+- **ALT-269 (#6 EPIC, planned):** Call module (schedule + log calls per record, dashboard, future call-tool + transcript/audio) — mirrors Task Manager.
+- **ALT-270 (#1, planned):** advanced per-field multi-select filters (extends ALT-184).
+- **ALT-271:** after #1-6, web-search basic B2B CRM features (non-sales; still list sales ones).
+Build + node --check pass. Loop continues: next wave = #4 fix + Meeting one-click, then Call module.

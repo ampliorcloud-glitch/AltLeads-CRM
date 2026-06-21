@@ -124,6 +124,358 @@ function getTransporter() {
   return transporter;
 }
 
+/* ── Task reminder scanner (decision B: per-task email WITH a cap +
+      opt-in daily digest, default OFF) ──────────────────────────────
+
+   The scanner is a background job: it has NO logged-in user and therefore NO
+   Supabase user JWT, so it cannot call PostgREST as a user (and must NOT route
+   through POST /notify, which is gated by requireAuth). It uses the SERVICE-ROLE
+   client (getSupabaseAdmin) to query/update the task table directly and sends
+   mail in-process via buildEmail + getTransporter().sendMail — the same two calls
+   the /notify handler makes internally.
+
+   Resilience:
+   - Every tick is wrapped in try/catch; a throw never crashes the process or
+     stops future ticks.
+   - A per-task failure logs + continues to the next task.
+   - reminder_sent_at is set (so we never re-send) ONLY after the in-app
+     notification insert succeeds. Policy rationale: the bell (in_app_notification)
+     is our durable, must-not-lose channel; email is best-effort. If the bell
+     insert fails we leave reminder_sent_at NULL so the next tick retries the whole
+     task. If the bell succeeds but the email send fails we still mark it sent —
+     the user has been notified in-app, and we deliberately do NOT retry just the
+     email (retrying would re-fire the bell + risk Gmail throttling). An email send
+     failure is logged for visibility.
+
+   Heartbeat: lastScanAt is updated each tick and surfaced on /health so a stalled
+   scanner is visible. */
+
+const SCANNER_INTERVAL_MS = parseInt(process.env.TASK_SCAN_INTERVAL_MS || '60000', 10);
+// Per-tick safety cap to protect Gmail from a burst of due tasks.
+const TASK_SCAN_CAP = parseInt(process.env.TASK_SCAN_CAP || '40', 10);
+const DIGEST_INTERVAL_MS = 5 * 60 * 1000; // check every 5 min whether it's digest time
+// Digest send hour, in IST (24h). Default 08:00 IST.
+const DIGEST_HOUR_IST = parseInt(process.env.TASK_DIGEST_HOUR_IST || '8', 10);
+
+// Heartbeat state surfaced on /health.
+const scannerState = {
+  lastScanAt: null,         // ISO string of last completed per-task tick
+  lastScanCount: 0,         // tasks processed in the last tick
+  lastScanError: null,      // last error message (or null)
+  lastDigestRunAt: null,    // ISO string of last digest job run
+  lastDigestDateIst: null,  // IST date (YYYY-MM-DD) the digest last sent for
+};
+
+/** Format an ISO/Date as a friendly IST string, e.g. "21 Jun 2026, 5:00 PM IST". */
+function formatIst(value) {
+  if (!value) return '';
+  const d = value instanceof Date ? value : new Date(value);
+  if (isNaN(d.getTime())) return '';
+  try {
+    const s = d.toLocaleString('en-IN', {
+      timeZone: 'Asia/Kolkata',
+      day: '2-digit', month: 'short', year: 'numeric',
+      hour: 'numeric', minute: '2-digit', hour12: true,
+    });
+    return `${s} IST`;
+  } catch {
+    return d.toISOString();
+  }
+}
+
+/** Current IST calendar date as YYYY-MM-DD (en-CA gives ISO-style date). */
+function istDateString(date) {
+  const d = date || new Date();
+  try {
+    return d.toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
+  } catch {
+    return d.toISOString().slice(0, 10);
+  }
+}
+
+/** Current hour (0-23) in IST. */
+function istHour(date) {
+  const d = date || new Date();
+  try {
+    const h = d.toLocaleString('en-US', { timeZone: 'Asia/Kolkata', hour: '2-digit', hour12: false });
+    return parseInt(h, 10) % 24;
+  } catch {
+    return d.getUTCHours();
+  }
+}
+
+/** Build the per-task deep link (CTA + in-app route point at /tasks). */
+function taskRoute(_task) {
+  return '/tasks';
+}
+
+/**
+ * Resolve a user's email + display name from user_master by numeric user_id.
+ * Mirrors resolveUserEmailAndName in the web app's lib/notify.ts.
+ */
+async function resolveOwnerEmailAndName(admin, userId) {
+  if (!userId) return { email: '', name: '' };
+  try {
+    const { data } = await admin
+      .from('user_master')
+      .select('email, full_name, f_name')
+      .eq('user_id', userId)
+      .maybeSingle();
+    if (!data) return { email: '', name: '' };
+    return {
+      email: data.email || '',
+      name: data.full_name || data.f_name || '',
+    };
+  } catch (e) {
+    console.error('[scanner] resolveOwnerEmailAndName failed:', e.message);
+    return { email: '', name: '' };
+  }
+}
+
+/**
+ * Insert the bell (in_app_notification) row for a due task. Returns true on
+ * success, false on failure. Uses the exact column shape the web app uses
+ * (see web/src/lib/notify.ts notifyInApp): user_id, lead_id, meeting_id,
+ * notif_descr, route, is_seen, status, created_by, created_date.
+ */
+async function insertTaskNotification(admin, task, ownerUserId) {
+  try {
+    const now = new Date().toISOString();
+    const { error } = await admin.from('in_app_notification').insert({
+      user_id: ownerUserId,
+      lead_id: task.lead_id ?? null,
+      meeting_id: task.meeting_id ?? null,
+      notif_descr: `Task due: ${task.subject || 'A task'}`,
+      route: taskRoute(task),
+      is_seen: false,
+      status: 'Task due',
+      created_by: 'system',
+      created_date: now,
+    });
+    if (error) {
+      console.error(`[scanner] in_app_notification insert failed for task ${task.task_id}:`, error.message);
+      return false;
+    }
+    return true;
+  } catch (e) {
+    console.error(`[scanner] in_app_notification insert threw for task ${task.task_id}:`, e.message);
+    return false;
+  }
+}
+
+/** Send the per-task reminder email (best-effort). Returns true if sent. */
+async function sendTaskReminderEmail(task, ownerEmail, ownerName) {
+  const transport = getTransporter();
+  if (!transport) return false; // SMTP not configured — bell still fires
+  try {
+    const data = {
+      toName: (ownerName || '').split(' ')[0] || '',
+      subject: task.subject || 'A task',
+      taskType: task.task_type || 'TODO',
+      dueLabel: formatIst(task.due_at),
+      body: task.body || '',
+      assocLabel: task.assoc_label || '',
+      assocPhone: task.assoc_phone || '',
+      priority: task.priority || '',
+      ctaUrl: undefined, // template falls back to APP_URL + /tasks via default
+    };
+    const { subject, html } = buildEmail('task_reminder', data);
+    const info = await transport.sendMail({
+      from: `"AltLeads · Amplior CRM" <${GMAIL_USER}>`,
+      to: ownerEmail,
+      subject,
+      html,
+    });
+    console.log(`[scanner] reminder email sent for task ${task.task_id} -> ${ownerEmail} (messageId ${info.messageId})`);
+    return true;
+  } catch (e) {
+    console.error(`[scanner] reminder email FAILED for task ${task.task_id} -> ${ownerEmail}:`, e.message);
+    return false;
+  }
+}
+
+/**
+ * One per-task scan tick. Selects due, unsent, OPEN, non-deleted tasks (capped),
+ * and for each: bell insert -> mark sent -> email. Wrapped by the caller in a
+ * try/catch; also guards each task individually so one bad row never blocks the rest.
+ */
+async function runTaskScanTick() {
+  const admin = getSupabaseAdmin();
+  if (!admin) {
+    scannerState.lastScanError = 'Supabase env vars not set';
+    return;
+  }
+  const nowIso = new Date().toISOString();
+  const { data: tasks, error } = await admin
+    .from('task')
+    .select('task_id, task_type, subject, body, priority, owner_user_id, due_at, reminder_at, lead_id, company_id, contact_id, meeting_id, assoc_label, assoc_phone')
+    .eq('status', 'OPEN')
+    .is('deleted_date', null)
+    .is('reminder_sent_at', null)
+    .not('reminder_at', 'is', null)
+    .lte('reminder_at', nowIso)
+    .order('reminder_at', { ascending: true })
+    .limit(TASK_SCAN_CAP);
+
+  if (error) {
+    scannerState.lastScanError = error.message;
+    console.error('[scanner] task query failed:', error.message);
+    return;
+  }
+
+  let processed = 0;
+  for (const task of tasks || []) {
+    try {
+      if (!task.owner_user_id) {
+        console.warn(`[scanner] task ${task.task_id} has no owner_user_id — skipping.`);
+        continue;
+      }
+      const { email, name } = await resolveOwnerEmailAndName(admin, task.owner_user_id);
+
+      // 1) Bell first — our durable channel. If this fails, leave reminder_sent_at
+      //    NULL so the next tick retries the whole task.
+      const bellOk = await insertTaskNotification(admin, task, task.owner_user_id);
+      if (!bellOk) continue;
+
+      // 2) Mark sent immediately after the bell succeeds, so a later email failure
+      //    (or a crash mid-send) can never cause a duplicate bell on the next tick.
+      const { error: markErr } = await admin
+        .from('task')
+        .update({ reminder_sent_at: new Date().toISOString() })
+        .eq('task_id', task.task_id)
+        .is('reminder_sent_at', null); // idempotency guard against a concurrent tick
+      if (markErr) {
+        console.error(`[scanner] failed to set reminder_sent_at for task ${task.task_id}:`, markErr.message);
+        // Bell already fired but we couldn't mark sent — do NOT also send email,
+        // and let the next tick's bell-then-mark retry settle it. Continue.
+        continue;
+      }
+
+      // 3) Email — best effort. A failure here is logged but does NOT un-mark the task.
+      if (email) {
+        await sendTaskReminderEmail(task, email, name);
+      } else {
+        console.warn(`[scanner] task ${task.task_id}: owner ${task.owner_user_id} has no email — bell sent, email skipped.`);
+      }
+      processed++;
+    } catch (taskErr) {
+      // Never let one task abort the tick.
+      console.error(`[scanner] error processing task ${task.task_id}:`, taskErr.message);
+    }
+  }
+
+  scannerState.lastScanAt = new Date().toISOString();
+  scannerState.lastScanCount = processed;
+  scannerState.lastScanError = null;
+  if (processed > 0) console.log(`[scanner] tick complete — ${processed} task reminder(s) dispatched.`);
+}
+
+/** Wrapper that guarantees a throw can never stop the interval. */
+async function safeRunTaskScanTick() {
+  try {
+    await runTaskScanTick();
+  } catch (e) {
+    scannerState.lastScanError = e.message;
+    console.error('[scanner] tick threw (suppressed — scanner continues):', e);
+  }
+}
+
+/**
+ * Daily digest job (decision B: OPT-IN, default OFF). Runs once per IST calendar
+ * day at ~DIGEST_HOUR_IST. For each user with task_user_pref.daily_digest_opt_in =
+ * true, sends ONE email listing their OPEN tasks due today (IST) or overdue.
+ * The 5-min poll + lastDigestDateIst guard ensures exactly one run per IST day.
+ */
+async function runDailyDigest() {
+  const admin = getSupabaseAdmin();
+  if (!admin) return;
+
+  const todayIst = istDateString();
+  // Only run once it's at/after the target hour, and only once per IST day.
+  if (istHour() < DIGEST_HOUR_IST) return;
+  if (scannerState.lastDigestDateIst === todayIst) return;
+
+  // 1) Opted-in users (strict gate — default false => no digest).
+  const { data: prefs, error: prefErr } = await admin
+    .from('task_user_pref')
+    .select('user_id')
+    .eq('daily_digest_opt_in', true);
+  if (prefErr) {
+    console.error('[digest] task_user_pref query failed:', prefErr.message);
+    return;
+  }
+
+  // Mark the day as handled up front so a mid-run crash doesn't loop-resend.
+  scannerState.lastDigestDateIst = todayIst;
+  scannerState.lastDigestRunAt = new Date().toISOString();
+
+  if (!prefs || prefs.length === 0) {
+    console.log('[digest] no opted-in users today.');
+    return;
+  }
+
+  // End of today in IST, expressed as an absolute instant: anything due at/before
+  // this is "due today or overdue". (IST = UTC+5:30, no DST.)
+  const endOfTodayIstIso = new Date(`${todayIst}T23:59:59+05:30`).toISOString();
+  const transport = getTransporter();
+
+  for (const pref of prefs) {
+    try {
+      const { data: tasks, error: tErr } = await admin
+        .from('task')
+        .select('task_id, subject, due_at, assoc_label')
+        .eq('owner_user_id', pref.user_id)
+        .eq('status', 'OPEN')
+        .is('deleted_date', null)
+        .lte('due_at', endOfTodayIstIso)
+        .order('due_at', { ascending: true });
+      if (tErr) {
+        console.error(`[digest] task query failed for user ${pref.user_id}:`, tErr.message);
+        continue;
+      }
+      if (!tasks || tasks.length === 0) continue; // nothing to summarize
+
+      const { email, name } = await resolveOwnerEmailAndName(admin, pref.user_id);
+      if (!email) {
+        console.warn(`[digest] user ${pref.user_id} opted in but has no email — skipping.`);
+        continue;
+      }
+      if (!transport) continue;
+
+      const nowMs = Date.now();
+      const items = tasks.map((t) => ({
+        subject: t.subject || 'Task',
+        dueLabel: formatIst(t.due_at),
+        assocLabel: t.assoc_label || '',
+        overdue: t.due_at ? new Date(t.due_at).getTime() < nowMs : false,
+      }));
+      const { subject, html } = buildEmail('task_digest', {
+        toName: (name || '').split(' ')[0] || '',
+        tasks: items,
+        dateLabel: formatIst(new Date()).split(',')[0], // just the date part
+      });
+      const info = await transport.sendMail({
+        from: `"AltLeads · Amplior CRM" <${GMAIL_USER}>`,
+        to: email,
+        subject,
+        html,
+      });
+      console.log(`[digest] sent to ${email} (${items.length} task(s), messageId ${info.messageId})`);
+    } catch (uErr) {
+      console.error(`[digest] error for user ${pref.user_id}:`, uErr.message);
+    }
+  }
+}
+
+/** Wrapper so a digest throw can never stop the interval. */
+async function safeRunDailyDigest() {
+  try {
+    await runDailyDigest();
+  } catch (e) {
+    console.error('[digest] run threw (suppressed — job continues):', e);
+  }
+}
+
 /* ── Auth middleware ─────────────────────────────────────────────── */
 /**
  * Verifies a Supabase JWT from the Authorization: Bearer <token> header.
@@ -229,7 +581,27 @@ app.use('/api/', apiLimiter);
 /* ── GET /health ─────────────────────────────────────────────────── */
 
 app.get('/health', (_req, res) => {
-  res.json({ ok: true, service: 'amplior-notify', ts: new Date().toISOString() });
+  const last = scannerState.lastScanAt;
+  const ageSec = last ? Math.round((Date.now() - new Date(last).getTime()) / 1000) : null;
+  // The scanner ticks every SCANNER_INTERVAL_MS; flag it stale if no successful
+  // tick in ~3 intervals (e.g. process restarted but timer never resumed).
+  const staleThresholdSec = Math.round((SCANNER_INTERVAL_MS * 3) / 1000);
+  const scannerStale = last == null || (ageSec != null && ageSec > staleThresholdSec);
+  res.json({
+    ok: true,
+    service: 'amplior-notify',
+    ts: new Date().toISOString(),
+    scanner: {
+      last_scan_at: last,
+      last_scan_age_seconds: ageSec,
+      last_scan_count: scannerState.lastScanCount,
+      last_scan_error: scannerState.lastScanError,
+      interval_ms: SCANNER_INTERVAL_MS,
+      stale: scannerStale,
+      last_digest_run_at: scannerState.lastDigestRunAt,
+      last_digest_date_ist: scannerState.lastDigestDateIst,
+    },
+  });
 });
 
 /* ── POST /notify ────────────────────────────────────────────────── */
@@ -553,5 +925,22 @@ app.listen(PORT, () => {
   console.log(`[notify] CORS allowed origin: ${ALLOWED_ORIGIN}`);
   if (!GMAIL_USER || !GMAIL_PASS) {
     console.warn('[notify] WARNING: GMAIL credentials not set — POST /notify will return 503');
+  }
+
+  /* ── Start the task reminder scanner + daily digest job ──────────
+     Both are in-process timers (no OS cron / external infra needed). They use
+     the service-role Supabase client. Each tick is individually wrapped so a
+     throw can never crash the server or stop future ticks. Skipped entirely if
+     Supabase env vars are missing (nothing to scan). */
+  if (!getSupabaseAdmin()) {
+    console.warn('[scanner] Supabase env vars not set — task reminder scanner DISABLED.');
+  } else {
+    console.log(`[scanner] task reminder scanner ON — every ${SCANNER_INTERVAL_MS}ms, cap ${TASK_SCAN_CAP}/tick.`);
+    console.log(`[digest] daily digest job ON — opt-in only, target ~${DIGEST_HOUR_IST}:00 IST.`);
+    // Run an initial tick shortly after boot (catch up on anything due during
+    // any downtime), then on the interval.
+    setTimeout(() => { void safeRunTaskScanTick(); }, 5000);
+    setInterval(() => { void safeRunTaskScanTick(); }, SCANNER_INTERVAL_MS);
+    setInterval(() => { void safeRunDailyDigest(); }, DIGEST_INTERVAL_MS);
   }
 });

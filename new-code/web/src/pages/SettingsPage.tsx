@@ -8,7 +8,9 @@ import {
   type UserProfile,
   type ProfileUpdate,
 } from '../data/account';
-import { Loader2, Check, Lock, User as UserIcon } from 'lucide-react';
+import { getDigestPref, setDigestPref } from '../data/tasks';
+import { useToast } from '../components/ui/Toast';
+import { Loader2, Check, Lock, User as UserIcon, Bell } from 'lucide-react';
 
 const inputBase: React.CSSProperties = {
   fontSize: 13,
@@ -73,8 +75,14 @@ function TextInput(props: React.InputHTMLAttributes<HTMLInputElement>) {
 
 export function SettingsPage() {
   const { profile, userEmail } = useAuth();
+  const toast = useToast();
   const userId = profile?.user_id ?? null;
   const actor = userEmail || profile?.full_name || 'system';
+
+  // Daily-digest opt-in (task reminders). Per-task reminders are always on; this is the extra.
+  const [digestOptIn, setDigestOptIn] = useState(false);
+  const [digestLoaded, setDigestLoaded] = useState(false);
+  const [digestSaving, setDigestSaving] = useState(false);
 
   const [loaded, setLoaded] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
@@ -126,6 +134,44 @@ export function SettingsPage() {
       cancelled = true;
     };
   }, [userId]);
+
+  useEffect(() => {
+    let cancelled = false;
+    if (userId == null) {
+      setDigestLoaded(true);
+      return;
+    }
+    setDigestLoaded(false);
+    getDigestPref(userId).then((res) => {
+      if (cancelled) return;
+      setDigestOptIn(res.optIn);
+      setDigestLoaded(true);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [userId]);
+
+  const handleToggleDigest = async () => {
+    if (userId == null || digestSaving) return;
+    const next = !digestOptIn;
+    // Optimistic update
+    setDigestOptIn(next);
+    setDigestSaving(true);
+    const { error } = await setDigestPref(userId, next);
+    setDigestSaving(false);
+    if (error) {
+      // Revert on failure
+      setDigestOptIn(!next);
+      toast.error('Could not update your reminder preference. Please try again.');
+      return;
+    }
+    toast.success(
+      next
+        ? 'Daily task summary emails turned on.'
+        : 'Daily task summary emails turned off.',
+    );
+  };
 
   const setField = <K extends keyof ProfileUpdate>(key: K, value: ProfileUpdate[K]) => {
     setForm((prev) => ({ ...prev, [key]: value }));
@@ -417,6 +463,73 @@ export function SettingsPage() {
               </div>
               </div>
             </form>
+
+            {/* Task reminders */}
+            <div style={{ background: '#FFFFFF', border: '1px solid #E5E7EB', borderRadius: 8, overflow: 'hidden' }}>
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 10,
+                  padding: '14px 20px',
+                  borderBottom: '1px solid #F3F4F6',
+                }}
+              >
+                <span style={{ display: 'block', width: 4, height: 20, background: '#1A7EE8', borderRadius: 2, flexShrink: 0 }} />
+                <Bell size={15} strokeWidth={1.75} style={{ color: '#6B7280' }} />
+                <h2 style={{ fontSize: 14, fontWeight: 600, color: '#111827', margin: 0 }}>
+                  Task reminders
+                </h2>
+              </div>
+              <div className="p-5">
+                <div className="flex items-center justify-between gap-4">
+                  <div className="min-w-0">
+                    <p className="font-medium text-zinc-900" style={{ fontSize: 13 }}>
+                      Email me a daily summary of my tasks
+                    </p>
+                    <p className="text-zinc-400" style={{ fontSize: 12, marginTop: 2 }}>
+                      A once-a-day rollup of your open and due tasks. Reminders for individual
+                      tasks are always sent.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    role="switch"
+                    aria-checked={digestOptIn}
+                    aria-label="Email me a daily summary of my tasks"
+                    onClick={handleToggleDigest}
+                    disabled={!digestLoaded || digestSaving || userId == null}
+                    style={{
+                      position: 'relative',
+                      flexShrink: 0,
+                      width: 40,
+                      height: 22,
+                      borderRadius: 999,
+                      border: 'none',
+                      padding: 0,
+                      background: digestOptIn ? '#1A7EE8' : '#D4D4D8',
+                      cursor: !digestLoaded || digestSaving || userId == null ? 'not-allowed' : 'pointer',
+                      opacity: !digestLoaded || userId == null ? 0.5 : 1,
+                      transition: 'background 0.15s',
+                    }}
+                  >
+                    <span
+                      style={{
+                        position: 'absolute',
+                        top: 2,
+                        left: digestOptIn ? 20 : 2,
+                        width: 18,
+                        height: 18,
+                        borderRadius: '50%',
+                        background: '#fff',
+                        boxShadow: '0 1px 2px rgba(0,0,0,0.2)',
+                        transition: 'left 0.15s',
+                      }}
+                    />
+                  </button>
+                </div>
+              </div>
+            </div>
           </>
         )}
       </div>
