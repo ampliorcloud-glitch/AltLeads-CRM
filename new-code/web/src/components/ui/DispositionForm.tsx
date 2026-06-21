@@ -26,7 +26,9 @@ interface Props {
   projectId: number | null;
   ownerUserId: number | null;
   actorId: string | null;
-  onLogged?: () => void;
+  /** Called after a successful log. Receives the disposition + note just logged
+   *  so a parent (e.g. the company view) can mirror it onto another feed. */
+  onLogged?: (logged: { disposition: string; noteText: string }) => void;
 }
 
 export function DispositionForm({
@@ -87,10 +89,12 @@ export function DispositionForm({
       toast.error(err);
       return;
     }
+    const loggedDisposition = disposition;
+    const loggedNote = noteText.trim();
     setDisposition('');
     setNoteText('');
     toast.success('Call logged');
-    onLogged?.();
+    onLogged?.({ disposition: loggedDisposition, noteText: loggedNote });
   }
 
   const fieldStyle: React.CSSProperties = {

@@ -5,6 +5,8 @@ import { useAuth } from '../contexts/AuthContext';
 import { MeetingStatusBadge } from '../components/meeting/MeetingStatusBadge';
 import { UpdateMeetingModal } from '../components/meeting/UpdateMeetingModal';
 import { EditMeetingModal } from '../components/meeting/EditMeetingModal';
+import { CreateTaskModal, type TaskAssociation } from '../components/tasks/CreateTaskModal';
+import type { TaskType } from '../data/tasks';
 import {
   fetchMeetingDetail,
   confirmMeeting,
@@ -32,6 +34,9 @@ import {
   CheckCircle2,
   Pencil,
   RefreshCw,
+  PhoneCall,
+  CalendarPlus,
+  ListPlus,
 } from 'lucide-react';
 
 /* ------------------------------------------------------------------ */
@@ -180,6 +185,85 @@ function modeIcon(mode: string) {
   if (/tele/i.test(mode)) return <Phone size={12} />;
   if (/offline/i.test(mode)) return <MapPin size={12} />;
   return <CalendarDays size={12} />;
+}
+
+/* ------------------------------------------------------------------ */
+/* One-click task actions (schedule a follow-up tied to this meeting)  */
+/* ------------------------------------------------------------------ */
+
+/**
+ * QuickTaskActions — three one-click buttons (Call back / Schedule meeting /
+ * Add task) that open the shared CreateTaskModal pre-filled with this meeting's
+ * association and a sensible type + subject. Mirrors the affordance on the
+ * Lead / Company / Contact detail pages for consistency (owner #3). Reuses
+ * CreateTaskModal; no task logic is duplicated.
+ */
+function QuickTaskActions({
+  association,
+  recordName,
+}: {
+  association: TaskAssociation;
+  recordName: string;
+}) {
+  const [modal, setModal] = useState<{ type: TaskType; subject: string } | null>(null);
+
+  const name = recordName || 'this meeting';
+  const variants: {
+    key: string;
+    label: string;
+    icon: React.ReactNode;
+    type: TaskType;
+    subject: string;
+  }[] = [
+    { key: 'call', label: 'Call back', icon: <PhoneCall size={13} />, type: 'CALL', subject: `Call back — ${name}` },
+    { key: 'meeting', label: 'Schedule meeting', icon: <CalendarPlus size={13} />, type: 'MEETING', subject: `Meeting — ${name}` },
+    { key: 'task', label: 'Add task', icon: <ListPlus size={13} />, type: 'TODO', subject: '' },
+  ];
+
+  return (
+    <>
+      <div className="flex items-center gap-2 flex-wrap">
+        {variants.map((v) => (
+          <button
+            key={v.key}
+            type="button"
+            onClick={() => setModal({ type: v.type, subject: v.subject })}
+            className="inline-flex items-center gap-1.5 font-medium transition-colors"
+            style={{
+              fontSize: 12,
+              padding: '5px 11px',
+              height: 30,
+              borderRadius: 6,
+              border: '1px solid #d4d4d8',
+              background: '#fff',
+              color: '#374151',
+              cursor: 'pointer',
+            }}
+            onMouseEnter={(e) => {
+              (e.currentTarget as HTMLElement).style.borderColor = '#1A7EE8';
+              (e.currentTarget as HTMLElement).style.color = '#1A7EE8';
+            }}
+            onMouseLeave={(e) => {
+              (e.currentTarget as HTMLElement).style.borderColor = '#d4d4d8';
+              (e.currentTarget as HTMLElement).style.color = '#374151';
+            }}
+            title={`${v.label} (creates a task tied to ${name})`}
+          >
+            {v.icon}
+            {v.label}
+          </button>
+        ))}
+      </div>
+
+      <CreateTaskModal
+        open={modal !== null}
+        onClose={() => setModal(null)}
+        association={association}
+        initialType={modal?.type}
+        initialSubject={modal?.subject}
+      />
+    </>
+  );
 }
 
 /* ------------------------------------------------------------------ */
@@ -342,6 +426,23 @@ export function MeetingDetailPage() {
                   </button>
                 </div>
               </div>
+
+              {/* One-click task actions — create a follow-up task tied to this
+                  meeting (and its lead, if any). Mirrors Lead/Company/Contact. */}
+              {actor && (
+                <div className="mt-4 pt-4 border-t border-zinc-100">
+                  <QuickTaskActions
+                    association={{
+                      meetingId: Number(meeting.id),
+                      leadId: meeting.leadId ? Number(meeting.leadId) : null,
+                      assocLabel:
+                        meeting.company || meeting.leadName || meeting.name || 'Meeting',
+                      assocPhone: meeting.leadMobile || null,
+                    }}
+                    recordName={meeting.company || meeting.leadName || meeting.name || ''}
+                  />
+                </div>
+              )}
 
               {/* Meta grid */}
               <div

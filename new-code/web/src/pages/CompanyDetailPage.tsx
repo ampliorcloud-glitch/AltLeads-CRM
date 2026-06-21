@@ -47,6 +47,7 @@ import {
   fetchContactStatuses,
   upsertContactStatus,
   fetchActivity,
+  logCompanyContactActivity,
   type CompanyProjectStatus,
   type ContactStatusLite,
 } from '../data/projectStatus';
@@ -486,10 +487,14 @@ function AccountPanel({ companyId, projectId, actorId }: AccountPanelProps) {
 ------------------------------------------------------------------ */
 interface ContactRowPanelProps {
   contact: CompanyContact;
+  companyId: number;
   projectId: number | null;
   actorId: string | null;
+  ownerUserId: number | null;
   statusLite: ContactStatusLite | undefined;
   onStatusChange: (contactId: number, lite: ContactStatusLite) => void;
+  /** Bump to tell the page an activity was logged so the company feed can refresh. */
+  onActivityLogged: () => void;
   linkedinAsText: boolean;
   showDisposition: boolean;
   showDescription: boolean;
@@ -498,10 +503,13 @@ interface ContactRowPanelProps {
 
 function ContactRowPanel({
   contact,
+  companyId,
   projectId,
   actorId,
+  ownerUserId,
   statusLite,
   onStatusChange,
+  onActivityLogged,
   linkedinAsText,
   showDisposition,
   showDescription,
@@ -559,6 +567,22 @@ function ContactRowPanel({
       description: draftDesc || null,
       comments: draftComments || null,
     });
+    // Mirror this contact activity onto the COMPANY's project feed so it shows
+    // in the company's Activity tab (separate per project), not just the
+    // contact's own timeline. Reuses the shared interaction table.
+    const changes: string[] = [];
+    if (draftStatus !== savedStatus) changes.push(`status → ${draftStatus || '—'}`);
+    if (draftDesc !== savedDesc) changes.push('description updated');
+    if (draftComments !== savedComments) changes.push('comments updated');
+    void logCompanyContactActivity({
+      companyId,
+      projectId,
+      contactName: contact.fullName,
+      type: 'status_change',
+      noteText: changes.length ? changes.join('; ') : 'status updated',
+      ownerUserId,
+      actorId,
+    }).then(() => onActivityLogged());
     toast.success(`Saved ${contact.fullName || 'contact'}`);
   }
 
@@ -751,9 +775,22 @@ function ContactRowPanel({
             recordType="contact"
             recordId={contactIdNum}
             projectId={projectId}
-            ownerUserId={null}
+            ownerUserId={ownerUserId}
             actorId={actorId}
-            onLogged={() => setDispKey((k) => k + 1)}
+            onLogged={({ disposition, noteText }) => {
+              setDispKey((k) => k + 1);
+              // Mirror the logged call onto the COMPANY's project feed.
+              void logCompanyContactActivity({
+                companyId,
+                projectId,
+                contactName: contact.fullName,
+                type: 'call',
+                disposition,
+                noteText,
+                ownerUserId,
+                actorId,
+              }).then(() => onActivityLogged());
+            }}
           />
         </div>
       )}
@@ -767,11 +804,14 @@ function ContactRowPanel({
 interface ContactsTabProps {
   contacts: CompanyContact[];
   companyId: string;
+  companyIdNum: number;
   projectId: number | null;
   actorId: string | null;
+  ownerUserId: number | null;
+  onActivityLogged: () => void;
 }
 
-function ContactsTab({ contacts, companyId, projectId, actorId }: ContactsTabProps) {
+function ContactsTab({ contacts, companyId, companyIdNum, projectId, actorId, ownerUserId, onActivityLogged }: ContactsTabProps) {
   const navigate = useNavigate();
 
   // Per-contact status lite (keyed by numeric contact_id)
@@ -897,10 +937,13 @@ function ContactsTab({ contacts, companyId, projectId, actorId }: ContactsTabPro
               <ContactRowPanel
                 key={c.id}
                 contact={c}
+                companyId={companyIdNum}
                 projectId={projectId}
                 actorId={actorId}
+                ownerUserId={ownerUserId}
                 statusLite={statusMap[Number(c.id)]}
                 onStatusChange={handleStatusChange}
+                onActivityLogged={onActivityLogged}
                 linkedinAsText={linkedinAsText}
                 showDisposition={showDisposition}
                 showDescription={showDescription}
@@ -964,9 +1007,11 @@ function DealsTab({ deals }: { deals: CompanyDeal[] }) {
 interface ActivityTabProps {
   companyId: number;
   projectId: number | null;
+  /** Bumped by the parent when a related-contact activity is logged, to re-fetch. */
+  refreshKey: number;
 }
 
-function ActivityTab({ companyId, projectId }: ActivityTabProps) {
+function ActivityTab({ companyId, projectId, refreshKey }: ActivityTabProps) {
   const [items, setItems] = useState<Interaction[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -979,7 +1024,7 @@ function ActivityTab({ companyId, projectId }: ActivityTabProps) {
       setLoading(false);
     });
     return () => { cancelled = true; };
-  }, [companyId, projectId]);
+  }, [companyId, projectId, refreshKey]);
 
   if (loading) {
     return (
@@ -1089,6 +1134,11 @@ export function CompanyDetailPage() {
 
   // Fix #6 — link existing contact
   const [showLinkModal, setShowLinkModal] = useState(false);
+
+  // Bumped whenever an activity is logged on a related contact, so the company
+  // Activity tab re-fetches and shows the mirrored company-scoped entry.
+  const [activityRefresh, setActivityRefresh] = useState(0);
+  const handleActivityLogged = useCallback(() => setActivityRefresh((n) => n + 1), []);
 
   useEffect(() => {
     let cancelled = false;
@@ -1356,13 +1406,16 @@ export function CompanyDetailPage() {
               <ContactsTab
                 contacts={contacts}
                 companyId={company.id}
+                companyIdNum={companyId}
                 projectId={projectId}
                 actorId={actorId}
+                ownerUserId={ownerUserId}
+                onActivityLogged={handleActivityLogged}
               />
             )}
             {tab === 'leads' && <DealsTab deals={deals} />}
             {tab === 'activity' && (
-              <ActivityTab companyId={companyId} projectId={projectId} />
+              <ActivityTab companyId={companyId} projectId={projectId} refreshKey={activityRefresh} />
             )}
           </div>
         </div>

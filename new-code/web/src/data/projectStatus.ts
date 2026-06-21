@@ -346,6 +346,40 @@ export async function logDisposition(params: {
 }
 
 /**
+ * Mirror a contact-scoped activity (status change / logged call) that happened
+ * INSIDE a company's related-contacts view onto the COMPANY's own project feed.
+ *
+ * The primary write already records a `contact` interaction (so it shows on the
+ * contact's timeline). But the company's Activity tab reads only `company`-typed
+ * interactions for the selected project, so without this mirror the activity is
+ * invisible from the company view. We append a second, company-scoped row —
+ * same table, same project_id — so the company's per-project feed reflects work
+ * done on its contacts. Best-effort; the prefix names the contact for context.
+ */
+export async function logCompanyContactActivity(params: {
+  companyId: number;
+  projectId: number | null;
+  contactName: string;
+  type: string; // 'status_change' | 'call'
+  disposition?: string | null;
+  noteText: string;
+  ownerUserId: number | null;
+  actorId: string | null;
+}): Promise<{ error: string | null }> {
+  const who = params.contactName.trim() || 'contact';
+  return appendInteraction({
+    recordType: 'company',
+    recordId: params.companyId,
+    projectId: params.projectId,
+    ownerUserId: params.ownerUserId,
+    type: params.type,
+    disposition: params.disposition ?? null,
+    noteText: `${who}: ${params.noteText}`,
+    actorId: params.actorId,
+  });
+}
+
+/**
  * Fetch the interaction history for a record, newest first. When projectId is
  * given it scopes to that project; otherwise all projects are returned.
  */

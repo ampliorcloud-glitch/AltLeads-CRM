@@ -2037,16 +2037,16 @@ const TICKETS = [
   {
     id:'ALT-266', title:'One-click task from a record (Call back / Schedule meeting / Add task)',
     type:'Feature', module:'Tasks', wave:'Task manager',
-    priority:'P1', status:'In Progress',
-    created: d(2026,6,21), updated: d(2026,6,21), finished: null,
+    priority:'P1', status:'Done',
+    created: d(2026,6,21), updated: d(2026,6,21), finished: d(2026,6,21),
     owner:'Claude',
-    notes:'BUILT for Lead/Company/Contact detail 2026-06-21 (owner ask #3: "no task can be created from company/contact/meeting/lead"): a Call back / Schedule meeting / Add task action row opens CreateTaskModal pre-filled with the record association + owner. PENDING: the MEETING detail page (next). Supersedes ALT-260.'
+    notes:'BUILT for Lead/Company/Contact detail 2026-06-21 (owner ask #3: "no task can be created from company/contact/meeting/lead"): a Call back / Schedule meeting / Add task action row opens CreateTaskModal pre-filled with the record association + owner. DONE for Meeting detail too 2026-06-21 (all four modules). Supersedes ALT-260.'
   },
   {
     id:'ALT-267', title:'BUG: activity not recorded for company-related contacts (per-project)',
     type:'Bug', module:'Companies', wave:'Companies & Contacts',
-    priority:'P1', status:'Planned',
-    created: d(2026,6,21), updated: d(2026,6,21), finished: null,
+    priority:'P1', status:'Done',
+    created: d(2026,6,21), updated: d(2026,6,21), finished: d(2026,6,21),
     owner:'Mohit',
     notes:'OWNER (#4) 2026-06-21: doing an activity inside a company\'s related contacts records NO activity — should log a project-scoped activity like a normal disposition (separate per project). Investigate the company->related-contacts write path (contact status/disposition inside CompanyDetailPage) and ensure it appends an interaction/activity scoped to the project, visible in that contact/company activity feed.'
   },

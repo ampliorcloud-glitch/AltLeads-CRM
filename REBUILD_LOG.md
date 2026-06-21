@@ -762,3 +762,9 @@ Owner tested My Tasks and reported 6 items. Captured all as ALT-264..271.
 - **ALT-270 (#1, planned):** advanced per-field multi-select filters (extends ALT-184).
 - **ALT-271:** after #1-6, web-search basic B2B CRM features (non-sales; still list sales ones).
 Build + node --check pass. Loop continues: next wave = #4 fix + Meeting one-click, then Call module.
+
+---
+## 2026-06-21 (cont. 19) — Wave A: #4 company-contact activity fix + #3 Meeting one-click (build passes)
+- **ALT-267 (#4) DONE.** Root cause: the company Activity tab reads only `company`-typed interaction rows for the project, but a disposition/status-change done on a company's related contact logs a `contact`-typed interaction (shows on the contact timeline) — so it was invisible from the company view. Fix: new `logCompanyContactActivity()` mirrors the activity onto the COMPANY's per-project feed (a second `company`-typed interaction, same project_id, contact name prefixed). Wired into BOTH paths in CompanyDetailPage: the inline tick-to-save status change (type 'status_change') and the DispositionForm call log (DispositionForm.onLogged now passes back the disposition+note). Best-effort (void), never blocks the primary write.
+- **ALT-266 (#3) DONE.** Meeting detail page now has the same Call back / Schedule meeting / Add task one-click row (CreateTaskModal pre-filled with meetingId + assoc). Tasks now creatable from all four: Lead, Company, Contact, Meeting.
+Next wave: #8 global project selector (cross-cutting ProjectContext).
