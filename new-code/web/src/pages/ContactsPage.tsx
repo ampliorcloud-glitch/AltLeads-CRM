@@ -16,6 +16,7 @@ import { ExportButton } from '../components/ui/ExportButton';
 import { ColumnCustomizer, defaultColumnPrefs } from '../components/ui/ColumnCustomizer';
 import { StatusBadge } from '../components/ui/StatusBadge';
 import { MultiSelectFilter } from '../components/ui/MultiSelectFilter';
+import { Skeleton } from '../components/ui/Skeleton';
 import { useToast } from '../components/ui/Toast';
 import type { ColumnDef, ExportColumn } from '../components/ui/columns';
 import type { ColumnPref } from '../data/views';
@@ -28,6 +29,8 @@ import {
   Loader2,
   Plus,
   Link2,
+  RefreshCw,
+  AlertCircle,
 } from 'lucide-react';
 
 /* ------------------------------------------------------------------ */
@@ -259,6 +262,8 @@ export function ContactsPage() {
   const [allContacts, setAllContacts] = useState<Contact[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
+  // Bump to re-run the contacts-load effect (Retry on error). ALT-215 #12.
+  const [reloadKey, setReloadKey] = useState(0);
   const [filters, setFilters] = useState<Filters>(defaultFilters);
   const [sort, setSort] = useState<SortState>({ key: 'full_name', dir: 'asc' });
   const [pageIndex, setPageIndex] = useState(0);
@@ -281,6 +286,7 @@ export function ContactsPage() {
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
+    setLoadError(null);
     fetchAllContacts().then(({ contacts, error }) => {
       if (cancelled) return;
       setAllContacts(contacts);
@@ -288,7 +294,7 @@ export function ContactsPage() {
       setLoading(false);
     });
     return () => { cancelled = true; };
-  }, []);
+  }, [reloadKey]);
 
   // Load contact_status dropdown options once
   useEffect(() => {
@@ -660,6 +666,7 @@ export function ContactsPage() {
                       checked={pageIds.length > 0 && sel.allSelected(pageIds)}
                       onChange={() => sel.toggleAll(pageIds)}
                       title="Select / deselect page"
+                      aria-label={pageIds.length > 0 && sel.allSelected(pageIds) ? 'Deselect all contacts on this page' : 'Select all contacts on this page'}
                       style={{ cursor: 'pointer', accentColor: '#1A7EE8' }}
                     />
                   </th>
@@ -668,14 +675,28 @@ export function ContactsPage() {
                   {columnPrefs.filter((p) => p.visible).map((p) => {
                     const col = ALL_COLUMNS.find((c) => c.key === p.key);
                     const isSortable = !['linkedin_url', 'phone_combined', 'contact_status', 'description', 'comments'].includes(p.key);
+                    const isSorted = isSortable && sort.key === p.key;
                     return (
                       <th
                         key={p.key}
+                        role={isSortable ? 'button' : undefined}
+                        tabIndex={isSortable ? 0 : undefined}
+                        aria-sort={
+                          isSorted
+                            ? (sort.dir === 'asc' ? 'ascending' : 'descending')
+                            : isSortable ? 'none' : undefined
+                        }
                         style={{
                           ...thStyle,
                           cursor: isSortable ? 'pointer' : 'default',
                         }}
                         onClick={isSortable ? () => handleSort(p.key as SortKey) : undefined}
+                        onKeyDown={isSortable ? (e) => {
+                          if (e.key === 'Enter' || e.key === ' ') {
+                            e.preventDefault();
+                            handleSort(p.key as SortKey);
+                          }
+                        } : undefined}
                       >
                         <div style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
                           {col?.header ?? p.key}
@@ -689,11 +710,35 @@ export function ContactsPage() {
 
               <tbody>
                 {loading ? (
+                  // Skeleton rows aligned to the visible columns (ALT-200).
+                  Array.from({ length: 8 }).map((_, r) => (
+                    <tr key={`sk-${r}`} style={{ borderBottom: '1px solid var(--color-gray-100)', height: 48 }}>
+                      {Array.from({ length: visibleColCount }).map((_c, c) => (
+                        <td key={c} style={{ padding: c === 0 ? '0 8px 0 14px' : '0 14px' }}>
+                          <Skeleton height={12} width={c === 0 ? 16 : `${48 + ((r + c) % 4) * 12}%`} radius={4} />
+                        </td>
+                      ))}
+                    </tr>
+                  ))
+                ) : loadError ? (
+                  // Error state with Retry (ALT-215 #12).
                   <tr>
                     <td colSpan={visibleColCount} className="px-4 py-10 text-center">
-                      <div className="flex items-center justify-center gap-2 text-zinc-400" style={{ fontSize: 13 }}>
-                        <Loader2 size={16} className="animate-spin" />
-                        Loading contacts...
+                      <div className="flex flex-col items-center justify-center gap-3" style={{ fontSize: 13 }}>
+                        <AlertCircle size={22} className="text-red-400" />
+                        <span className="text-zinc-600">{loadError}</span>
+                        <button
+                          type="button"
+                          onClick={() => setReloadKey((k) => k + 1)}
+                          className="inline-flex items-center gap-1.5"
+                          style={{
+                            fontSize: 13, fontWeight: 500, color: 'var(--color-brand)',
+                            border: '1px solid var(--border-input)', borderRadius: 'var(--radius-btn)',
+                            background: 'var(--color-surface)', padding: '6px 14px', cursor: 'pointer',
+                          }}
+                        >
+                          <RefreshCw size={13} /> Retry
+                        </button>
                       </div>
                     </td>
                   </tr>
@@ -722,7 +767,16 @@ export function ContactsPage() {
                     return (
                       <tr
                         key={row.contact_id}
+                        role="link"
+                        tabIndex={0}
+                        aria-label={`Open ${row.full_name || row.company_name || 'contact'}`}
                         onClick={() => navigate(`/contacts/${row.contact_id}`)}
+                        onKeyDown={(e) => {
+                          if ((e.key === 'Enter' || e.key === ' ') && e.target === e.currentTarget) {
+                            e.preventDefault();
+                            navigate(`/contacts/${row.contact_id}`);
+                          }
+                        }}
                         style={{
                           borderBottom: '1px solid var(--color-gray-100)',
                           height: 48,
@@ -746,6 +800,7 @@ export function ContactsPage() {
                             type="checkbox"
                             checked={isSelected}
                             onChange={() => sel.toggle(row.contact_id)}
+                            aria-label={`Select ${row.full_name || row.company_name || 'contact'}`}
                             style={{ cursor: 'pointer', accentColor: '#1A7EE8' }}
                           />
                         </td>

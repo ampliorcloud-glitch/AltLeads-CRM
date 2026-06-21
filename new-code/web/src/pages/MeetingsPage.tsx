@@ -21,6 +21,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { useRowSelection } from '../components/ui/useRowSelection';
 import { ExportButton } from '../components/ui/ExportButton';
 import { MultiSelectFilter } from '../components/ui/MultiSelectFilter';
+import { Skeleton } from '../components/ui/Skeleton';
 import {
   ColumnCustomizer,
   defaultColumnPrefs,
@@ -38,6 +39,8 @@ import {
   Loader2,
   CalendarDays,
   CheckCircle2,
+  RefreshCw,
+  AlertCircle,
 } from 'lucide-react';
 
 const columnHelper = createColumnHelper<MeetingRow>();
@@ -239,10 +242,13 @@ export function MeetingsPage() {
   const [cities, setCities] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
+  // Bump to re-run the load effect (Retry on error). ALT-215 #12.
+  const [reloadKey, setReloadKey] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
+    setLoadError(null);
     fetchMeetings().then((result) => {
       if (cancelled) return;
       setAllMeetings(result.meetings);
@@ -255,7 +261,7 @@ export function MeetingsPage() {
       setLoading(false);
     });
     return () => { cancelled = true; };
-  }, []);
+  }, [reloadKey]);
 
   const setFilter = <K extends keyof Filters>(key: K, value: Filters[K]) => {
     setFilters((prev) => ({ ...prev, [key]: value }));
@@ -437,7 +443,7 @@ export function MeetingsPage() {
             checked={allSel}
             onChange={() => sel.toggleAll(pageIds)}
             style={{ cursor: 'pointer', accentColor: '#1A7EE8' }}
-            aria-label="Select all on page"
+            aria-label={allSel ? 'Deselect all meetings on this page' : 'Select all meetings on this page'}
           />
         );
       },
@@ -448,7 +454,7 @@ export function MeetingsPage() {
           onChange={(e) => { e.stopPropagation(); sel.toggle(row.original.id); }}
           onClick={(e) => e.stopPropagation()}
           style={{ cursor: 'pointer', accentColor: '#1A7EE8' }}
-          aria-label="Select row"
+          aria-label={`Select ${row.original.company || row.original.leadName || row.original.name || 'meeting'}`}
         />
       ),
       size: 36,
@@ -609,41 +615,80 @@ export function MeetingsPage() {
               <thead>
                 {table.getHeaderGroups().map((headerGroup) => (
                   <tr key={headerGroup.id} style={{ borderBottom: '2px solid #E5E7EB', background: '#FFFFFF' }}>
-                    {headerGroup.headers.map((header) => (
+                    {headerGroup.headers.map((header) => {
+                      const canSort = header.column.getCanSort();
+                      const sortDir = header.column.getIsSorted();
+                      return (
                       <th
                         key={header.id}
+                        role={canSort ? 'button' : undefined}
+                        tabIndex={canSort ? 0 : undefined}
+                        aria-sort={
+                          sortDir === 'asc' ? 'ascending' : sortDir === 'desc' ? 'descending' : canSort ? 'none' : undefined
+                        }
                         className="px-4 py-2.5 text-left whitespace-nowrap select-none"
                         style={{
                           fontSize: 13,
                           fontWeight: 600,
                           color: '#1A7EE8',
                           borderBottom: '2px solid #1A7EE8',
-                          cursor: header.column.getCanSort() ? 'pointer' : 'default',
+                          cursor: canSort ? 'pointer' : 'default',
                         }}
                         onClick={header.column.getToggleSortingHandler()}
+                        onKeyDown={(e) => {
+                          if (canSort && (e.key === 'Enter' || e.key === ' ')) {
+                            e.preventDefault();
+                            header.column.getToggleSortingHandler()?.(e);
+                          }
+                        }}
                       >
                         <div className="flex items-center gap-1">
                           {flexRender(header.column.columnDef.header, header.getContext())}
-                          {header.column.getCanSort() &&
+                          {canSort &&
                             ({
                               asc: <ChevronUp size={11} />,
                               desc: <ChevronDown size={11} />,
-                            }[header.column.getIsSorted() as string] ?? (
+                            }[sortDir as string] ?? (
                               <ChevronsUpDown size={11} style={{ color: '#9CA3AF' }} />
                             ))}
                         </div>
                       </th>
-                    ))}
+                      );
+                    })}
                   </tr>
                 ))}
               </thead>
               <tbody>
                 {loading ? (
+                  // Skeleton rows aligned to the visible columns (ALT-200).
+                  Array.from({ length: 8 }).map((_, r) => (
+                    <tr key={`sk-${r}`} style={{ borderBottom: '1px solid #F4F4F5', height: 40 }}>
+                      {columns.map((_c, c) => (
+                        <td key={c} className="px-4 align-middle">
+                          <Skeleton height={12} width={c === 0 ? 16 : `${48 + ((r + c) % 4) * 12}%`} radius={4} />
+                        </td>
+                      ))}
+                    </tr>
+                  ))
+                ) : loadError ? (
+                  // Error state with Retry (ALT-215 #12).
                   <tr>
                     <td colSpan={columns.length} className="px-4 py-10 text-center">
-                      <div className="flex items-center justify-center gap-2 text-zinc-400" style={{ fontSize: 13 }}>
-                        <Loader2 size={16} className="animate-spin" />
-                        Loading live data...
+                      <div className="flex flex-col items-center justify-center gap-3" style={{ fontSize: 13 }}>
+                        <AlertCircle size={22} className="text-red-400" />
+                        <span className="text-zinc-600">{loadError}</span>
+                        <button
+                          type="button"
+                          onClick={() => setReloadKey((k) => k + 1)}
+                          className="inline-flex items-center gap-1.5"
+                          style={{
+                            fontSize: 13, fontWeight: 500, color: '#1A7EE8',
+                            border: '1px solid #d4d4d8', borderRadius: 6,
+                            background: '#fff', padding: '6px 14px', cursor: 'pointer',
+                          }}
+                        >
+                          <RefreshCw size={13} /> Retry
+                        </button>
                       </div>
                     </td>
                   </tr>
@@ -669,7 +714,16 @@ export function MeetingsPage() {
                     return (
                       <tr
                         key={row.id}
+                        role="link"
+                        tabIndex={0}
+                        aria-label={`Open meeting for ${row.original.company || row.original.leadName || row.original.name || 'meeting'}`}
                         onClick={() => navigate(`/meetings/${row.original.id}`)}
+                        onKeyDown={(e) => {
+                          if ((e.key === 'Enter' || e.key === ' ') && e.target === e.currentTarget) {
+                            e.preventDefault();
+                            navigate(`/meetings/${row.original.id}`);
+                          }
+                        }}
                         className="border-b border-zinc-100 hover:bg-zinc-50 transition-colors last:border-0 cursor-pointer"
                         style={{ height: 40, background: isSelected ? '#EBF4FD' : undefined }}
                       >

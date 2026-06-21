@@ -18,6 +18,7 @@ import { useRowSelection } from '../components/ui/useRowSelection';
 import { ExportButton } from '../components/ui/ExportButton';
 import { MultiSelectFilter } from '../components/ui/MultiSelectFilter';
 import { ColumnCustomizer, defaultColumnPrefs, reconcileColumns } from '../components/ui/ColumnCustomizer';
+import { Skeleton } from '../components/ui/Skeleton';
 import type { ColumnPref } from '../data/views';
 import type { ColumnDef as UIColumnDef, ExportColumn } from '../components/ui/columns';
 import {
@@ -30,6 +31,8 @@ import {
   ChevronRight,
   Loader2,
   Building2,
+  RefreshCw,
+  AlertCircle,
 } from 'lucide-react';
 
 const columnHelper = createColumnHelper<WishlistItem>();
@@ -202,6 +205,8 @@ export function WishlistPage() {
   const [statuses, setStatuses] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
+  // Bump to re-run the load effect (Retry on error). ALT-215 #12.
+  const [reloadKey, setReloadKey] = useState(0);
 
   // Row selection
   const sel = useRowSelection<string>();
@@ -209,6 +214,7 @@ export function WishlistPage() {
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
+    setLoadError(null);
     fetchWishlist().then((result) => {
       if (cancelled) return;
       setAllItems(result.items);
@@ -221,7 +227,7 @@ export function WishlistPage() {
       setLoading(false);
     });
     return () => { cancelled = true; };
-  }, []);
+  }, [reloadKey]);
 
   const setFilter = <K extends keyof Filters>(key: K, value: Filters[K]) => {
     setFilters((prev) => ({ ...prev, [key]: value }));
@@ -288,7 +294,7 @@ export function WishlistPage() {
           onChange={() => sel.toggle(row.original.id)}
           onClick={(e) => e.stopPropagation()}
           style={{ cursor: 'pointer', width: 14, height: 14 }}
-          aria-label="Select row"
+          aria-label={`Select ${row.original.company || row.original.contactName || 'company'}`}
         />
       ),
     });
@@ -588,42 +594,81 @@ export function WishlistPage() {
               <thead>
                 {table.getHeaderGroups().map((headerGroup) => (
                   <tr key={headerGroup.id} style={{ borderBottom: '2px solid #E5E7EB', background: '#FFFFFF' }}>
-                    {headerGroup.headers.map((header) => (
+                    {headerGroup.headers.map((header) => {
+                      const canSort = header.id !== '__select' && header.column.getCanSort();
+                      const sortDir = header.column.getIsSorted();
+                      return (
                       <th
                         key={header.id}
+                        role={canSort ? 'button' : undefined}
+                        tabIndex={canSort ? 0 : undefined}
+                        aria-sort={
+                          sortDir === 'asc' ? 'ascending' : sortDir === 'desc' ? 'descending' : canSort ? 'none' : undefined
+                        }
                         className="px-4 py-2.5 text-left whitespace-nowrap select-none"
                         style={{
                           fontSize: 13,
                           fontWeight: 600,
                           color: header.id === '__select' ? '#9CA3AF' : '#1A7EE8',
                           borderBottom: '2px solid #1A7EE8',
-                          cursor: header.column.getCanSort() ? 'pointer' : 'default',
+                          cursor: canSort ? 'pointer' : 'default',
                           width: header.id === '__select' ? 40 : undefined,
                         }}
-                        onClick={header.id !== '__select' ? header.column.getToggleSortingHandler() : undefined}
+                        onClick={canSort ? header.column.getToggleSortingHandler() : undefined}
+                        onKeyDown={(e) => {
+                          if (canSort && (e.key === 'Enter' || e.key === ' ')) {
+                            e.preventDefault();
+                            header.column.getToggleSortingHandler()?.(e);
+                          }
+                        }}
                       >
                         <div className="flex items-center gap-1">
                           {flexRender(header.column.columnDef.header, header.getContext())}
-                          {header.id !== '__select' && header.column.getCanSort() &&
+                          {canSort &&
                             ({
                               asc: <ChevronUp size={11} />,
                               desc: <ChevronDown size={11} />,
-                            }[header.column.getIsSorted() as string] ?? (
+                            }[sortDir as string] ?? (
                               <ChevronsUpDown size={11} style={{ color: '#9CA3AF' }} />
                             ))}
                         </div>
                       </th>
-                    ))}
+                      );
+                    })}
                   </tr>
                 ))}
               </thead>
               <tbody>
                 {loading ? (
+                  // Skeleton rows aligned to the visible columns (ALT-200).
+                  Array.from({ length: 8 }).map((_, r) => (
+                    <tr key={`sk-${r}`} style={{ borderBottom: '1px solid var(--color-gray-100)', height: 40 }}>
+                      {columns.map((_c, c) => (
+                        <td key={c} className="px-4 align-middle">
+                          <Skeleton height={12} width={c === 0 ? 16 : `${48 + ((r + c) % 4) * 12}%`} radius={4} />
+                        </td>
+                      ))}
+                    </tr>
+                  ))
+                ) : loadError ? (
+                  // Error state with Retry (ALT-215 #12).
                   <tr>
-                    <td colSpan={visibleKeys.length + 1} className="px-4 py-10 text-center">
-                      <div className="flex items-center justify-center gap-2 text-zinc-400" style={{ fontSize: 13 }}>
-                        <Loader2 size={16} className="animate-spin" />
-                        Loading live data...
+                    <td colSpan={columns.length} className="px-4 py-10 text-center">
+                      <div className="flex flex-col items-center justify-center gap-3" style={{ fontSize: 13 }}>
+                        <AlertCircle size={22} className="text-red-400" />
+                        <span className="text-zinc-600">{loadError}</span>
+                        <button
+                          type="button"
+                          onClick={() => setReloadKey((k) => k + 1)}
+                          className="inline-flex items-center gap-1.5"
+                          style={{
+                            fontSize: 13, fontWeight: 500, color: '#1A7EE8',
+                            border: '1px solid #d4d4d8', borderRadius: 6,
+                            background: '#fff', padding: '6px 14px', cursor: 'pointer',
+                          }}
+                        >
+                          <RefreshCw size={13} /> Retry
+                        </button>
                       </div>
                     </td>
                   </tr>
@@ -644,7 +689,16 @@ export function WishlistPage() {
                     return (
                       <tr
                         key={row.id}
+                        role="link"
+                        tabIndex={0}
+                        aria-label={`Open ${row.original.company || row.original.contactName || 'company'}`}
                         onClick={() => navigate(`/wishlist/${row.original.wishlistId}`)}
+                        onKeyDown={(e) => {
+                          if ((e.key === 'Enter' || e.key === ' ') && e.target === e.currentTarget) {
+                            e.preventDefault();
+                            navigate(`/wishlist/${row.original.wishlistId}`);
+                          }
+                        }}
                         className="border-b border-zinc-100 hover:bg-zinc-50 transition-colors last:border-0 cursor-pointer"
                         style={{
                           height: 40,
@@ -665,7 +719,7 @@ export function WishlistPage() {
           </div>
 
           {/* Pagination footer */}
-          {!loading && rowCount > 0 && (
+          {!loading && !loadError && rowCount > 0 && (
             <div className="flex items-center justify-between px-4 py-2.5 border-t border-zinc-200" style={{ background: '#F9FAFB' }}>
               <span className="text-zinc-400" style={{ fontSize: 12 }}>
                 Showing <span className="text-zinc-600 font-medium">{rangeStart}</span>–
