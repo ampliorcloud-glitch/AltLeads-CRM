@@ -8,9 +8,9 @@
  * Reject  → mandatory reason required → stage 6 (Meeting Droped By Amplior),
  *           store reason, notify agent.
  */
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Eye, ThumbsUp, ThumbsDown, X, Loader2, ShieldOff, ChevronRight } from 'lucide-react';
+import { Eye, ThumbsUp, ThumbsDown, X, Loader2, ShieldOff, ChevronRight, Search } from 'lucide-react';
 import { AppShell } from '../components/layout/AppShell';
 import { useAuth } from '../contexts/AuthContext';
 import { useConfirm } from '../components/ui/ConfirmDialog';
@@ -46,16 +46,52 @@ function StatusBadge({ status }: { status: string | null }) {
   );
 }
 
+/* ─────────────── SLA / age ───────────────────────────────────── */
+
+/** Whole days since a date (or null if unparseable). */
+function daysSince(dateStr: string | null): number | null {
+  if (!dateStr) return null;
+  const then = new Date(dateStr).getTime();
+  if (Number.isNaN(then)) return null;
+  return Math.floor((Date.now() - then) / 86_400_000);
+}
+
+/** Age pill that escalates colour as a pending report sits longer (SLA cue). */
+function SlaBadge({ dateStr }: { dateStr: string | null }) {
+  const d = daysSince(dateStr);
+  if (d === null) return <span style={{ fontSize: 12, color: '#a1a1aa' }}>—</span>;
+  const label = d <= 0 ? 'Today' : d === 1 ? '1 day' : `${d} days`;
+  let bg = '#f4f4f5', color = '#52525b'; // fresh: ≤1 day
+  if (d >= 4) { bg = '#fef2f2'; color = '#b91c1c'; }       // overdue
+  else if (d >= 2) { bg = '#fffbeb'; color = '#92400e'; }  // ageing
+  return (
+    <span
+      className="rounded px-2 py-0.5 font-medium"
+      style={{ fontSize: 11, background: bg, color }}
+      title={d >= 4 ? 'Overdue — pending more than 3 days' : undefined}
+    >
+      {label}
+    </span>
+  );
+}
+
 /* ─────────────── Report preview modal ───────────────────────── */
 
 function ReportPreviewModal({
   reportId,
   leadName,
   onClose,
+  onApprove,
+  onReject,
+  approving,
 }: {
   reportId: number;
   leadName: string;
   onClose: () => void;
+  /** In-modal approve (ALT-204) — approver can act without closing first. */
+  onApprove?: () => void;
+  onReject?: () => void;
+  approving?: boolean;
 }) {
   const [loading, setLoading] = useState(true);
   const [detail, setDetail] = useState<ReportDetail | null>(null);
@@ -176,6 +212,40 @@ function ReportPreviewModal({
             </div>
           )}
         </div>
+
+        {/* In-modal actions (ALT-204) */}
+        {(onApprove || onReject) && (
+          <div className="flex items-center justify-end gap-2 px-5 py-4 border-t border-zinc-100 sticky bottom-0 bg-white">
+            <button
+              type="button"
+              onClick={onClose}
+              style={{ fontSize: 13, fontWeight: 500, padding: '7px 16px', border: '1px solid #d4d4d8', borderRadius: 6, background: '#fff', color: '#52525b', cursor: 'pointer' }}
+            >
+              Close
+            </button>
+            {onReject && (
+              <button
+                type="button"
+                onClick={onReject}
+                className="inline-flex items-center gap-1.5"
+                style={{ fontSize: 13, fontWeight: 500, padding: '7px 16px', border: 'none', borderRadius: 6, background: '#b91c1c', color: '#fff', cursor: 'pointer' }}
+              >
+                <ThumbsDown size={13} /> Reject
+              </button>
+            )}
+            {onApprove && (
+              <button
+                type="button"
+                onClick={onApprove}
+                disabled={approving}
+                className="inline-flex items-center gap-1.5"
+                style={{ fontSize: 13, fontWeight: 500, padding: '7px 16px', border: 'none', borderRadius: 6, background: approving ? '#86efac' : '#15803d', color: '#fff', cursor: approving ? 'not-allowed' : 'pointer' }}
+              >
+                {approving ? <Loader2 size={13} className="animate-spin" /> : <ThumbsUp size={13} />} Approve
+              </button>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );
@@ -349,6 +419,10 @@ export function ApprovalsPage() {
   const [err, setErr] = useState('');
   const [success, setSuccess] = useState('');
 
+  // Search + sort (ALT-204). Default sort = oldest-requested first (SLA priority).
+  const [search, setSearch] = useState('');
+  const [sortKey, setSortKey] = useState<'age' | 'name'>('age');
+
   const load = useCallback(async () => {
     setLoading(true);
     const data = await fetchPendingApprovals();
@@ -357,6 +431,26 @@ export function ApprovalsPage() {
   }, []);
 
   useEffect(() => { load(); }, [load]);
+
+  const visibleRows = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    const filtered = q
+      ? rows.filter((row) =>
+          [row.lead_name, row.lead_number, row.client_name, row.requesting_agent_name, row.assigned_sp_name]
+            .filter(Boolean)
+            .join(' ')
+            .toLowerCase()
+            .includes(q),
+        )
+      : rows;
+    return [...filtered].sort((a, b) => {
+      if (sortKey === 'name') return (a.lead_name || '').localeCompare(b.lead_name || '');
+      // age: oldest pending first (most urgent)
+      const da = new Date(a.updated_date || a.created_date || 0).getTime();
+      const db = new Date(b.updated_date || b.created_date || 0).getTime();
+      return da - db;
+    });
+  }, [rows, search, sortKey]);
 
   const handleApprove = async (row: PendingApprovalRow) => {
     if (actor == null) {
@@ -421,14 +515,53 @@ export function ApprovalsPage() {
               Review and approve or reject pending lead reports.
             </p>
           </div>
-          <button
-            onClick={load}
-            disabled={loading}
-            className="text-blue-600 hover:text-blue-700 font-medium transition-colors disabled:opacity-50"
-            style={{ fontSize: 13 }}
-          >
-            {loading ? 'Refreshing...' : 'Refresh'}
-          </button>
+          <div className="flex items-center gap-2">
+            {/* Search */}
+            <div className="relative flex items-center">
+              <Search size={13} className="absolute text-zinc-400 pointer-events-none" style={{ left: 8 }} />
+              <input
+                type="text"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Search lead, company, agent..."
+                aria-label="Search approvals"
+                style={{
+                  fontSize: 13, height: 30, paddingLeft: 26, paddingRight: search ? 24 : 10,
+                  border: '1px solid #d4d4d8', borderRadius: 6, background: '#fff', color: '#18181b',
+                  outline: 'none', width: 230,
+                }}
+              />
+              {search && (
+                <button
+                  type="button"
+                  onClick={() => setSearch('')}
+                  aria-label="Clear search"
+                  className="absolute text-zinc-400 hover:text-zinc-700"
+                  style={{ right: 6, background: 'none', border: 'none', cursor: 'pointer', fontSize: 15, lineHeight: 1, padding: 2 }}
+                >
+                  ×
+                </button>
+              )}
+            </div>
+            {/* Sort */}
+            <select
+              value={sortKey}
+              onChange={(e) => setSortKey(e.target.value as 'age' | 'name')}
+              aria-label="Sort approvals"
+              style={{ fontSize: 12, height: 30, padding: '0 8px', border: '1px solid #d4d4d8', borderRadius: 6, background: '#fff', color: '#52525b', cursor: 'pointer' }}
+            >
+              <option value="age">Oldest first (SLA)</option>
+              <option value="name">Lead name (A–Z)</option>
+            </select>
+            <button
+              onClick={load}
+              disabled={loading}
+              className="text-blue-600 hover:text-blue-700 font-medium transition-colors disabled:opacity-50"
+              style={{ fontSize: 13 }}
+            >
+              {loading ? 'Refreshing...' : 'Refresh'}
+            </button>
+          </div>
         </div>
 
         {err && (
@@ -460,7 +593,7 @@ export function ApprovalsPage() {
               <table className="w-full min-w-[780px] border-collapse">
                 <thead>
                   <tr style={{ borderBottom: '1px solid #e4e4e7', background: '#fafafa' }}>
-                    {['Lead', 'Company', 'Requesting Agent', 'Assigned SP', 'Requested', 'Actions'].map((h) => (
+                    {['Lead', 'Company', 'Requesting Agent', 'Assigned SP', 'Requested', 'Age', 'Actions'].map((h) => (
                       <th
                         key={h}
                         className="px-4 py-2.5 text-left font-semibold text-zinc-500"
@@ -472,7 +605,22 @@ export function ApprovalsPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {rows.map((row) => (
+                  {visibleRows.length === 0 ? (
+                    <tr>
+                      <td colSpan={7} className="px-4 py-10 text-center text-zinc-400" style={{ fontSize: 13 }}>
+                        <span className="inline-flex items-center gap-2">
+                          No approvals match “{search.trim()}”.
+                          <button
+                            type="button"
+                            onClick={() => setSearch('')}
+                            style={{ color: '#1A7EE8', background: 'none', border: 'none', cursor: 'pointer', fontWeight: 500, fontSize: 13 }}
+                          >
+                            Clear search
+                          </button>
+                        </span>
+                      </td>
+                    </tr>
+                  ) : visibleRows.map((row) => (
                     <tr
                       key={row.report_id}
                       className="hover:bg-zinc-50 transition-colors"
@@ -500,6 +648,9 @@ export function ApprovalsPage() {
                           : row.created_date
                           ? fmtDate(row.created_date)
                           : '—'}
+                      </Cell>
+                      <Cell>
+                        <SlaBadge dateStr={row.updated_date || row.created_date} />
                       </Cell>
                       <td className="px-4 py-3 align-middle">
                         <div className="flex items-center gap-2 flex-wrap">
@@ -599,12 +750,18 @@ export function ApprovalsPage() {
         </div>
       </div>
 
-      {/* Report preview modal */}
+      {/* Report preview modal — with in-modal approve/reject (ALT-204) */}
       {viewRow && (
         <ReportPreviewModal
           reportId={viewRow.report_id}
           leadName={viewRow.lead_name}
           onClose={() => setViewRow(null)}
+          approving={approving === viewRow.report_id}
+          onApprove={() => { const r = viewRow; setViewRow(null); handleApprove(r); }}
+          onReject={() => {
+            if (actor == null) { setErr('Your account is still loading. Please try again in a moment.'); return; }
+            const r = viewRow; setViewRow(null); setRejectRow(r);
+          }}
         />
       )}
 
