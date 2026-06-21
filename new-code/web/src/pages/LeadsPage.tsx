@@ -18,6 +18,7 @@ import { useIsSalesShell } from '../contexts/SalesShellContext';
 import { useRowSelection } from '../components/ui/useRowSelection';
 import { ExportButton } from '../components/ui/ExportButton';
 import { MultiSelectFilter } from '../components/ui/MultiSelectFilter';
+import { Skeleton } from '../components/ui/Skeleton';
 import {
   ColumnCustomizer,
   defaultColumnPrefs,
@@ -35,6 +36,8 @@ import {
   ChevronRight,
   Loader2,
   Plus,
+  RefreshCw,
+  AlertCircle,
 } from 'lucide-react';
 
 const columnHelper = createColumnHelper<RealLead>();
@@ -253,10 +256,13 @@ export function LeadsPage() {
   const [stages, setStages] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
+  // Bump to re-run the load effect (Retry on error). ALT-215 #12.
+  const [reloadKey, setReloadKey] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
+    setLoadError(null);
     fetchLeadsFallback().then((result) => {
       if (cancelled) return;
       setAllLeads(result.leads);
@@ -270,7 +276,7 @@ export function LeadsPage() {
       setLoading(false);
     });
     return () => { cancelled = true; };
-  }, []);
+  }, [reloadKey]);
 
   const setFilter = <K extends keyof Filters>(key: K, value: Filters[K]) => {
     setFilters((prev) => ({ ...prev, [key]: value }));
@@ -333,6 +339,7 @@ export function LeadsPage() {
             onChange={() => sel.toggleAll(pageIds)}
             onClick={(e) => e.stopPropagation()}
             title={allChecked ? 'Deselect all on page' : 'Select all on page'}
+            aria-label={allChecked ? 'Deselect all leads on this page' : 'Select all leads on this page'}
             style={{ cursor: 'pointer', accentColor: 'var(--color-brand)' }}
           />
         );
@@ -343,6 +350,7 @@ export function LeadsPage() {
           checked={sel.isSelected(row.original.id)}
           onChange={() => sel.toggle(row.original.id)}
           onClick={(e) => e.stopPropagation()}
+          aria-label={`Select ${row.original.company || row.original.contactName || 'lead'}`}
           style={{ cursor: 'pointer', accentColor: 'var(--color-brand)' }}
         />
       ),
@@ -714,9 +722,17 @@ export function LeadsPage() {
               <thead>
                 {table.getHeaderGroups().map((headerGroup) => (
                   <tr key={headerGroup.id} style={{ borderBottom: '1px solid var(--border-color)', background: 'var(--color-surface)' }}>
-                    {headerGroup.headers.map((header) => (
+                    {headerGroup.headers.map((header) => {
+                      const canSort = header.column.getCanSort();
+                      const sortDir = header.column.getIsSorted();
+                      return (
                       <th
                         key={header.id}
+                        role={canSort ? 'button' : undefined}
+                        tabIndex={canSort ? 0 : undefined}
+                        aria-sort={
+                          sortDir === 'asc' ? 'ascending' : sortDir === 'desc' ? 'descending' : canSort ? 'none' : undefined
+                        }
                         style={{
                           padding: header.id === '__select' ? '11px 12px' : '11px 16px',
                           textAlign: 'left',
@@ -725,33 +741,64 @@ export function LeadsPage() {
                           color: 'var(--color-gray-500)',
                           whiteSpace: 'nowrap',
                           userSelect: 'none',
-                          cursor: header.column.getCanSort() ? 'pointer' : 'default',
+                          cursor: canSort ? 'pointer' : 'default',
                           width: header.id === '__select' ? 40 : undefined,
                         }}
                         onClick={header.column.getToggleSortingHandler()}
+                        onKeyDown={(e) => {
+                          if (canSort && (e.key === 'Enter' || e.key === ' ')) {
+                            e.preventDefault();
+                            header.column.getToggleSortingHandler()?.(e);
+                          }
+                        }}
                       >
                         <div className="flex items-center gap-1">
                           {flexRender(header.column.columnDef.header, header.getContext())}
-                          {header.column.getCanSort() &&
+                          {canSort &&
                             ({
                               asc: <ChevronUp size={11} style={{ color: 'var(--color-brand)' }} />,
                               desc: <ChevronDown size={11} style={{ color: 'var(--color-brand)' }} />,
-                            }[header.column.getIsSorted() as string] ?? (
+                            }[sortDir as string] ?? (
                               <ChevronsUpDown size={11} className="text-zinc-300" />
                             ))}
                         </div>
                       </th>
-                    ))}
+                      );
+                    })}
                   </tr>
                 ))}
               </thead>
               <tbody>
                 {loading ? (
+                  // Skeleton rows aligned to the visible columns (ALT-200).
+                  Array.from({ length: 8 }).map((_, r) => (
+                    <tr key={`sk-${r}`} style={{ borderBottom: '1px solid var(--color-gray-100)', height: 44 }}>
+                      {columns.map((_c, c) => (
+                        <td key={c} style={{ padding: c === 0 ? '0 12px' : '0 16px' }}>
+                          <Skeleton height={12} width={c === 0 ? 16 : `${48 + ((r + c) % 4) * 12}%`} radius={4} />
+                        </td>
+                      ))}
+                    </tr>
+                  ))
+                ) : loadError ? (
+                  // Error state with Retry (ALT-215 #12).
                   <tr>
                     <td colSpan={columns.length} className="px-4 py-10 text-center">
-                      <div className="flex items-center justify-center gap-2 text-zinc-400" style={{ fontSize: 13 }}>
-                        <Loader2 size={16} className="animate-spin" />
-                        Loading live data...
+                      <div className="flex flex-col items-center justify-center gap-3" style={{ fontSize: 13 }}>
+                        <AlertCircle size={22} className="text-red-400" />
+                        <span className="text-zinc-600">{loadError}</span>
+                        <button
+                          type="button"
+                          onClick={() => setReloadKey((k) => k + 1)}
+                          className="inline-flex items-center gap-1.5"
+                          style={{
+                            fontSize: 13, fontWeight: 500, color: 'var(--color-brand)',
+                            border: '1px solid var(--border-input)', borderRadius: 'var(--radius-btn)',
+                            background: 'var(--color-surface)', padding: '6px 14px', cursor: 'pointer',
+                          }}
+                        >
+                          <RefreshCw size={13} /> Retry
+                        </button>
                       </div>
                     </td>
                   </tr>
@@ -782,7 +829,16 @@ export function LeadsPage() {
                   table.getRowModel().rows.map((row) => (
                     <tr
                       key={row.id}
+                      role="link"
+                      tabIndex={0}
+                      aria-label={`Open ${row.original.company || row.original.contactName || 'lead'}`}
                       onClick={() => navigate(`${leadBase}/${row.original.id}`)}
+                      onKeyDown={(e) => {
+                        if ((e.key === 'Enter' || e.key === ' ') && e.target === e.currentTarget) {
+                          e.preventDefault();
+                          navigate(`${leadBase}/${row.original.id}`);
+                        }
+                      }}
                       style={{
                         borderBottom: '1px solid var(--color-gray-100)',
                         height: 44,
