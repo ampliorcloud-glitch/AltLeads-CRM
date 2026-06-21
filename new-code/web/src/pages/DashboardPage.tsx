@@ -82,15 +82,6 @@ export function DashboardPage() {
   return (
     <AppShell title="Dashboard">
       <div className="space-y-5">
-        {/* Live data banner */}
-        <div
-          className="flex items-center px-4 rounded-lg"
-          style={{ background: 'var(--color-gray-50)', border: '1px solid var(--border-color)', height: 36 }}
-        >
-          <p className="text-zinc-600" style={{ fontSize: 12 }}>
-            Connected to live Supabase data — read-only preview.
-          </p>
-        </div>
 
         {/* Stat cards */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">

@@ -675,8 +675,21 @@ export function CompaniesPage() {
                   </tr>
                 ) : table.getRowModel().rows.length === 0 ? (
                   <tr>
-                    <td colSpan={columns.length} className="px-4 py-8 text-center text-zinc-400" style={{ fontSize: 13 }}>
-                      No companies match the current filters.
+                    <td colSpan={columns.length} className="px-4 py-10 text-center text-zinc-400" style={{ fontSize: 13 }}>
+                      {hasActiveFilters ? (
+                        <span className="inline-flex items-center gap-2">
+                          No companies match the current filters.
+                          <button
+                            type="button"
+                            onClick={() => setFilters(defaultFilters)}
+                            style={{ color: 'var(--color-brand)', background: 'none', border: 'none', cursor: 'pointer', fontWeight: 500, fontSize: 13 }}
+                          >
+                            Clear filters
+                          </button>
+                        </span>
+                      ) : (
+                        'No companies yet.'
+                      )}
                     </td>
                   </tr>
                 ) : (

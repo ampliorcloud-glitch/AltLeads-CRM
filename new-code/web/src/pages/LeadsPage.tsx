@@ -235,7 +235,6 @@ export function LeadsPage() {
   const [filters, setFilters] = useState<Filters>(defaultFilters);
   const [sorting, setSorting] = useState<SortingState>([]);
   const [pagination, setPagination] = useState<PaginationState>({ pageIndex: 0, pageSize: 25 });
-  const [bannerDismissed, setBannerDismissed] = useState(false);
 
   // Column visibility / order state (seeded from catalogue defaults)
   const [columnPrefs, setColumnPrefs] = useState<ColumnPref[]>(() =>
@@ -529,25 +528,6 @@ export function LeadsPage() {
   return (
     <AppShell title="Leads">
       <div className="space-y-3">
-        {/* Live data banner */}
-        {!bannerDismissed && (
-          <div
-            className="flex items-center justify-between px-4 rounded-lg"
-            style={{ background: 'var(--color-gray-50)', border: '1px solid var(--border-color)', height: 36 }}
-          >
-            <p className="text-zinc-600" style={{ fontSize: 12 }}>
-              Connected to live Supabase data — read-only preview.
-            </p>
-            <button
-              onClick={() => setBannerDismissed(true)}
-              className="text-zinc-400 hover:text-zinc-700 transition-colors ml-4"
-              aria-label="Dismiss"
-            >
-              <X size={14} />
-            </button>
-          </div>
-        )}
-
         {/* Filter panel */}
         <div className="rounded-lg p-4" style={{ background: 'var(--color-surface)', border: '1px solid var(--border-color)' }}>
           <div className="flex flex-wrap gap-4 items-end">
@@ -779,10 +759,23 @@ export function LeadsPage() {
                   <tr>
                     <td
                       colSpan={columns.length}
-                      className="px-4 py-8 text-center text-zinc-400"
+                      className="px-4 py-10 text-center text-zinc-400"
                       style={{ fontSize: 13 }}
                     >
-                      No leads match the current filters.
+                      {hasActiveFilters ? (
+                        <span className="inline-flex items-center gap-2">
+                          No leads match the current filters.
+                          <button
+                            type="button"
+                            onClick={() => setFilters(defaultFilters)}
+                            style={{ color: 'var(--color-brand)', background: 'none', border: 'none', cursor: 'pointer', fontWeight: 500, fontSize: 13 }}
+                          >
+                            Clear filters
+                          </button>
+                        </span>
+                      ) : (
+                        'No leads yet.'
+                      )}
                     </td>
                   </tr>
                 ) : (

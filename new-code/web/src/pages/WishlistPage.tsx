@@ -188,7 +188,6 @@ export function WishlistPage() {
   const [filters, setFilters] = useState<Filters>(defaultFilters);
   const [sorting, setSorting] = useState<SortingState>([]);
   const [pagination, setPagination] = useState<PaginationState>({ pageIndex: 0, pageSize: PAGE_SIZE });
-  const [bannerDismissed, setBannerDismissed] = useState(false);
 
   // Column customizer state — seeded from defaults, overridden by saved view on mount.
   const [columnPrefs, setColumnPrefs] = useState<ColumnPref[]>(() =>
@@ -473,25 +472,6 @@ export function WishlistPage() {
   return (
     <AppShell title="Wishlist">
       <div className="space-y-3">
-        {/* Live data banner */}
-        {!bannerDismissed && (
-          <div
-            className="flex items-center justify-between px-4 rounded-lg border border-zinc-200"
-            style={{ background: '#f4f4f5', height: 36 }}
-          >
-            <p className="text-zinc-600" style={{ fontSize: 12 }}>
-              Target companies sales reps want to pursue — live Supabase data, read-only preview.
-            </p>
-            <button
-              onClick={() => setBannerDismissed(true)}
-              className="text-zinc-400 hover:text-zinc-700 transition-colors ml-4"
-              aria-label="Dismiss"
-            >
-              <X size={14} />
-            </button>
-          </div>
-        )}
-
         {/* Filter panel */}
         <div className="bg-white border border-zinc-200 rounded-lg p-4">
           <div className="flex flex-wrap gap-4 items-end">

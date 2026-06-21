@@ -613,3 +613,9 @@ TypeScript everywhere · Supabase (DB+Auth+Storage) · React + Vite · Tailwind 
 - SHARED MODAL A11Y (ALT-203, Top#26): admin Modal now closes on Escape, has role=dialog/aria-modal/aria-label, and moves focus into the dialog on open — fixes every admin modal (Users/Projects/Clients/Dropdowns) at once.
 - Build passes (tsc + vite) at each step. Security/correctness: filter predicates preserve semantics (single value = 1-element multi); CopyButton uses navigator.clipboard (user-gesture only) and renders nothing for empty values; modal change is additive a11y. No new endpoints/RLS/secrets.
 - Tracker: ALT-183 Done; ALT-203 In Progress; ALT-215 notes updated (#1,3,4,6,7,9,13,14 shipped). Done now 121. Not pushed.
+
+---
+## 2026-06-21 (cont. 7) — Removed dev banners + real empty states
+- QW#2: removed the dev-era "Connected to live Supabase data — read-only preview" banners from Leads, Wishlist and Dashboard (+ their now-unused bannerDismissed state). The app no longer tells users it's a read-only preview.
+- QW#11: Leads/Contacts/Companies empty state now distinguishes "No <x> yet." (genuinely empty) from "No <x> match the current filters." + an inline "Clear filters" button (Meetings/Wishlist already distinguished). 
+- Build passes. Additive/low-risk. Tracker ALT-215 note updated (#2,#11 shipped). Not pushed.
