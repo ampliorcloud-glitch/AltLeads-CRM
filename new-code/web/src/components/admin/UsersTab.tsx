@@ -34,6 +34,14 @@ const ROLES = [
   { id: 6, label: 'QC' },
 ];
 
+/**
+ * Client/portal sales roles. is_web=false (they were the vendor mobile = CLIENT
+ * app roles), so they're excluded from the generic web-role picker — but they're
+ * valid, grantable roles and Add User already offers them, so the Edit modal must
+ * always surface them too (see the Edit-roles modal below).
+ */
+const SALES_ROLE_NAMES = ['SALES_HEAD', 'SALES_PERSON'];
+
 const PAGE_SIZE = 20;
 
 export function UsersTab({ lookups, actorId }: { lookups: AdminLookups; actorId: string }) {
@@ -646,14 +654,24 @@ export function UsersTab({ lookups, actorId }: { lookups: AdminLookups; actorId:
         }
       >
         {editUser && (() => {
-          // Show every web-assignable role, plus any non-web role the user already
-          // holds (so it's visible and can be intentionally removed, never silently lost).
+          // Show every web-assignable role, PLUS the client/portal sales roles
+          // (SALES_HEAD/SALES_PERSON), PLUS any other non-web role the user already
+          // holds. The sales roles are is_web=false (they were the vendor mobile =
+          // CLIENT app roles) but are valid, GRANTABLE roles — Add User already
+          // offers them, so Edit must too, otherwise an admin can never give a user
+          // a sales role they don't already have (the bug). Including them always
+          // makes Edit symmetric with Add. Any extra is also surfaced so it can be
+          // intentionally removed, never silently lost.
           const ids = new Set(webRoles.map((r) => r.role_id));
+          const salesRoles = lookups.roles.filter(
+            (r) => SALES_ROLE_NAMES.includes(r.name) && !ids.has(r.role_id)
+          );
+          salesRoles.forEach((r) => ids.add(r.role_id));
           const extras = editUser.roleIds
             .filter((id) => !ids.has(id))
             .map((id) => lookups.roles.find((r) => r.role_id === id))
             .filter((r): r is NonNullable<typeof r> => !!r);
-          const roleOptions = [...webRoles, ...extras];
+          const roleOptions = [...webRoles, ...salesRoles, ...extras];
           return (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
               {/* User info */}

@@ -1729,7 +1729,7 @@ const TICKETS = [
     priority:'P0', status:'Planned',
     created: d(2026,6,21), updated: d(2026,6,21), finished: null,
     owner:'Claude',
-    notes:'Service-role upsert when the CRM generates/regenerates a meeting; the browser never writes snapshots. OPEN DECISION: notify-service endpoint vs DB trigger. Until wired, no NEW meeting produces a snapshot. dependsOn ALT-223.'
+    notes:'DECISION RESOLVED 2026-06-21 (owner delegated to Claude): mechanism = a SECURITY DEFINER Postgres function fired by a DB TRIGGER on the meeting source (AFTER INSERT/UPDATE), chosen over an app endpoint because the snapshot is isolation-critical and must be ATOMIC + UNBYPASSABLE (cannot be forgotten at a call site). The browser never writes snapshots. Until wired, no NEW meeting produces a snapshot. dependsOn ALT-223.'
   },
   {
     id:'ALT-225', title:'One-time snapshot BACKFILL applier (seed every existing meeting)',
@@ -1878,18 +1878,18 @@ const TICKETS = [
   {
     id:'ALT-243', title:'DECISION: client-visible column whitelist sign-off',
     type:'Task', module:'Client Portal', wave:'Client portal P1',
-    priority:'P0', status:'Planned',
-    created: d(2026,6,21), updated: d(2026,6,21), finished: null,
+    priority:'P0', status:'Done',
+    created: d(2026,6,21), updated: d(2026,6,21), finished: d(2026,6,21),
     owner:'Mohit',
-    notes:'OWNER DECISION. The exact company/contact columns clients may see. BLOCKS the snapshot table schema (ALT-223) and backfill column set (ALT-225) — engineers must not guess.'
+    notes:'RESOLVED 2026-06-21: client sees EVERYTHING the vendor MOBILE-app user could see (i.e. the full field set the old client app surfaced for meetings/leads/companies). Owner will refine the list later (eventual target = "all that any project CRM user can see"). Snapshot columns (ALT-223) = the mobile-app field set; unblocked.'
   },
   {
     id:'ALT-244', title:'CRM Edit-User sales-role bug fix (UsersTab.tsx)',
     type:'Bug', module:'Admin', wave:'Client portal P1',
-    priority:'P1', status:'Planned',
-    created: d(2026,6,21), updated: d(2026,6,21), finished: null,
-    owner:'Mohit',
-    notes:'CORRECTED SPEC: Add User already assigns Sales Head/Person; the real bug is Edit User only shows non-web sales roles the user ALREADY holds, so you cannot ADD a sales role to a user who lacks it. Fix = make SALES_HEAD/SALES_PERSON always-selectable in the Edit modal. Independent / ship early.'
+    priority:'P1', status:'Done',
+    created: d(2026,6,21), updated: d(2026,6,21), finished: d(2026,6,21),
+    owner:'Claude',
+    notes:'DONE 2026-06-21. UsersTab Edit-roles modal now always surfaces SALES_HEAD/SALES_PERSON (via new SALES_ROLE_NAMES const) in roleOptions = [...webRoles, ...salesRoles, ...extras], making Edit symmetric with Add — an admin can now GRANT a sales role to a user who lacks it (previously extras only re-showed non-web roles the user already had). Build passes.'
   },
   {
     id:'ALT-245', title:'Provisioning: Company-Admin login creation',
@@ -2004,10 +2004,10 @@ const TICKETS = [
   {
     id:'ALT-262', title:'DECISION: per-task vs digest email volume (Gmail throttling)',
     type:'Task', module:'Tasks', wave:'Task manager',
-    priority:'P0', status:'Planned',
-    created: d(2026,6,21), updated: d(2026,6,21), finished: null,
+    priority:'P0', status:'Done',
+    created: d(2026,6,21), updated: d(2026,6,21), finished: d(2026,6,21),
     owner:'Mohit',
-    notes:'OWNER DECISION. Gmail SMTP is the only mail path and has daily limits. Per-task (Option A, optional per-window cap) vs digest (Option B). Changes scanner design — must resolve before ALT-256 ships.'
+    notes:'RESOLVED 2026-06-21: PER-TASK reminder email WITH a safety cap (per-user per-window) to protect Gmail deliverability, PLUS an optional DAILY SUMMARY digest that is OPT-IN, default OFF. So the scanner sends one email per due task (capped) + a separate daily digest job gated by a per-user pref (default false). Unblocks ALT-256.'
   },
   ...uxAuditTickets(),
 ];

@@ -271,3 +271,8 @@ The sales portal (2nd login `/sales`, `SalesShellProvider`) could later get a **
 3. **Are MEETING tasks here distinct from the existing Meetings module** (`meeting_master`)? Plan keeps MEETING as a lightweight task type and optionally links `meeting_id`; confirm we don't want full meeting scheduling here.
 4. **Email reminder volume — per-task vs digest (§6.6).** Must be decided **before** the email slice (ALT-256) ships, because it changes the scanner design and affects Gmail throttling/deliverability.
 5. **Web Push priority** — confirm closed-tab reminders are a later iteration, not v1.
+
+---
+## Decisions LOCKED — 2026-06-21 (owner go to build)
+- **Reminder email volume (ALT-262): RESOLVED.** **Per-task email WITH a safety cap** (per-user, per-window — protects Gmail deliverability) **+ an optional daily-summary digest that is OPT-IN, default OFF.** → Scanner sends one capped email per due task; a separate daily-digest job is gated by a per-user pref defaulting to `false`.
+- **Build go:** owner said "lets start building." The task table + RLS migration is authored as an applier but **applied to the live DB only after owner sign-off + throwaway-login validation (ALT-251)**.

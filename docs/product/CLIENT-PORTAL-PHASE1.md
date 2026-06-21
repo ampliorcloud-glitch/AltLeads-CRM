@@ -292,3 +292,9 @@ Epic **ALT-221** (Client Portal — Amplior). Phase-1 tickets:
 | ALT-243 | **Client-visible column whitelist sign-off** (Spike/decision) | Blocks ALT-223 + ALT-225. |
 | ALT-244 | **CRM Edit-User sales-role bug fix** (`UsersTab.tsx`) | Make SALES_HEAD/SALES_PERSON selectable in Edit. Independent/early. |
 | ALT-245 | Provisioning: Company-Admin login creation | Extends `/api/users/create`; writes `client_portal_user`. |
+
+---
+## Decisions LOCKED — 2026-06-21 (owner go to build)
+- **Column whitelist (ALT-243): RESOLVED.** Clients see **everything the vendor mobile-app user could see** — the full field set the old client app surfaced for meetings/leads/companies. Owner will refine later (eventual target: "all that any project CRM user can see"). → Build the `meeting_snapshot` columns from the **mobile-app field set** (see the mobile inventory referenced in the plan), not a guessed subset.
+- **Snapshot writer (ALT-224): RESOLVED (owner delegated to Claude).** Mechanism = a **SECURITY DEFINER Postgres function fired by a DB trigger** (AFTER INSERT/UPDATE on the meeting source). Chosen over an app endpoint because the snapshot is isolation-critical and must be **atomic + unbypassable** (never forgotten at a call site). Browser never writes snapshots.
+- **Build go:** owner said "lets start building." Migrations are authored as appliers but **applied to the live DB only after owner sign-off + the throwaway-login RLS validation (ALT-229)**.
