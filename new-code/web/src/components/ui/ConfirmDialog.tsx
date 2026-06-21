@@ -23,6 +23,7 @@ import React, {
 } from 'react';
 import { createPortal } from 'react-dom';
 import { AlertTriangle } from 'lucide-react';
+import { useFocusTrap } from '../../lib/useFocusTrap';
 
 export interface ConfirmOptions {
   title?: string;
@@ -47,7 +48,11 @@ export function ConfirmProvider({ children }: { children: React.ReactNode }) {
   const [active, setActive] = useState<ActiveRequest | null>(null);
   const [typed, setTyped] = useState('');
   const confirmBtnRef = useRef<HTMLButtonElement>(null);
+  const dialogRef = useRef<HTMLDivElement>(null);
   const lastFocused = useRef<HTMLElement | null>(null);
+
+  // Keep Tab focus inside the confirm dialog while open (ALT-203).
+  useFocusTrap(dialogRef, Boolean(active));
 
   const confirm = useCallback<ConfirmFn>((opts) => {
     lastFocused.current = (document.activeElement as HTMLElement) ?? null;
@@ -106,6 +111,7 @@ export function ConfirmProvider({ children }: { children: React.ReactNode }) {
           }}
         >
           <div
+            ref={dialogRef}
             role="dialog"
             aria-modal="true"
             aria-labelledby="confirm-title"

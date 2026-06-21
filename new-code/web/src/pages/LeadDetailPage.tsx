@@ -31,6 +31,8 @@ import { ReportTab } from '../components/lead/ReportTab';
 import { MeetingTab } from '../components/lead/MeetingTab';
 import { useAuth } from '../contexts/AuthContext';
 import { useIsSalesShell } from '../contexts/SalesShellContext';
+import { useConfirm } from '../components/ui/ConfirmDialog';
+import { useToast } from '../components/ui/Toast';
 
 /* ── Progress stepper: Pre-Sales → Meeting → Closing ─────────────────────── */
 
@@ -168,6 +170,8 @@ export function LeadDetailPage() {
   const { profile } = useAuth();
   // When reused inside the Sales Portal, keep "back to Leads" within /sales/*.
   const isSalesShell = useIsSalesShell();
+  const confirm = useConfirm();
+  const toast = useToast();
   const leadsBase = isSalesShell ? '/sales' : '/leads';
   const leadId = Number(id);
 
@@ -233,11 +237,20 @@ export function LeadDetailPage() {
 
   const handleClinch = async () => {
     if (!lead || !hasActor) return;
+    const ok = await confirm({
+      title: 'Clinch this lead?',
+      message: 'This marks the meeting successful and closes the lead. You can still view it, but its stage will be locked.',
+      confirmLabel: 'Clinch & close',
+    });
+    if (!ok) return;
     setClinching(true);
     const res = await clinchLead(lead.lead_id, actor);
     setClinching(false);
     if (!res?.error) {
       setLead((prev) => (prev ? { ...prev, is_closed: true } : prev));
+      toast.success('Lead clinched — meeting marked successful');
+    } else {
+      toast.error(res?.error || 'Could not clinch the lead. Please try again.');
     }
   };
 

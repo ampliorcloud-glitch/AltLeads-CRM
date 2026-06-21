@@ -1,6 +1,7 @@
 import React, { useEffect, useRef } from 'react';
 import type { ReactNode } from 'react';
 import { X } from 'lucide-react';
+import { useFocusTrap } from '../../lib/useFocusTrap';
 
 interface ModalProps {
   open: boolean;
@@ -14,6 +15,9 @@ interface ModalProps {
 
 export function Modal({ open, title, onClose, children, footer, width = 460 }: ModalProps) {
   const dialogRef = useRef<HTMLDivElement>(null);
+
+  // Keep Tab focus inside the dialog while open (ALT-203).
+  useFocusTrap(dialogRef, open);
 
   // Escape closes; focus moves into the dialog on open (a11y — UX-AUDIT Top#26).
   useEffect(() => {
