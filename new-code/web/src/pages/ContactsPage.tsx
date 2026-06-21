@@ -494,10 +494,22 @@ export function ContactsPage() {
                   value={filters.search}
                   onChange={(e) => setFilter('search', e.target.value)}
                   placeholder="Name, email, phone, company..."
-                  style={{ ...inputBase, paddingLeft: 26, width: 220 }}
+                  style={{ ...inputBase, paddingLeft: 26, paddingRight: filters.search ? 26 : 10, width: 220 }}
                   onFocus={(e) => { e.currentTarget.style.borderColor = '#1A7EE8'; }}
                   onBlur={(e) => { e.currentTarget.style.borderColor = 'var(--border-input)'; }}
                 />
+                {filters.search && (
+                  <button
+                    type="button"
+                    onClick={() => setFilter('search', '')}
+                    aria-label="Clear search"
+                    title="Clear search"
+                    className="absolute text-zinc-400 hover:text-zinc-700"
+                    style={{ right: 6, background: 'none', border: 'none', cursor: 'pointer', fontSize: 16, lineHeight: 1, padding: 2 }}
+                  >
+                    ×
+                  </button>
+                )}
               </div>
             </div>
 

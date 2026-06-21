@@ -531,10 +531,22 @@ export function CompaniesPage() {
                   value={filters.search}
                   onChange={(e) => setFilter('search', e.target.value)}
                   placeholder="Company, domain, CIN..."
-                  style={{ ...inputBase, paddingLeft: 26, width: 240 }}
+                  style={{ ...inputBase, paddingLeft: 26, paddingRight: filters.search ? 26 : 10, width: 240 }}
                   onFocus={(e) => { e.currentTarget.style.borderColor = '#1A7EE8'; }}
                   onBlur={(e) => { e.currentTarget.style.borderColor = '#d4d4d8'; }}
                 />
+                {filters.search && (
+                  <button
+                    type="button"
+                    onClick={() => setFilter('search', '')}
+                    aria-label="Clear search"
+                    title="Clear search"
+                    className="absolute text-zinc-400 hover:text-zinc-700"
+                    style={{ right: 6, background: 'none', border: 'none', cursor: 'pointer', fontSize: 16, lineHeight: 1, padding: 2 }}
+                  >
+                    ×
+                  </button>
+                )}
               </div>
             </div>
 
