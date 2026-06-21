@@ -141,6 +141,32 @@ async function fetchAll<T>(
 }
 
 /**
+ * Fetch rows where `inColumn IN (values)`, chunking the id list so the request
+ * URL never blows past PostgREST's length limit. Best-effort: on a chunk error
+ * it stops and returns what it has (the dashboard should degrade, not throw).
+ * Used to scope dashboard stats to a project's lead/meeting id set (owner #8).
+ */
+async function chunkedIn<T>(
+  table: string,
+  columns: string,
+  inColumn: string,
+  values: number[],
+  tweak?: QueryTweak,
+  chunkSize = 150,
+): Promise<T[]> {
+  const out: T[] = [];
+  for (let i = 0; i < values.length; i += chunkSize) {
+    const chunk = values.slice(i, i + chunkSize);
+    let query: any = supabase.from(table).select(columns).in(inColumn, chunk);
+    if (tweak) query = tweak(query);
+    const { data, error } = await query;
+    if (error) break;
+    out.push(...((data ?? []) as T[]));
+  }
+  return out;
+}
+
+/**
  * Fetch all data via separate queries and join in JS.
  * Works whether or not FKs are declared in the DB, and resolves every lead.
  */
@@ -307,40 +333,103 @@ export async function fetchLeadsFallback(): Promise<LeadsResult> {
   };
 }
 
-export async function fetchDashboardStats(): Promise<DashboardStats> {
-  const [leadsRes, meetingsWeekRes, successfulRes, stageDistRes, recentRes] = await Promise.all([
-    // Total leads
-    supabase.from('lead_master').select('lead_id', { count: 'exact', head: true }).is('deleted_date', null),
+export async function fetchDashboardStats(projectId: number | null = null): Promise<DashboardStats> {
+  const empty: DashboardStats = {
+    totalLeads: 0, meetingsThisWeek: 0, meetingsSuccessful: 0,
+    stageBreakdown: [], recentActivity: [], error: null,
+  };
 
-    // Meetings this week
-    supabase
-      .from('meeting_master')
-      .select('meeting_id', { count: 'exact', head: true })
-      .is('deleted_date', null)
-      .gte('meeting_date', getWeekStart())
-      .lt('meeting_date', getWeekEnd()),
+  // ── Project scope (owner #8). When scoped, resolve the project's lead + meeting
+  //    id universe once and constrain every stat to it (so the dashboard's numbers
+  //    match the project-scoped Leads/Meetings lists). Dataset is small (~600
+  //    leads) so an in-memory id set + chunked .in() filters are cheap and exact.
+  //    projectId null = "All projects" → the original global queries (unchanged). ──
+  let projectLeadIds: number[] | null = null;
+  let projectMeetingIds: number[] | null = null;
+  if (projectId != null) {
+    const leadIdRes = await fetchAll<{ lead_id: number }>(
+      'lead_master', 'lead_id',
+      (q) => q.is('deleted_date', null).eq('project_id', projectId),
+    );
+    if (leadIdRes.error) return { ...empty, error: leadIdRes.error };
+    projectLeadIds = leadIdRes.rows.map((r) => r.lead_id);
+    if (projectLeadIds.length === 0) return empty; // project has no leads → all zeros
 
-    // Meetings Successful (stage_id=8 in stage_master)
-    supabase
-      .from('lead_report')
-      .select('lead_id', { count: 'exact', head: true })
-      .is('deleted_date', null)
-      .eq('stage_id', 8),
+    const reportRows = await chunkedIn<{ report_id: number }>(
+      'lead_report', 'report_id', 'lead_id', projectLeadIds,
+      (q) => q.is('deleted_date', null),
+    );
+    const reportIds = [...new Set(reportRows.map((r) => r.report_id).filter(Boolean))];
+    const schedRows = reportIds.length
+      ? await chunkedIn<{ meeting_id: number }>(
+          'meeting_schedule', 'meeting_id', 'report_id', reportIds,
+          (q) => q.is('deleted_date', null),
+        )
+      : [];
+    projectMeetingIds = [...new Set(schedRows.map((s) => s.meeting_id).filter(Boolean))];
+  }
 
-    // Stage distribution from lead_report
-    supabase
-      .from('lead_report')
-      .select('stage_id')
-      .is('deleted_date', null),
+  const weekStart = getWeekStart();
+  const weekEnd = getWeekEnd();
 
-    // Recent activity: last 5 leads updated
-    supabase
-      .from('lead_master')
-      .select('lead_id, lead_name, updated_date, client_assoc_id')
-      .is('deleted_date', null)
-      .order('updated_date', { ascending: false, nullsFirst: false })
-      .limit(5),
-  ]);
+  // ── Total leads ──
+  let totalLeads = 0;
+  let totalErr: string | null = null;
+  if (projectLeadIds) {
+    totalLeads = projectLeadIds.length;
+  } else {
+    const r = await supabase.from('lead_master').select('lead_id', { count: 'exact', head: true }).is('deleted_date', null);
+    totalLeads = r.count ?? 0;
+    totalErr = r.error?.message ?? null;
+  }
+
+  // ── Meetings this week ──
+  let meetingsThisWeek = 0;
+  if (projectMeetingIds) {
+    if (projectMeetingIds.length) {
+      const rows = await chunkedIn<{ meeting_id: number }>(
+        'meeting_master', 'meeting_id', 'meeting_id', projectMeetingIds,
+        (q) => q.is('deleted_date', null).gte('meeting_date', weekStart).lt('meeting_date', weekEnd),
+      );
+      meetingsThisWeek = rows.length;
+    }
+  } else {
+    const r = await supabase.from('meeting_master').select('meeting_id', { count: 'exact', head: true }).is('deleted_date', null).gte('meeting_date', weekStart).lt('meeting_date', weekEnd);
+    meetingsThisWeek = r.count ?? 0;
+  }
+
+  // ── Meetings Successful (lead_report stage_id=8) ──
+  let meetingsSuccessful = 0;
+  if (projectLeadIds) {
+    const rows = await chunkedIn<{ lead_id: number }>(
+      'lead_report', 'lead_id', 'lead_id', projectLeadIds,
+      (q) => q.is('deleted_date', null).eq('stage_id', 8),
+    );
+    meetingsSuccessful = rows.length;
+  } else {
+    const r = await supabase.from('lead_report').select('lead_id', { count: 'exact', head: true }).is('deleted_date', null).eq('stage_id', 8);
+    meetingsSuccessful = r.count ?? 0;
+  }
+
+  // ── Stage distribution ──
+  let stageDistRows: { stage_id: number }[] = [];
+  if (projectLeadIds) {
+    stageDistRows = await chunkedIn<{ stage_id: number }>(
+      'lead_report', 'stage_id', 'lead_id', projectLeadIds,
+      (q) => q.is('deleted_date', null),
+    );
+  } else {
+    const r = await supabase.from('lead_report').select('stage_id').is('deleted_date', null);
+    stageDistRows = (r.data ?? []) as unknown as { stage_id: number }[];
+  }
+
+  // ── Recent activity: last 5 leads updated (scoped to the project when set) ──
+  let recentQuery: any = supabase
+    .from('lead_master')
+    .select('lead_id, lead_name, updated_date, client_assoc_id')
+    .is('deleted_date', null);
+  if (projectId != null) recentQuery = recentQuery.eq('project_id', projectId);
+  const recentRes = await recentQuery.order('updated_date', { ascending: false, nullsFirst: false }).limit(5);
 
   // Stage names for distribution
   const { data: stageNamesRaw } = await supabase.from('stage_master').select('stage_id, stage');
@@ -348,7 +437,7 @@ export async function fetchDashboardStats(): Promise<DashboardStats> {
   ((stageNamesRaw ?? []) as unknown as StageRow[]).forEach((s) => stageNameMap.set(s.stage_id, s.stage));
 
   const stageCounts = new Map<string, number>();
-  ((stageDistRes.data ?? []) as unknown as { stage_id: number }[]).forEach((row) => {
+  stageDistRows.forEach((row) => {
     const stageName = row.stage_id ? (stageNameMap.get(row.stage_id) ?? 'Unknown') : 'Unknown';
     stageCounts.set(stageName, (stageCounts.get(stageName) ?? 0) + 1);
   });
@@ -400,12 +489,12 @@ export async function fetchDashboardStats(): Promise<DashboardStats> {
   }));
 
   return {
-    totalLeads: leadsRes.count ?? 0,
-    meetingsThisWeek: meetingsWeekRes.count ?? 0,
-    meetingsSuccessful: successfulRes.count ?? 0,
+    totalLeads,
+    meetingsThisWeek,
+    meetingsSuccessful,
     stageBreakdown,
     recentActivity,
-    error: leadsRes.error?.message ?? null,
+    error: totalErr,
   };
 }
 

@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { AppShell } from '../components/layout/AppShell';
 import { StageBadge } from '../components/ui/Badge';
 import { useAuth } from '../contexts/AuthContext';
+import { useProjectScope } from '../contexts/ProjectContext';
 import { fetchDashboardStats, type DashboardStats } from '../data/realLeads';
 import { Users, CalendarDays, TrendingUp, CheckCircle2, Loader2, ChevronRight } from 'lucide-react';
 
@@ -119,19 +120,30 @@ function greetingFor(): string {
 export function DashboardPage() {
   const navigate = useNavigate();
   const { profile } = useAuth();
+  // Global project scope (owner #8): the dashboard's numbers track the selected
+  // project so they match the project-scoped Leads/Meetings lists. null = All.
+  const { selectedProjectId, projects, loading: scopeLoading } = useProjectScope();
+  const scopedProjectName =
+    selectedProjectId != null
+      ? projects.find((p) => p.project_id === selectedProjectId)?.project_name ?? null
+      : null;
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    // Wait for the scope to resolve so we don't fetch all-project stats first and
+    // then re-fetch scoped (avoids a flash of wrong totals on the landing screen).
+    if (scopeLoading) return;
     let cancelled = false;
-    fetchDashboardStats().then((s) => {
+    setLoading(true);
+    fetchDashboardStats(selectedProjectId).then((s) => {
       if (!cancelled) {
         setStats(s);
         setLoading(false);
       }
     }).catch(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
-  }, []);
+  }, [selectedProjectId, scopeLoading]);
 
   const stageEntries = stats?.stageBreakdown ?? [];
   const maxCount = stageEntries.length > 0 ? Math.max(...stageEntries.map((e) => e.count)) : 1;
@@ -154,7 +166,9 @@ export function DashboardPage() {
               {greetingFor()}, {firstName}
             </h2>
             <p style={{ margin: '2px 0 0', fontSize: 13, color: 'var(--color-gray-500)' }}>
-              Here&rsquo;s what&rsquo;s happening across your leads and meetings.
+              {scopedProjectName
+                ? <>Showing <strong style={{ color: 'var(--color-gray-700)' }}>{scopedProjectName}</strong> — leads and meetings for this project.</>
+                : <>Here&rsquo;s what&rsquo;s happening across your leads and meetings.</>}
             </p>
           </div>
           {role && (
