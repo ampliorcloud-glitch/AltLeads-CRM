@@ -161,10 +161,17 @@ const DIGEST_HOUR_IST = parseInt(process.env.TASK_DIGEST_HOUR_IST || '8', 10);
 const scannerState = {
   lastScanAt: null,         // ISO string of last completed per-task tick
   lastScanCount: 0,         // tasks processed in the last tick
+  lastScanBacklog: 0,       // due-unsent reminders still waiting after this tick's cap
   lastScanError: null,      // last error message (or null)
   lastDigestRunAt: null,    // ISO string of last digest job run
   lastDigestDateIst: null,  // IST date (YYYY-MM-DD) the digest last sent for
 };
+
+// Re-entrancy guard: setInterval does NOT wait for the prior async tick, and a
+// slow tick (many SMTP sends) can outrun the interval. Without this, two
+// overlapping ticks both read the same still-unmarked tasks and double-fire the
+// bell/email (review ALT-273B). Only one tick runs at a time; overlaps are skipped.
+let scanInFlight = false;
 
 /** Format an ISO/Date as a friendly IST string, e.g. "21 Jun 2026, 5:00 PM IST". */
 function formatIst(value) {
@@ -364,19 +371,72 @@ async function runTaskScanTick() {
     }
   }
 
+  // Backlog visibility (review ALT-273B): the per-tick cap (TASK_SCAN_CAP) bounds how
+  // many reminders one tick sends, so a burst above the cap is NOT dropped but fires
+  // over several ticks. Surface the count of due-unsent reminders still waiting so an
+  // operator can see (on /health) when arrivals are outrunning the drain rate.
+  const { count: backlog, error: backlogErr } = await admin
+    .from('task')
+    .select('task_id', { count: 'exact', head: true })
+    .eq('status', 'OPEN')
+    .is('deleted_date', null)
+    .is('reminder_sent_at', null)
+    .not('reminder_at', 'is', null)
+    .lte('reminder_at', new Date().toISOString());
+  scannerState.lastScanBacklog = backlogErr ? -1 : (backlog ?? 0);
+  if (!backlogErr && backlog > 0) {
+    console.log(`[scanner] ${backlog} due reminder(s) still waiting (cap ${TASK_SCAN_CAP}/tick).`);
+  }
+
   scannerState.lastScanAt = new Date().toISOString();
   scannerState.lastScanCount = processed;
   scannerState.lastScanError = null;
   if (processed > 0) console.log(`[scanner] tick complete — ${processed} task reminder(s) dispatched.`);
 }
 
-/** Wrapper that guarantees a throw can never stop the interval. */
+/** Wrapper that guarantees a throw can never stop the interval, and that two
+ *  ticks never overlap (re-entrancy guard — review ALT-273B bell double-fire). */
 async function safeRunTaskScanTick() {
+  if (scanInFlight) {
+    console.warn('[scanner] previous tick still running — skipping this interval.');
+    return;
+  }
+  scanInFlight = true;
   try {
     await runTaskScanTick();
   } catch (e) {
     scannerState.lastScanError = e.message;
     console.error('[scanner] tick threw (suppressed — scanner continues):', e);
+  } finally {
+    scanInFlight = false;
+  }
+}
+
+/** Read the persisted last-run IST date for a job (null if absent / on error). */
+async function getJobLastDateIst(admin, jobName) {
+  try {
+    const { data, error } = await admin
+      .from('task_job_run')
+      .select('last_date_ist')
+      .eq('job_name', jobName)
+      .maybeSingle();
+    if (error) { console.error(`[digest] task_job_run read failed (${jobName}):`, error.message); return null; }
+    return data ? data.last_date_ist : null;
+  } catch (e) {
+    console.error(`[digest] task_job_run read threw (${jobName}):`, e.message);
+    return null;
+  }
+}
+
+/** Persist the last-run IST date for a job (best-effort; logged on failure). */
+async function setJobLastDateIst(admin, jobName, dateIst) {
+  try {
+    const { error } = await admin
+      .from('task_job_run')
+      .upsert({ job_name: jobName, last_date_ist: dateIst, updated_at: new Date().toISOString() }, { onConflict: 'job_name' });
+    if (error) console.error(`[digest] task_job_run write failed (${jobName}):`, error.message);
+  } catch (e) {
+    console.error(`[digest] task_job_run write threw (${jobName}):`, e.message);
   }
 }
 
@@ -384,7 +444,10 @@ async function safeRunTaskScanTick() {
  * Daily digest job (decision B: OPT-IN, default OFF). Runs once per IST calendar
  * day at ~DIGEST_HOUR_IST. For each user with task_user_pref.daily_digest_opt_in =
  * true, sends ONE email listing their OPEN tasks due today (IST) or overdue.
- * The 5-min poll + lastDigestDateIst guard ensures exactly one run per IST day.
+ * Dedup is BOTH in-memory (fast path) AND persisted in public.task_job_run so a
+ * deploy/crash/restart after the digest hour can't re-blast the same day's digest
+ * (review ALT-273B M6). If task_job_run doesn't exist yet (migration not applied),
+ * the DB helpers degrade to null and the in-memory guard still applies.
  */
 async function runDailyDigest() {
   const admin = getSupabaseAdmin();
@@ -394,6 +457,15 @@ async function runDailyDigest() {
   // Only run once it's at/after the target hour, and only once per IST day.
   if (istHour() < DIGEST_HOUR_IST) return;
   if (scannerState.lastDigestDateIst === todayIst) return;
+
+  // Durable guard: the in-memory flag resets on restart, so also check the persisted
+  // last-run date. If today's digest already ran (e.g. before a redeploy), sync the
+  // in-memory flag and skip — no second blast.
+  const persistedDate = await getJobLastDateIst(admin, 'daily_digest');
+  if (persistedDate === todayIst) {
+    scannerState.lastDigestDateIst = todayIst;
+    return;
+  }
 
   // 1) Opted-in users (strict gate — default false => no digest).
   const { data: prefs, error: prefErr } = await admin
@@ -405,9 +477,11 @@ async function runDailyDigest() {
     return;
   }
 
-  // Mark the day as handled up front so a mid-run crash doesn't loop-resend.
+  // Mark the day handled up front, in-memory AND durably, so neither a mid-run crash
+  // nor a process restart re-sends today's digest.
   scannerState.lastDigestDateIst = todayIst;
   scannerState.lastDigestRunAt = new Date().toISOString();
+  await setJobLastDateIst(admin, 'daily_digest', todayIst);
 
   if (!prefs || prefs.length === 0) {
     console.log('[digest] no opted-in users today.');
@@ -595,6 +669,8 @@ app.get('/health', (_req, res) => {
       last_scan_at: last,
       last_scan_age_seconds: ageSec,
       last_scan_count: scannerState.lastScanCount,
+      last_scan_backlog: scannerState.lastScanBacklog, // due-unsent reminders still waiting (-1 = count failed)
+      cap_per_tick: TASK_SCAN_CAP,
       last_scan_error: scannerState.lastScanError,
       interval_ms: SCANNER_INTERVAL_MS,
       stale: scannerStale,
@@ -937,6 +1013,15 @@ app.listen(PORT, () => {
   } else {
     console.log(`[scanner] task reminder scanner ON — every ${SCANNER_INTERVAL_MS}ms, cap ${TASK_SCAN_CAP}/tick.`);
     console.log(`[digest] daily digest job ON — opt-in only, target ~${DIGEST_HOUR_IST}:00 IST.`);
+    // Hydrate the in-memory digest guard from the durable store so a restart after
+    // today's digest already ran doesn't re-blast it (review ALT-273B M6).
+    void (async () => {
+      const persisted = await getJobLastDateIst(getSupabaseAdmin(), 'daily_digest');
+      if (persisted) {
+        scannerState.lastDigestDateIst = persisted;
+        console.log(`[digest] hydrated last-run date from task_job_run: ${persisted}`);
+      }
+    })();
     // Run an initial tick shortly after boot (catch up on anything due during
     // any downtime), then on the interval.
     setTimeout(() => { void safeRunTaskScanTick(); }, 5000);
