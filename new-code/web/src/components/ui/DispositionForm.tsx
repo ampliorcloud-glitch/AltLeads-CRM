@@ -18,6 +18,7 @@
 import React, { useEffect, useState } from 'react';
 import { fetchOptions, type DropdownOption } from '../../data/dropdowns';
 import { logDisposition, type RecordType } from '../../data/projectStatus';
+import { useToast } from './Toast';
 
 interface Props {
   recordType: RecordType;
@@ -41,6 +42,7 @@ export function DispositionForm({
   const [noteText, setNoteText] = useState('');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const toast = useToast();
 
   useEffect(() => {
     let cancelled = false;
@@ -71,10 +73,12 @@ export function DispositionForm({
     setSaving(false);
     if (err) {
       setError(err);
+      toast.error(err);
       return;
     }
     setDisposition('');
     setNoteText('');
+    toast.success('Call logged');
     onLogged?.();
   }
 

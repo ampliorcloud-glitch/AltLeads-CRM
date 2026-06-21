@@ -100,7 +100,7 @@ function uxAuditTickets() {
     'ALT-180': { status: 'In Progress', finished: null, extra: ' 🔧 IN PROGRESS 2026-06-21: confirm wired on cancel-meeting, approve-report, disable-user, disable-project, remove-member. Remaining: clinch/close, request-approval, convert-to-lead, dropdown disable.' },
     'ALT-181': { status: 'Done',        finished: AD, extra: ' ✅ DONE 2026-06-21: global :focus-visible brand ring restored in index.css (was stripping outline from every control).' },
     'ALT-190': { status: 'In Progress', finished: null, extra: ' 🔧 IN PROGRESS 2026-06-21: useUnsavedChanges hook (localStorage draft cache + restore + beforeunload warn) wired into the New/Edit Lead, Contact and Company forms with Cancel-confirm; drafts cleared on save + on logout. Remaining: detail-page edit modes + modals + (optional) in-app route blocker (needs data-router).' },
-    'ALT-215': { status: 'In Progress', finished: null, extra: ' 🔧 IN PROGRESS 2026-06-21: shipped #4 (hide create from non-admins), #9 (surface swallowed status/toggle errors), #13 (Contacts 1000-row cap). Remaining: #1,2,3,5,6,7,8,10,11,12,14.' },
+    'ALT-215': { status: 'In Progress', finished: null, extra: ' 🔧 IN PROGRESS 2026-06-21: shipped #3 (bell → /notifications + unread badge + aria-label), #4 (hide create from non-admins), #9 (surface swallowed status/toggle errors), #13 (Contacts 1000-row cap); plus DispositionForm "Call logged" success toast. Remaining: #1,2,5,6,7,8,10,11,12,14.' },
   };
 
   out.push(mk('ALT-215', 'UX quick-wins batch — 14 small, high-payoff fixes', 'Task', 'UX', 'P1',

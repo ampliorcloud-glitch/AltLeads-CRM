@@ -1,7 +1,8 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { Bell } from 'lucide-react';
-import { useLocation, useParams } from 'react-router-dom';
+import { useLocation, useParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
+import { fetchUnreadNotifCount } from '../../data/account';
 
 interface TopBarProps {
   title: string;
@@ -62,6 +63,19 @@ function useBreadcrumb(title: string): Crumb[] {
 export function TopBar({ title }: TopBarProps) {
   const { userEmail, profile } = useAuth();
   const crumbs = useBreadcrumb(title);
+  const navigate = useNavigate();
+  const { pathname } = useLocation();
+
+  // Unread in-app notification count for the bell badge. Refetched on every route
+  // change so it updates after the user visits /notifications and marks them read.
+  const [unread, setUnread] = useState(0);
+  useEffect(() => {
+    let cancelled = false;
+    fetchUnreadNotifCount(profile?.user_id ?? null).then((n) => {
+      if (!cancelled) setUnread(n);
+    });
+    return () => { cancelled = true; };
+  }, [profile?.user_id, pathname]);
 
   const displayEmail = userEmail || profile?.email || '';
   const displayName = profile?.full_name || displayEmail.split('@')[0] || '';
@@ -126,9 +140,11 @@ export function TopBar({ title }: TopBarProps) {
 
       {/* Right: bell + user */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
-        {/* Bell notification icon */}
+        {/* Bell notification icon → opens /notifications, with unread-count badge */}
         <button
+          onClick={() => navigate('/notifications')}
           style={{
+            position: 'relative',
             width: 32,
             height: 32,
             borderRadius: '50%',
@@ -141,11 +157,27 @@ export function TopBar({ title }: TopBarProps) {
             color: 'var(--color-gray-500)',
             transition: 'background 0.12s',
           }}
-          title="Notifications"
+          aria-label={unread > 0 ? `Notifications (${unread} unread)` : 'Notifications'}
+          title={unread > 0 ? `${unread} unread notification${unread === 1 ? '' : 's'}` : 'Notifications'}
           onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = 'var(--color-gray-100)'; }}
           onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = 'var(--color-surface)'; }}
         >
           <Bell size={15} strokeWidth={1.75} />
+          {unread > 0 && (
+            <span
+              aria-hidden="true"
+              style={{
+                position: 'absolute', top: -3, right: -3,
+                minWidth: 16, height: 16, padding: '0 4px',
+                borderRadius: 999, background: 'var(--color-danger)',
+                color: '#fff', fontSize: 10, fontWeight: 700,
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                border: '2px solid var(--color-surface)', lineHeight: 1,
+              }}
+            >
+              {unread > 99 ? '99+' : unread}
+            </span>
+          )}
         </button>
 
         {/* User section: avatar + name + role */}

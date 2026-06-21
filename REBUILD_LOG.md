@@ -580,3 +580,9 @@ TypeScript everywhere · Supabase (DB+Auth+Storage) · React + Vite · Tailwind 
 - TESTED: `npm run build` (tsc -b + vite build) PASSES (✓ ~1s). Lint: fixed a real React-19 "cannot access refs during render" in LeadFormPage (baseline ref → state); remaining lint = the project-wide set-state-in-effect pattern (build does not run eslint).
 - SECURITY PASS: (a) all new target=_blank links carry rel=noreferrer noopener → no reverse-tabnabbing; (b) company revenue/employees/description are not PII and company_master SELECT is already public — no new exposure; (c) draft cache (could contain typed names/emails/phones) is cleared on logout; residual low risk: a draft survives a browser closed WITHOUT logout (acceptable for per-user internal logins; TTL is a possible later hardening); (d) no new endpoints/RLS/secrets/auth changes; canCreateData gating extended to "Add new contact" (defense in depth).
 - TRACKER: +ALT-217/218/219 → 219 total (Done 120, In Progress 5). NOT pushed (manual deploy; awaiting owner "push").
+
+---
+## 2026-06-21 (cont. 3) — Wired the dead notification bell + Log-call confirmation
+- TopBar bell was a no-op with no badge. Now: clicking it opens /notifications; shows an unread-count badge (red pill, "99+" cap) via fetchUnreadNotifCount(profile.user_id), refetched on every route change; added aria-label/title. (UX-AUDIT quick-win #3.)
+- DispositionForm "Log call" now emits a "Call logged" success toast (and toasts errors) — was previously silent, the core action of an outreach CRM giving zero confirmation. (UX-AUDIT feedback theme.)
+- Build passes (tsc + vite). Tracker ALT-215 note updated (#3 done). Not pushed.
