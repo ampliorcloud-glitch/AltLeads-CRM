@@ -791,3 +791,13 @@ Next wave: #8 global project selector (cross-cutting ProjectContext).
   - **ALT-276 — Sales/Portal Wishlist add** (company + prospect + location), mobile `Wishlist.jsx` parity → our `wishlist` table.
 - **Tracker:** Done 146 / In Progress 19 / Planned 108.
 - Next: decide sequencing with owner (finish project-selector review fixes vs build the mobile-ditto portal record view first), then execute.
+
+---
+## 2026-06-21 (cont. 22) — Review fixes shipped (ALT-273B) + ALT-275 data audit kicked off
+- **Project-selector review fixes (commits e4c94a4, f352b73, ff748bd, 8544c49):**
+  - BLOCKER (e4c94a4): portal meeting_snapshot FORCE→ENABLE (won't break CRM meeting writes when applied).
+  - HIGH (f352b73): Dashboard now scopes ALL stats to the selected project (chunked id-set; ~600 leads so cheap) + a "Showing <project>" header.
+  - 5 MEDIUM (ff748bd): per-user scope keys (no shared-device bleed) + re-seed on login; fetchMyProjects throws on error so a transient failure can't wipe the saved scope; switcher always offers a path back to "All projects"; Sales Portal ignores the internal scope; Contacts/Companies drive their local Project picker from the global switcher (one source of truth); setter is useCallback.
+  - LOW/NIT (8544c49): task modal re-seeds on each open (no stale prefill); Leads/Meetings show "N with no project hidden"; Tasks/Wishlist show "not filtered by project" notes.
+- **STILL OPEN (deferred, activate on deploy):** notify-service batch — digest dedup persistence (M6), reminder-bell double-fire guard, scanner backlog metric. The scanner isn't running yet (needs a notify-service restart), so these go in with that deploy. Plus the React-18-no-op MyTasks async guard (lowest value).
+- **ALT-275 next:** launched a DB-column audit (sub-agent) to map which mobile record-screen fields exist in our Supabase (company turnover/sector/size/website/linkedin/address; lead altMobile/roleAndResp/areaOfInterest; opportunity title/value/desc; salesIntelligence) vs which render as N/A — so the mobile-ditto record view is built on real columns.
