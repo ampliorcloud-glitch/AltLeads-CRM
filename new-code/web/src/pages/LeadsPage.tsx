@@ -389,11 +389,11 @@ export function LeadsPage() {
                   <div className="flex items-center gap-2.5">
                     <CompanyAvatar name={name} />
                     <div className="min-w-0">
-                      <p className="font-medium text-zinc-900 truncate" style={{ fontSize: 13, maxWidth: 200 }}>
+                      <p className="font-medium text-zinc-900 truncate" style={{ fontSize: 13, maxWidth: 200 }} title={name || undefined}>
                         {name || <span className="text-zinc-400">—</span>}
                       </p>
                       {sub && (
-                        <p className="text-zinc-400 truncate" style={{ fontSize: 11, maxWidth: 200 }}>{sub}</p>
+                        <p className="text-zinc-400 truncate" style={{ fontSize: 11, maxWidth: 200 }} title={sub}>{sub}</p>
                       )}
                     </div>
                   </div>

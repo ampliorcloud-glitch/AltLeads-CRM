@@ -586,3 +586,10 @@ TypeScript everywhere · Supabase (DB+Auth+Storage) · React + Vite · Tailwind 
 - TopBar bell was a no-op with no badge. Now: clicking it opens /notifications; shows an unread-count badge (red pill, "99+" cap) via fetchUnreadNotifCount(profile.user_id), refetched on every route change; added aria-label/title. (UX-AUDIT quick-win #3.)
 - DispositionForm "Log call" now emits a "Call logged" success toast (and toasts errors) — was previously silent, the core action of an outreach CRM giving zero confirmation. (UX-AUDIT feedback theme.)
 - Build passes (tsc + vite). Tracker ALT-215 note updated (#3 done). Not pushed.
+
+---
+## 2026-06-21 (cont. 4) — More destructive-action confirms + missing success toasts + truncation tooltips
+- CONFIRMS (ALT-180): added confirm to Request-Approval (locks the report form) and the inline Approve in ReportTab (advances stage + emails). Now covered: cancel-meeting, approve (Approvals page + inline), request-approval, disable-user/project, remove-member.
+- SUCCESS TOASTS: Wishlist "Convert to Lead" now toasts "Lead created from wishlist" (was a silent navigate); DispositionForm "Call logged" (prev commit). Convert keeps its deliberate multi-field modal (sufficient intent) — added toast, not an extra confirm.
+- TRUNCATION TOOLTIPS (ALT-215 #1): added title= to the primary name/sub cells in Leads, Companies and Contacts lists so clipped names are readable on hover.
+- Build passes (tsc + vite, 0.6s). Security: confirms/toasts/title attrs are additive, no new data exposure or XSS (title is an escaped attribute). Tracker notes updated. Not pushed.

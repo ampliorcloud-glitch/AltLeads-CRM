@@ -46,6 +46,7 @@ import {
   LoadingBlock,
   InlineNote,
 } from './primitives';
+import { useConfirm } from '../ui/ConfirmDialog';
 
 const MODES = ['Telephonic', 'Online', 'Offline'];
 const MAX_NEW_QUESTIONS = 5;
@@ -68,6 +69,7 @@ export function ReportTab({
   userRole?: string;
   onReportSaved: () => void; // tell the parent to refresh header/stage
 }) {
+  const confirm = useConfirm();
   const [loading, setLoading] = useState(true);
   const [salespeople, setSalespeople] = useState<SalespersonOption[]>([]);
   const [questions, setQuestions] = useState<PreSalesQuestion[]>([]);
@@ -267,6 +269,12 @@ export function ReportTab({
       setError(v);
       return;
     }
+    const ok = await confirm({
+      title: 'Submit this report for approval?',
+      message: 'The report will be locked and sent to your Team Lead / Admin for review. You won\'t be able to edit it unless it\'s sent back.',
+      confirmLabel: 'Submit for approval',
+    });
+    if (!ok) return;
     setRequesting(true);
     setError('');
     setSuccess('');
@@ -302,6 +310,12 @@ export function ReportTab({
       setError('Your account isn’t linked to a user profile yet, so you can’t approve.');
       return;
     }
+    const ok = await confirm({
+      title: `Approve this report for "${lead.lead_name}"?`,
+      message: 'This advances the lead to Meeting Scheduled and emails the agent and salesperson. This cannot be undone.',
+      confirmLabel: 'Approve report',
+    });
+    if (!ok) return;
     setApprovingInline(true);
     setError('');
     setSuccess('');

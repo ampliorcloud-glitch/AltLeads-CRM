@@ -404,13 +404,13 @@ export function CompaniesPage() {
               <CompanyAvatar name={name} />
               <div className="min-w-0">
                 <div className="flex items-center gap-1.5">
-                  <p className="font-medium text-zinc-900 truncate" style={{ fontSize: 13, maxWidth: 220 }}>
+                  <p className="font-medium text-zinc-900 truncate" style={{ fontSize: 13, maxWidth: 220 }} title={name || undefined}>
                     {name || <span className="text-zinc-400">—</span>}
                   </p>
                   {row.isDemo && <DemoTag />}
                 </div>
                 {row.city && (
-                  <p className="text-zinc-400 truncate" style={{ fontSize: 11, maxWidth: 220 }}>{row.city}</p>
+                  <p className="text-zinc-400 truncate" style={{ fontSize: 11, maxWidth: 220 }} title={row.city}>{row.city}</p>
                 )}
               </div>
             </div>

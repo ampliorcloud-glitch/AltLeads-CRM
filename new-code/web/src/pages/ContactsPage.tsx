@@ -747,7 +747,7 @@ export function ContactsPage() {
                                     <ContactAvatar name={row.full_name ?? ''} />
                                     <div style={{ minWidth: 0 }}>
                                       <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                                        <span style={{ fontWeight: 500, color: '#18181b', fontSize: 13, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 160 }}>
+                                        <span title={row.full_name || undefined} style={{ fontWeight: 500, color: '#18181b', fontSize: 13, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 160 }}>
                                           {row.full_name || <span style={{ color: '#d1d5db' }}>—</span>}
                                         </span>
                                         {row.is_demo && (

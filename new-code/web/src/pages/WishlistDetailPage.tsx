@@ -16,6 +16,7 @@ import {
 } from '../data/wishlist';
 import { AssignModal } from '../components/wishlist/AssignModal';
 import { ConvertModal, type ConvertFormResult } from '../components/wishlist/ConvertModal';
+import { useToast } from '../components/ui/Toast';
 import {
   ArrowLeft,
   Loader2,
@@ -158,6 +159,7 @@ export function WishlistDetailPage() {
   const [actionError, setActionError] = useState<string | null>(null);
   const [statusSaving, setStatusSaving] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
+  const appToast = useToast();
 
   const load = useCallback(async () => {
     if (!wishlistId) return;
@@ -252,9 +254,11 @@ export function WishlistDetailPage() {
     setActionSaving(false);
     if ('error' in res) {
       setActionError(res.error);
+      appToast.error(res.error);
       return;
     }
     setConvertOpen(false);
+    appToast.success('Lead created from wishlist');
     // jump straight to the freshly created lead
     navigate(`/leads/${res.lead_id}`);
   };
