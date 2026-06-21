@@ -16,12 +16,14 @@ import {
   Plus,
   ExternalLink,
   PhoneCall,
+  PhoneOutgoing,
   CalendarPlus,
   ListPlus,
 } from 'lucide-react';
 import { AppShell } from '../components/layout/AppShell';
 import { useAuth } from '../contexts/AuthContext';
 import { CreateTaskModal, type TaskAssociation } from '../components/tasks/CreateTaskModal';
+import { LogCallModal, type CallAssociation } from '../components/calls/LogCallModal';
 import type { TaskType } from '../data/tasks';
 import {
   fetchContactById,
@@ -142,12 +144,15 @@ function InfoRow({ icon, label, value, href, copyValue }: {
 
 function QuickTaskActions({
   association,
+  callAssociation,
   recordName,
 }: {
   association: TaskAssociation;
+  callAssociation: CallAssociation;
   recordName: string;
 }) {
   const [modal, setModal] = useState<{ type: TaskType; subject: string } | null>(null);
+  const [logOpen, setLogOpen] = useState(false);
 
   const name = recordName || 'this record';
   const variants: {
@@ -162,6 +167,14 @@ function QuickTaskActions({
     { key: 'task', label: 'Add task', icon: <ListPlus size={13} />, type: 'TODO', subject: '' },
   ];
 
+  const chipStyle: React.CSSProperties = {
+    display: 'inline-flex', alignItems: 'center', gap: 5,
+    fontSize: 12, fontWeight: 500,
+    background: '#F3F4F6', color: '#374151',
+    border: '1px solid #E5E7EB', borderRadius: 6,
+    padding: '6px 12px', cursor: 'pointer',
+  };
+
   return (
     <>
       {variants.map((v) => (
@@ -169,18 +182,20 @@ function QuickTaskActions({
           key={v.key}
           type="button"
           onClick={() => setModal({ type: v.type, subject: v.subject })}
-          style={{
-            display: 'inline-flex', alignItems: 'center', gap: 5,
-            fontSize: 12, fontWeight: 500,
-            background: '#F3F4F6', color: '#374151',
-            border: '1px solid #E5E7EB', borderRadius: 6,
-            padding: '6px 12px', cursor: 'pointer',
-          }}
+          style={chipStyle}
           title={`${v.label} (creates a task tied to ${name})`}
         >
           {v.icon} {v.label}
         </button>
       ))}
+      <button
+        type="button"
+        onClick={() => setLogOpen(true)}
+        style={chipStyle}
+        title={`Log a call that already happened with ${name}`}
+      >
+        <PhoneOutgoing size={13} /> Log call
+      </button>
 
       <CreateTaskModal
         open={modal !== null}
@@ -188,6 +203,12 @@ function QuickTaskActions({
         association={association}
         initialType={modal?.type}
         initialSubject={modal?.subject}
+      />
+
+      <LogCallModal
+        open={logOpen}
+        onClose={() => setLogOpen(false)}
+        association={callAssociation}
       />
     </>
   );
@@ -563,6 +584,12 @@ export function ContactDetailPage() {
                 {actorId && (
                   <QuickTaskActions
                     association={{
+                      contactId: contact.contact_id,
+                      companyId: contact.company_id ?? null,
+                      assocLabel: contact.full_name,
+                      assocPhone: contact.mobile_no || contact.alt_mobile_no || null,
+                    }}
+                    callAssociation={{
                       contactId: contact.contact_id,
                       companyId: contact.company_id ?? null,
                       assocLabel: contact.full_name,

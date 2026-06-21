@@ -10,12 +10,15 @@ import {
   Award,
   CheckCircle2,
   PhoneCall,
+  PhoneOutgoing,
   CalendarPlus,
   ListPlus,
 } from 'lucide-react';
 import { AppShell } from '../components/layout/AppShell';
 import { StageBadge } from '../components/ui/Badge';
 import { CreateTaskModal, type TaskAssociation } from '../components/tasks/CreateTaskModal';
+import { LogCallModal, type CallAssociation } from '../components/calls/LogCallModal';
+import { CallHistoryCard } from '../components/calls/CallHistoryCard';
 import type { TaskType } from '../data/tasks';
 import {
   fetchLeadDetail,
@@ -169,18 +172,24 @@ const TABS: { key: TabKey; label: string }[] = [
 /* ── One-click task actions (schedule a follow-up tied to this lead) ──────── */
 
 /**
- * QuickTaskActions — three one-click buttons (Call back / Meeting / Task) that
- * open the shared CreateTaskModal pre-filled with this record's association and
- * a sensible type + subject. Reuses CreateTaskModal; no task logic duplicated.
+ * QuickTaskActions — one-click buttons that open the shared CreateTaskModal
+ * (Call back / Schedule meeting / Add task — SCHEDULING) plus a "Log call" button
+ * that opens LogCallModal (RECORD a call that already happened — ALT-269).
+ * Reuses both shared modals; no task/call logic duplicated.
  */
 function QuickTaskActions({
   association,
+  callAssociation,
   recordName,
+  onCallLogged,
 }: {
   association: TaskAssociation;
+  callAssociation: CallAssociation;
   recordName: string;
+  onCallLogged?: () => void;
 }) {
   const [modal, setModal] = useState<{ type: TaskType; subject: string } | null>(null);
+  const [logOpen, setLogOpen] = useState(false);
 
   const name = recordName || 'this record';
   const variants: {
@@ -195,6 +204,25 @@ function QuickTaskActions({
     { key: 'task', label: 'Add task', icon: <ListPlus size={13} />, type: 'TODO', subject: '' },
   ];
 
+  const btnStyle: React.CSSProperties = {
+    fontSize: 12,
+    padding: '5px 11px',
+    height: 30,
+    borderRadius: 6,
+    border: '1px solid #d4d4d8',
+    background: '#fff',
+    color: '#374151',
+    cursor: 'pointer',
+  };
+  const onEnter = (e: React.MouseEvent) => {
+    (e.currentTarget as HTMLElement).style.borderColor = '#1A7EE8';
+    (e.currentTarget as HTMLElement).style.color = '#1A7EE8';
+  };
+  const onLeave = (e: React.MouseEvent) => {
+    (e.currentTarget as HTMLElement).style.borderColor = '#d4d4d8';
+    (e.currentTarget as HTMLElement).style.color = '#374151';
+  };
+
   return (
     <>
       <div className="flex items-center gap-2 flex-wrap">
@@ -204,30 +232,27 @@ function QuickTaskActions({
             type="button"
             onClick={() => setModal({ type: v.type, subject: v.subject })}
             className="inline-flex items-center gap-1.5 font-medium transition-colors"
-            style={{
-              fontSize: 12,
-              padding: '5px 11px',
-              height: 30,
-              borderRadius: 6,
-              border: '1px solid #d4d4d8',
-              background: '#fff',
-              color: '#374151',
-              cursor: 'pointer',
-            }}
-            onMouseEnter={(e) => {
-              (e.currentTarget as HTMLElement).style.borderColor = '#1A7EE8';
-              (e.currentTarget as HTMLElement).style.color = '#1A7EE8';
-            }}
-            onMouseLeave={(e) => {
-              (e.currentTarget as HTMLElement).style.borderColor = '#d4d4d8';
-              (e.currentTarget as HTMLElement).style.color = '#374151';
-            }}
+            style={btnStyle}
+            onMouseEnter={onEnter}
+            onMouseLeave={onLeave}
             title={`${v.label} (creates a task tied to ${name})`}
           >
             {v.icon}
             {v.label}
           </button>
         ))}
+        <button
+          type="button"
+          onClick={() => setLogOpen(true)}
+          className="inline-flex items-center gap-1.5 font-medium transition-colors"
+          style={btnStyle}
+          onMouseEnter={onEnter}
+          onMouseLeave={onLeave}
+          title={`Log a call that already happened with ${name}`}
+        >
+          <PhoneOutgoing size={13} />
+          Log call
+        </button>
       </div>
 
       <CreateTaskModal
@@ -236,6 +261,13 @@ function QuickTaskActions({
         association={association}
         initialType={modal?.type}
         initialSubject={modal?.subject}
+      />
+
+      <LogCallModal
+        open={logOpen}
+        onClose={() => setLogOpen(false)}
+        association={callAssociation}
+        onLogged={onCallLogged}
       />
     </>
   );
@@ -266,6 +298,8 @@ export function LeadDetailPage() {
   const [tab, setTab] = useState<TabKey>('activity');
   const [stageSaving, setStageSaving] = useState(false);
   const [clinching, setClinching] = useState(false);
+  // Bumped after a call is logged so the call-history card re-fetches (ALT-269).
+  const [callsRefresh, setCallsRefresh] = useState(0);
 
   // lead_master.created_by / lead_report audit fields MUST be the numeric user_id
   // (ownership / RLS keys on created_by = user_id). NEVER fall back to full_name or
@@ -510,7 +544,13 @@ export function LeadDetailPage() {
                   assocLabel: company?.client_name || lead.company_name || lead.lead_name,
                   assocPhone: lead.mobile_no || lead.alt_mobile_no || null,
                 }}
+                callAssociation={{
+                  leadId: lead.lead_id,
+                  assocLabel: company?.client_name || lead.company_name || lead.lead_name,
+                  assocPhone: lead.mobile_no || lead.alt_mobile_no || null,
+                }}
                 recordName={company?.client_name || lead.company_name || lead.lead_name}
+                onCallLogged={() => setCallsRefresh((n) => n + 1)}
               />
             )}
             {canClinch && (
@@ -611,8 +651,11 @@ export function LeadDetailPage() {
             </div>
           </div>
 
-          {/* Right info panel */}
-          <LeadInfoPanel lead={lead} company={company} loadingCompany={loadingCompany} />
+          {/* Right column: info panel + recent logged calls (ALT-269) */}
+          <div className="flex flex-col gap-4 min-w-0">
+            <LeadInfoPanel lead={lead} company={company} loadingCompany={loadingCompany} />
+            <CallHistoryCard recordRef={{ leadId: lead.lead_id }} refreshKey={callsRefresh} />
+          </div>
         </div>
       </div>
     </AppShell>

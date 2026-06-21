@@ -6,6 +6,7 @@ import { MeetingStatusBadge } from '../components/meeting/MeetingStatusBadge';
 import { UpdateMeetingModal } from '../components/meeting/UpdateMeetingModal';
 import { EditMeetingModal } from '../components/meeting/EditMeetingModal';
 import { CreateTaskModal, type TaskAssociation } from '../components/tasks/CreateTaskModal';
+import { LogCallModal, type CallAssociation } from '../components/calls/LogCallModal';
 import type { TaskType } from '../data/tasks';
 import {
   fetchMeetingDetail,
@@ -35,6 +36,7 @@ import {
   Pencil,
   RefreshCw,
   PhoneCall,
+  PhoneOutgoing,
   CalendarPlus,
   ListPlus,
 } from 'lucide-react';
@@ -200,12 +202,15 @@ function modeIcon(mode: string) {
  */
 function QuickTaskActions({
   association,
+  callAssociation,
   recordName,
 }: {
   association: TaskAssociation;
+  callAssociation: CallAssociation;
   recordName: string;
 }) {
   const [modal, setModal] = useState<{ type: TaskType; subject: string } | null>(null);
+  const [logOpen, setLogOpen] = useState(false);
 
   const name = recordName || 'this meeting';
   const variants: {
@@ -220,6 +225,25 @@ function QuickTaskActions({
     { key: 'task', label: 'Add task', icon: <ListPlus size={13} />, type: 'TODO', subject: '' },
   ];
 
+  const btnStyle: React.CSSProperties = {
+    fontSize: 12,
+    padding: '5px 11px',
+    height: 30,
+    borderRadius: 6,
+    border: '1px solid #d4d4d8',
+    background: '#fff',
+    color: '#374151',
+    cursor: 'pointer',
+  };
+  const onEnter = (e: React.MouseEvent) => {
+    (e.currentTarget as HTMLElement).style.borderColor = '#1A7EE8';
+    (e.currentTarget as HTMLElement).style.color = '#1A7EE8';
+  };
+  const onLeave = (e: React.MouseEvent) => {
+    (e.currentTarget as HTMLElement).style.borderColor = '#d4d4d8';
+    (e.currentTarget as HTMLElement).style.color = '#374151';
+  };
+
   return (
     <>
       <div className="flex items-center gap-2 flex-wrap">
@@ -229,30 +253,27 @@ function QuickTaskActions({
             type="button"
             onClick={() => setModal({ type: v.type, subject: v.subject })}
             className="inline-flex items-center gap-1.5 font-medium transition-colors"
-            style={{
-              fontSize: 12,
-              padding: '5px 11px',
-              height: 30,
-              borderRadius: 6,
-              border: '1px solid #d4d4d8',
-              background: '#fff',
-              color: '#374151',
-              cursor: 'pointer',
-            }}
-            onMouseEnter={(e) => {
-              (e.currentTarget as HTMLElement).style.borderColor = '#1A7EE8';
-              (e.currentTarget as HTMLElement).style.color = '#1A7EE8';
-            }}
-            onMouseLeave={(e) => {
-              (e.currentTarget as HTMLElement).style.borderColor = '#d4d4d8';
-              (e.currentTarget as HTMLElement).style.color = '#374151';
-            }}
+            style={btnStyle}
+            onMouseEnter={onEnter}
+            onMouseLeave={onLeave}
             title={`${v.label} (creates a task tied to ${name})`}
           >
             {v.icon}
             {v.label}
           </button>
         ))}
+        <button
+          type="button"
+          onClick={() => setLogOpen(true)}
+          className="inline-flex items-center gap-1.5 font-medium transition-colors"
+          style={btnStyle}
+          onMouseEnter={onEnter}
+          onMouseLeave={onLeave}
+          title={`Log a call that already happened for ${name}`}
+        >
+          <PhoneOutgoing size={13} />
+          Log call
+        </button>
       </div>
 
       <CreateTaskModal
@@ -261,6 +282,12 @@ function QuickTaskActions({
         association={association}
         initialType={modal?.type}
         initialSubject={modal?.subject}
+      />
+
+      <LogCallModal
+        open={logOpen}
+        onClose={() => setLogOpen(false)}
+        association={callAssociation}
       />
     </>
   );
@@ -433,6 +460,13 @@ export function MeetingDetailPage() {
                 <div className="mt-4 pt-4 border-t border-zinc-100">
                   <QuickTaskActions
                     association={{
+                      meetingId: Number(meeting.id),
+                      leadId: meeting.leadId ? Number(meeting.leadId) : null,
+                      assocLabel:
+                        meeting.company || meeting.leadName || meeting.name || 'Meeting',
+                      assocPhone: meeting.leadMobile || null,
+                    }}
+                    callAssociation={{
                       meetingId: Number(meeting.id),
                       leadId: meeting.leadId ? Number(meeting.leadId) : null,
                       assocLabel:

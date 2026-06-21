@@ -67,6 +67,8 @@ export interface DashboardStats {
   totalLeads: number;
   meetingsThisWeek: number;
   meetingsSuccessful: number;
+  /** Calls LOGGED today (IST), across the current project scope (ALT-269). */
+  callsToday: number;
   stageBreakdown: { stage: string; count: number }[];
   recentActivity: {
     leadId: number;
@@ -335,7 +337,7 @@ export async function fetchLeadsFallback(): Promise<LeadsResult> {
 
 export async function fetchDashboardStats(projectId: number | null = null): Promise<DashboardStats> {
   const empty: DashboardStats = {
-    totalLeads: 0, meetingsThisWeek: 0, meetingsSuccessful: 0,
+    totalLeads: 0, meetingsThisWeek: 0, meetingsSuccessful: 0, callsToday: 0,
     stageBreakdown: [], recentActivity: [], error: null,
   };
 
@@ -488,13 +490,58 @@ export async function fetchDashboardStats(projectId: number | null = null): Prom
     lastUpdated: l.updated_date ? l.updated_date.substring(0, 10) : '',
   }));
 
+  // ── Calls logged TODAY (IST) — ALT-269 dashboard stat. ──────────────────────
+  // call_log is staged (migration not yet applied); guard so a missing table
+  // returns 0 rather than failing the whole dashboard. When a project scope is
+  // active, count only calls tied to leads in that project (matching the other
+  // scoped stats); otherwise count all calls (RLS still applies server-side).
+  let callsToday = 0;
+  try {
+    const { startISO, endISO } = istTodayWindow();
+    if (projectLeadIds) {
+      if (projectLeadIds.length) {
+        const rows = await chunkedIn<{ call_id: number }>(
+          'call_log', 'call_id', 'lead_id', projectLeadIds,
+          (q) => q.is('deleted_date', null).gte('called_at', startISO).lt('called_at', endISO),
+        );
+        callsToday = rows.length;
+      }
+    } else {
+      const r = await supabase
+        .from('call_log')
+        .select('call_id', { count: 'exact', head: true })
+        .is('deleted_date', null)
+        .gte('called_at', startISO)
+        .lt('called_at', endISO);
+      callsToday = r.count ?? 0;
+    }
+  } catch {
+    callsToday = 0; // table not applied yet → show 0
+  }
+
   return {
     totalLeads,
     meetingsThisWeek,
     meetingsSuccessful,
+    callsToday,
     stageBreakdown,
     recentActivity,
     error: totalErr,
+  };
+}
+
+/** [start, end) ISO instants bounding the current IST (Asia/Kolkata) day. */
+function istTodayWindow(now: Date = new Date()): { startISO: string; endISO: string } {
+  const IST_OFFSET_MIN = 5 * 60 + 30; // India observes no DST.
+  const MS_PER_MIN = 60_000;
+  const MS_PER_DAY = 24 * 60 * MS_PER_MIN;
+  const shifted = new Date(now.getTime() + IST_OFFSET_MIN * MS_PER_MIN);
+  const istMidnightUtcMs =
+    Date.UTC(shifted.getUTCFullYear(), shifted.getUTCMonth(), shifted.getUTCDate(), 0, 0, 0, 0) -
+    IST_OFFSET_MIN * MS_PER_MIN;
+  return {
+    startISO: new Date(istMidnightUtcMs).toISOString(),
+    endISO: new Date(istMidnightUtcMs + MS_PER_DAY).toISOString(),
   };
 }
 

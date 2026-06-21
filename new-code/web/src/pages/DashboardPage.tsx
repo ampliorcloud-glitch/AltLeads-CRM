@@ -5,7 +5,7 @@ import { StageBadge } from '../components/ui/Badge';
 import { useAuth } from '../contexts/AuthContext';
 import { useProjectScope } from '../contexts/ProjectContext';
 import { fetchDashboardStats, type DashboardStats } from '../data/realLeads';
-import { Users, CalendarDays, TrendingUp, CheckCircle2, Loader2, ChevronRight } from 'lucide-react';
+import { Users, CalendarDays, TrendingUp, CheckCircle2, PhoneCall, Loader2, ChevronRight } from 'lucide-react';
 
 /** Friendly label for a raw role name (e.g. TEAM_LEAD -> Team Lead). */
 function roleLabel(role?: string | null): string {
@@ -189,7 +189,7 @@ export function DashboardPage() {
         </div>
 
         {/* Stat cards — each drills into the relevant list */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-3">
           <StatCard
             icon={Users}
             label="Total Leads"
@@ -221,6 +221,14 @@ export function DashboardPage() {
             sub="Currently at this stage"
             loading={loading}
             onClick={() => goToStage('Meeting Scheduled')}
+          />
+          {/* ALT-269: calls logged today (IST), respects the project scope. */}
+          <StatCard
+            icon={PhoneCall}
+            label="Calls Today"
+            value={String(stats?.callsToday ?? 0)}
+            sub="Logged today (India time)"
+            loading={loading}
           />
         </div>
 

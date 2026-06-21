@@ -21,12 +21,14 @@ import {
   Users,
   IndianRupee,
   PhoneCall,
+  PhoneOutgoing,
   CalendarPlus,
   ListPlus,
 } from 'lucide-react';
 import { AppShell } from '../components/layout/AppShell';
 import { StageBadge } from '../components/ui/Badge';
 import { CreateTaskModal, type TaskAssociation } from '../components/tasks/CreateTaskModal';
+import { LogCallModal, type CallAssociation } from '../components/calls/LogCallModal';
 import type { TaskType } from '../data/tasks';
 import { StatusBadge } from '../components/ui/StatusBadge';
 import { ProjectSelect } from '../components/ui/ProjectSelect';
@@ -1043,12 +1045,15 @@ function ActivityTab({ companyId, projectId, refreshKey }: ActivityTabProps) {
 ------------------------------------------------------------------ */
 function QuickTaskActions({
   association,
+  callAssociation,
   recordName,
 }: {
   association: TaskAssociation;
+  callAssociation: CallAssociation;
   recordName: string;
 }) {
   const [modal, setModal] = useState<{ type: TaskType; subject: string } | null>(null);
+  const [logOpen, setLogOpen] = useState(false);
 
   const name = recordName || 'this record';
   const variants: {
@@ -1063,6 +1068,25 @@ function QuickTaskActions({
     { key: 'task', label: 'Add task', icon: <ListPlus size={13} />, type: 'TODO', subject: '' },
   ];
 
+  const btnStyle: React.CSSProperties = {
+    fontSize: 12,
+    padding: '5px 11px',
+    height: 30,
+    borderRadius: 6,
+    border: '1px solid #d4d4d8',
+    background: '#fff',
+    color: '#374151',
+    cursor: 'pointer',
+  };
+  const onEnter = (e: React.MouseEvent) => {
+    (e.currentTarget as HTMLElement).style.borderColor = '#1A7EE8';
+    (e.currentTarget as HTMLElement).style.color = '#1A7EE8';
+  };
+  const onLeave = (e: React.MouseEvent) => {
+    (e.currentTarget as HTMLElement).style.borderColor = '#d4d4d8';
+    (e.currentTarget as HTMLElement).style.color = '#374151';
+  };
+
   return (
     <>
       <div className="flex items-center gap-2 flex-wrap">
@@ -1072,30 +1096,27 @@ function QuickTaskActions({
             type="button"
             onClick={() => setModal({ type: v.type, subject: v.subject })}
             className="inline-flex items-center gap-1.5 font-medium transition-colors"
-            style={{
-              fontSize: 12,
-              padding: '5px 11px',
-              height: 30,
-              borderRadius: 6,
-              border: '1px solid #d4d4d8',
-              background: '#fff',
-              color: '#374151',
-              cursor: 'pointer',
-            }}
-            onMouseEnter={(e) => {
-              (e.currentTarget as HTMLElement).style.borderColor = '#1A7EE8';
-              (e.currentTarget as HTMLElement).style.color = '#1A7EE8';
-            }}
-            onMouseLeave={(e) => {
-              (e.currentTarget as HTMLElement).style.borderColor = '#d4d4d8';
-              (e.currentTarget as HTMLElement).style.color = '#374151';
-            }}
+            style={btnStyle}
+            onMouseEnter={onEnter}
+            onMouseLeave={onLeave}
             title={`${v.label} (creates a task tied to ${name})`}
           >
             {v.icon}
             {v.label}
           </button>
         ))}
+        <button
+          type="button"
+          onClick={() => setLogOpen(true)}
+          className="inline-flex items-center gap-1.5 font-medium transition-colors"
+          style={btnStyle}
+          onMouseEnter={onEnter}
+          onMouseLeave={onLeave}
+          title={`Log a call that already happened with ${name}`}
+        >
+          <PhoneOutgoing size={13} />
+          Log call
+        </button>
       </div>
 
       <CreateTaskModal
@@ -1104,6 +1125,12 @@ function QuickTaskActions({
         association={association}
         initialType={modal?.type}
         initialSubject={modal?.subject}
+      />
+
+      <LogCallModal
+        open={logOpen}
+        onClose={() => setLogOpen(false)}
+        association={callAssociation}
       />
     </>
   );
@@ -1260,6 +1287,11 @@ export function CompanyDetailPage() {
               {actorId && (
                 <QuickTaskActions
                   association={{
+                    companyId: companyId,
+                    assocLabel: company.name,
+                    assocPhone: null,
+                  }}
+                  callAssociation={{
                     companyId: companyId,
                     assocLabel: company.name,
                     assocPhone: null,
