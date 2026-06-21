@@ -1517,9 +1517,17 @@ const TICKETS = [
     id:'ALT-161', title:'Client portal — clients see scheduled/success post-scheduling + dashboard',
     type:'Feature', module:'Client Portal', wave:'Roadmap',
     priority:'P2', status:'Planned',
-    created: d(2026,6,18), updated: d(2026,6,18), finished: null,
+    created: d(2026,6,18), updated: d(2026,6,21), finished: null,
     owner:'Claude',
-    notes:'Priority #2 after internal launch. Client-scoped read views of scheduled/successful outcomes + dashboard. Needs client-role + row scoping.'
+    notes:'SUPERSEDED/EXPANDED by epic ALT-221 (see docs/product/CLIENT-PORTAL.md, planned 2026-06-21 from CEO transcript). Client-scoped read views of lead reports/meetings/dashboard + governance/onboarding/invoices, Amplior-branded.'
+  },
+  {
+    id:'ALT-221', title:'EPIC: Client Portal (Amplior-branded, external) — plan in docs/product/CLIENT-PORTAL.md',
+    type:'Feature', module:'Client Portal', wave:'Roadmap',
+    priority:'P2', status:'Planned',
+    created: d(2026,6,21), updated: d(2026,6,21), finished: null,
+    owner:'Mohit',
+    notes:'PLANNED 2026-06-21 (CEO transcript). Premium, Amplior-branded, web-only, client-leadership-facing portal = single source of truth per client: onboarding/ICP, LIVE lead reports + meetings + dashboard (scoped by client_assoc_id), governance notes (Fathom manual→auto), updates/action-log/escalation, invoices, + an internal knowledge/performance mirror. Access by seniority (client leadership + ADMIN/SALES_HEAD/leadership; agents only if elevated). RECOMMENDATION: same Supabase project + Pro ($25) + dedicated portal schema/views + CLIENT role + adversarial multi-tenant RLS validation (switch to a separate project if it scales/too risky). Phase 1 = mostly static staff-uploaded content + a few live CRM reads. OWNER decisions open: see CLIENT-PORTAL.md §10. Build only after sign-off.'
   },
   {
     id:'ALT-162', title:'Chrome extension — LinkedIn contact details + inline CRM edit (writes back live)',
