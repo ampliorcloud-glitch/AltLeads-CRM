@@ -817,3 +817,12 @@ Next wave: #8 global project selector (cross-cutting ProjectContext).
 - **Review fixes applied before commit:** (MEDIUM) Call Recording / View Image gated to SALES_HEAD + internal staff via `canSeeRecordings` — a Sales Person, and a future client, never see recordings (mirrors mobile's SALES_HEAD-only rule). (LOW) MyTasks reload-token guard (out-of-order reloads can't clobber). The two LOW "parity" notes (always-render Agenda, Rs.-prefix on free-text value) intentionally match the mobile app.
 - **Open follow-ups (tracked):** spot-check `lead_report.created_by` holds the scheduler's user_id on real rows (else "Meeting scheduled by" shows N/A — degrades safely). Client-portal REUSE of this view = ALT-274 (gated on portal DB).
 - Next: ALT-276 (Sales/Portal wishlist add).
+
+---
+## 2026-06-21 (cont. 25) — ALT-276 Sales/Portal wishlist add SHIPPED (commit da58d65)
+- Built via single-builder + adversarial-review workflow. The review EARNED ITS KEEP: tsc passed but it caught 2 RUNTIME blockers (the insert would fail), both fixed before commit.
+- **What shipped:** `components/wishlist/WishlistCreateModal.tsx` (company autocomplete ≥2 chars + prospect/designation auto-fill, State→City cascade from state_master/city_master, address/PIN), `data/wishlist.ts` addWishlist + searchCompanies/listStates/listCitiesByState/leadsByCompany, `pages/sales/SalesWishlistPage.tsx` at `/sales/wishlist` + a sales-nav "Wishlist" item. Reuses the already-fixed shared Modal (no focus-steal).
+- **Blockers fixed:** (1) `wishlist.address_id` is NOT NULL — addWishlist now creates an address row via ensureAddress(cityId, actor) + sets address_id (?? 1), mirroring the lead path; without it EVERY save failed. (2) `wishlist.created_by` is NOT NULL — now requires a resolvable numeric actor (assertNumericActor) instead of omitting it for no-user actors. (Client-portal no-user accounts need a sentinel → deferred to ALT-274.)
+- **Parity:** City made required (drives the address row + displayed State/City). Country/State are UI-only (no wishlist column); geo-photo/GPS skipped for web v1.
+- **Tracker:** ALT-275 + ALT-276 Done. The mobile-app Sales experience (record view + wishlist) is built on web.
+- **NEXT FORK:** ALT-274 (client portal = apply + validate the portal DB so the portal reuses the record view) is GATED — it's a production-facing RLS change and needs owner go-ahead + throwaway-login validation + Supabase schema-expose before prod. Meanwhile launching ALT-269 (Call module) as the next safe build.
