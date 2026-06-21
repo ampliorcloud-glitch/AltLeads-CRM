@@ -16,6 +16,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../lib/supabase';
 import { useRowSelection } from '../components/ui/useRowSelection';
 import { ExportButton } from '../components/ui/ExportButton';
+import { MultiSelectFilter } from '../components/ui/MultiSelectFilter';
 import { ColumnCustomizer, defaultColumnPrefs, reconcileColumns } from '../components/ui/ColumnCustomizer';
 import { StatusBadge } from '../components/ui/StatusBadge';
 import { ProjectSelect } from '../components/ui/ProjectSelect';
@@ -111,11 +112,11 @@ function DemoTag() {
 
 interface Filters {
   search: string;
-  industry: string;
-  city: string;
+  industry: string[]; // multi-value (OR; empty = all)
+  city: string[];     // multi-value (OR; empty = all)
 }
 
-const defaultFilters: Filters = { search: '', industry: '', city: '' };
+const defaultFilters: Filters = { search: '', industry: [], city: [] };
 
 const inputBase: React.CSSProperties = {
   fontSize: 13,
@@ -129,35 +130,6 @@ const inputBase: React.CSSProperties = {
   transition: 'border-color 0.15s, box-shadow 0.15s',
 };
 
-function SelectFilter({
-  label,
-  value,
-  onChange,
-  options,
-}: {
-  label: string;
-  value: string;
-  onChange: (v: string) => void;
-  options: string[];
-}) {
-  return (
-    <div className="flex flex-col gap-1" style={{ minWidth: 150 }}>
-      <label className="font-medium text-zinc-500" style={{ fontSize: 11 }}>{label}</label>
-      <select
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        style={{ ...inputBase, paddingRight: 24, cursor: 'pointer' }}
-        onFocus={(e) => { e.currentTarget.style.borderColor = 'var(--color-brand)'; e.currentTarget.style.boxShadow = '0 0 0 3px rgba(26,126,232,0.12)'; }}
-        onBlur={(e) => { e.currentTarget.style.borderColor = 'var(--border-input)'; e.currentTarget.style.boxShadow = 'none'; }}
-      >
-        <option value="">All</option>
-        {options.map((o) => (
-          <option key={o} value={o}>{o}</option>
-        ))}
-      </select>
-    </div>
-  );
-}
 
 const PAGE_SIZE_OPTIONS = [25, 50, 100];
 
@@ -280,7 +252,9 @@ export function CompaniesPage() {
     sel.clear();
   };
 
-  const hasActiveFilters = Object.values(filters).some((v) => v !== '');
+  const hasActiveFilters = Object.values(filters).some((v) =>
+    Array.isArray(v) ? v.length > 0 : v !== '',
+  );
 
   const filteredData = useMemo(() => {
     return allCompanies.filter((c) => {
@@ -291,8 +265,8 @@ export function CompaniesPage() {
           .toLowerCase();
         if (!searchable.includes(q)) return false;
       }
-      if (filters.industry && c.industry !== filters.industry) return false;
-      if (filters.city && c.city !== filters.city) return false;
+      if (filters.industry.length && !filters.industry.includes(c.industry)) return false;
+      if (filters.city.length && !filters.city.includes(c.city)) return false;
       return true;
     });
   }, [filters, allCompanies]);
@@ -550,15 +524,15 @@ export function CompaniesPage() {
               </div>
             </div>
 
-            <SelectFilter
+            <MultiSelectFilter
               label="Industry"
-              value={filters.industry}
+              selected={filters.industry}
               onChange={(v) => setFilter('industry', v)}
               options={industries}
             />
-            <SelectFilter
+            <MultiSelectFilter
               label="City"
-              value={filters.city}
+              selected={filters.city}
               onChange={(v) => setFilter('city', v)}
               options={cities}
             />

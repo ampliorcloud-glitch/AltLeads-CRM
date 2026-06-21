@@ -593,3 +593,15 @@ TypeScript everywhere · Supabase (DB+Auth+Storage) · React + Vite · Tailwind 
 - SUCCESS TOASTS: Wishlist "Convert to Lead" now toasts "Lead created from wishlist" (was a silent navigate); DispositionForm "Call logged" (prev commit). Convert keeps its deliberate multi-field modal (sufficient intent) — added toast, not an extra confirm.
 - TRUNCATION TOOLTIPS (ALT-215 #1): added title= to the primary name/sub cells in Leads, Companies and Contacts lists so clipped names are readable on hover.
 - Build passes (tsc + vite, 0.6s). Security: confirms/toasts/title attrs are additive, no new data exposure or XSS (title is an escaped attribute). Tracker notes updated. Not pushed.
+
+---
+## 2026-06-21 (cont. 5) — Searchable MULTI-SELECT filters (owner's #1 original ask)
+- OWNER picked "multi-select / advanced filters" as the next priority (their original complaint that kicked off the audit: "all filters are not there as advance filter, multiselect is not there").
+- NEW src/components/ui/MultiSelectFilter.tsx — reusable, dependency-free searchable filter: trigger shows "All"/value/"N selected" + a count badge; popover has a search box + checkbox list + Clear/Done; closes on outside-click/Escape; OR-within-facet, empty selection = no filter. Accessible (listbox/option roles, aria-label).
+- WIRED into 3 lists (filters type string→string[], predicates →includes(), hasActiveFilters handles arrays, removed the old single-value SelectFilter helpers):
+  - Leads: Agent, Project, City, Source, Industry, Stage
+  - Contacts: Company, City
+  - Companies: Industry, City
+- Build passes (tsc + vite, 0.7s). Security/correctness: pure UI, renders option strings as text (no XSS), no new data exposure/endpoints; predicate semantics preserved (single-select still works as a 1-element multi-select).
+- REMAINING (tracked on ALT-183/184): Meetings + Wishlist lists; per-column/advanced operators (contains/is-empty/AND-OR) Top#7. Tracker ALT-183 → In Progress.
+- NOTE: I can't browser-test (no runner) — recommend the owner spot-check the filters on localhost before push. Not pushed.

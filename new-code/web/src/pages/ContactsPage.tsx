@@ -15,6 +15,7 @@ import { useRowSelection } from '../components/ui/useRowSelection';
 import { ExportButton } from '../components/ui/ExportButton';
 import { ColumnCustomizer, defaultColumnPrefs } from '../components/ui/ColumnCustomizer';
 import { StatusBadge } from '../components/ui/StatusBadge';
+import { MultiSelectFilter } from '../components/ui/MultiSelectFilter';
 import { useToast } from '../components/ui/Toast';
 import type { ColumnDef, ExportColumn } from '../components/ui/columns';
 import type { ColumnPref } from '../data/views';
@@ -104,16 +105,16 @@ const inputBase: React.CSSProperties = {
 
 interface Filters {
   search: string;
-  company: string;
-  city: string;
+  company: string[]; // multi-value (OR; empty = all)
+  city: string[];    // multi-value (OR; empty = all)
   hasLinkedin: string; // 'yes' | 'no' | ''
   showDemo: string;    // 'all' | 'real' | 'demo'
 }
 
 const defaultFilters: Filters = {
   search: '',
-  company: '',
-  city: '',
+  company: [],
+  city: [],
   hasLinkedin: '',
   showDemo: 'real',
 };
@@ -345,8 +346,8 @@ export function ContactsPage() {
         if (!searchable.includes(q)) return false;
       }
 
-      if (filters.company && c.company_name !== filters.company) return false;
-      if (filters.city && c.city_name !== filters.city) return false;
+      if (filters.company.length && !filters.company.includes(c.company_name ?? '')) return false;
+      if (filters.city.length && !filters.city.includes(c.city_name ?? '')) return false;
       if (filters.hasLinkedin === 'yes' && !c.linkedin_url) return false;
       if (filters.hasLinkedin === 'no' && c.linkedin_url) return false;
 
@@ -396,8 +397,8 @@ export function ContactsPage() {
   const firstRow = totalRows === 0 ? 0 : safePage * pageSize + 1;
   const lastRow = Math.min((safePage + 1) * pageSize, totalRows);
 
-  const hasActiveFilters = filters.search !== '' || filters.company !== '' ||
-    filters.city !== '' || filters.hasLinkedin !== '' || filters.showDemo !== 'real';
+  const hasActiveFilters = filters.search !== '' || filters.company.length > 0 ||
+    filters.city.length > 0 || filters.hasLinkedin !== '' || filters.showDemo !== 'real';
 
   // Visible page contact ids (for select-all on current page)
   const pageIds = pageRows.map((r) => r.contact_id);
@@ -513,35 +514,22 @@ export function ContactsPage() {
               </div>
             </div>
 
-            {/* Company filter */}
-            <div className="flex flex-col gap-1" style={{ minWidth: 160 }}>
-              <label className="font-medium text-zinc-500" style={{ fontSize: 11 }}>Company</label>
-              <select
-                value={filters.company}
-                onChange={(e) => setFilter('company', e.target.value)}
-                style={{ ...inputBase, paddingRight: 24, cursor: 'pointer' }}
-                onFocus={(e) => { e.currentTarget.style.borderColor = '#1A7EE8'; }}
-                onBlur={(e) => { e.currentTarget.style.borderColor = 'var(--border-input)'; }}
-              >
-                <option value="">All companies</option>
-                {companyOptions.map((o) => <option key={o} value={o}>{o}</option>)}
-              </select>
-            </div>
+            {/* Company filter (multi-select) */}
+            <MultiSelectFilter
+              label="Company"
+              selected={filters.company}
+              onChange={(v) => setFilter('company', v)}
+              options={companyOptions}
+              minWidth={160}
+            />
 
-            {/* City filter */}
-            <div className="flex flex-col gap-1" style={{ minWidth: 130 }}>
-              <label className="font-medium text-zinc-500" style={{ fontSize: 11 }}>City</label>
-              <select
-                value={filters.city}
-                onChange={(e) => setFilter('city', e.target.value)}
-                style={{ ...inputBase, paddingRight: 24, cursor: 'pointer' }}
-                onFocus={(e) => { e.currentTarget.style.borderColor = '#1A7EE8'; }}
-                onBlur={(e) => { e.currentTarget.style.borderColor = 'var(--border-input)'; }}
-              >
-                <option value="">All cities</option>
-                {cityOptions.map((o) => <option key={o} value={o}>{o}</option>)}
-              </select>
-            </div>
+            {/* City filter (multi-select) */}
+            <MultiSelectFilter
+              label="City"
+              selected={filters.city}
+              onChange={(v) => setFilter('city', v)}
+              options={cityOptions}
+            />
 
             {/* LinkedIn filter */}
             <div className="flex flex-col gap-1" style={{ minWidth: 120 }}>

@@ -17,6 +17,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { useIsSalesShell } from '../contexts/SalesShellContext';
 import { useRowSelection } from '../components/ui/useRowSelection';
 import { ExportButton } from '../components/ui/ExportButton';
+import { MultiSelectFilter } from '../components/ui/MultiSelectFilter';
 import {
   ColumnCustomizer,
   defaultColumnPrefs,
@@ -97,28 +98,29 @@ interface Filters {
   search: string;
   leadDateFrom: string;
   leadDateTo: string;
-  agentName: string;
-  industry: string;
-  city: string;
-  project: string;
-  source: string;
+  // Multi-value facets (OR within a facet; empty array = no filter).
+  agentName: string[];
+  industry: string[];
+  city: string[];
+  project: string[];
+  source: string[];
   meetingDateFrom: string;
   meetingDateTo: string;
-  stage: string;
+  stage: string[];
 }
 
 const defaultFilters: Filters = {
   search: '',
   leadDateFrom: '',
   leadDateTo: '',
-  agentName: '',
-  industry: '',
-  city: '',
-  project: '',
-  source: '',
+  agentName: [],
+  industry: [],
+  city: [],
+  project: [],
+  source: [],
   meetingDateFrom: '',
   meetingDateTo: '',
-  stage: '',
+  stage: [],
 };
 
 /* ------------------------------------------------------------------
@@ -176,35 +178,6 @@ const inputBase: React.CSSProperties = {
   transition: 'border-color 0.15s, box-shadow 0.15s',
 };
 
-function SelectFilter({
-  label,
-  value,
-  onChange,
-  options,
-}: {
-  label: string;
-  value: string;
-  onChange: (v: string) => void;
-  options: string[];
-}) {
-  return (
-    <div className="flex flex-col gap-1" style={{ minWidth: 130 }}>
-      <label className="font-medium text-zinc-500" style={{ fontSize: 11 }}>{label}</label>
-      <select
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        style={{ ...inputBase, paddingRight: 24, cursor: 'pointer' }}
-        onFocus={(e) => { e.currentTarget.style.borderColor = 'var(--color-brand)'; e.currentTarget.style.boxShadow = '0 0 0 3px rgba(26,126,232,0.12)'; }}
-        onBlur={(e) => { e.currentTarget.style.borderColor = 'var(--border-input)'; e.currentTarget.style.boxShadow = 'none'; }}
-      >
-        <option value="">All</option>
-        {options.map((o) => (
-          <option key={o} value={o}>{o}</option>
-        ))}
-      </select>
-    </div>
-  );
-}
 
 function DateRangeFilter({
   label,
@@ -306,7 +279,9 @@ export function LeadsPage() {
     setPagination((p) => ({ ...p, pageIndex: 0 }));
   };
 
-  const hasActiveFilters = Object.values(filters).some((v) => v !== '');
+  const hasActiveFilters = Object.values(filters).some((v) =>
+    Array.isArray(v) ? v.length > 0 : v !== '',
+  );
 
   const filteredData = useMemo(() => {
     return allLeads.filter((lead) => {
@@ -321,18 +296,19 @@ export function LeadsPage() {
       }
       if (filters.leadDateFrom && lead.leadGeneratedDate < filters.leadDateFrom) return false;
       if (filters.leadDateTo && lead.leadGeneratedDate > filters.leadDateTo) return false;
-      if (filters.agentName && lead.agent !== filters.agentName) return false;
-      if (filters.industry && lead.industry !== filters.industry) return false;
-      if (filters.city && lead.city !== filters.city) return false;
-      if (filters.project && lead.project !== filters.project) return false;
-      if (filters.source && lead.source !== filters.source) return false;
+      // Multi-value facets: empty array = no filter; otherwise the row must match any selected value.
+      if (filters.agentName.length && !filters.agentName.includes(lead.agent)) return false;
+      if (filters.industry.length && !filters.industry.includes(lead.industry)) return false;
+      if (filters.city.length && !filters.city.includes(lead.city)) return false;
+      if (filters.project.length && !filters.project.includes(lead.project)) return false;
+      if (filters.source.length && !filters.source.includes(lead.source)) return false;
       if (filters.meetingDateFrom) {
         if (!lead.meetingDate || lead.meetingDate < filters.meetingDateFrom) return false;
       }
       if (filters.meetingDateTo) {
         if (!lead.meetingDate || lead.meetingDate > filters.meetingDateTo) return false;
       }
-      if (filters.stage && lead.stage !== filters.stage) return false;
+      if (filters.stage.length && !filters.stage.includes(lead.stage)) return false;
       return true;
     });
   }, [filters, allLeads]);
@@ -624,39 +600,39 @@ export function LeadsPage() {
               onToChange={(v) => setFilter('meetingDateTo', v)}
             />
 
-            <SelectFilter
+            <MultiSelectFilter
               label="Agent"
-              value={filters.agentName}
+              selected={filters.agentName}
               onChange={(v) => setFilter('agentName', v)}
               options={agents}
             />
-            <SelectFilter
+            <MultiSelectFilter
               label="Project"
-              value={filters.project}
+              selected={filters.project}
               onChange={(v) => setFilter('project', v)}
               options={projects}
             />
-            <SelectFilter
+            <MultiSelectFilter
               label="City"
-              value={filters.city}
+              selected={filters.city}
               onChange={(v) => setFilter('city', v)}
               options={cities}
             />
-            <SelectFilter
+            <MultiSelectFilter
               label="Source"
-              value={filters.source}
+              selected={filters.source}
               onChange={(v) => setFilter('source', v)}
               options={sources}
             />
-            <SelectFilter
+            <MultiSelectFilter
               label="Industry"
-              value={filters.industry}
+              selected={filters.industry}
               onChange={(v) => setFilter('industry', v)}
               options={industries}
             />
-            <SelectFilter
+            <MultiSelectFilter
               label="Stage"
-              value={filters.stage}
+              selected={filters.stage}
               onChange={(v) => setFilter('stage', v)}
               options={stages}
             />
