@@ -778,3 +778,16 @@ Next wave: #8 global project selector (cross-cutting ProjectContext).
 - **Honestly de-scoped (documented TODOs, not silent):** Tasks + Wishlist carry no reliable project field, so they're left UNFILTERED even when a project is selected (a wrong filter that hides records is worse than none). Tasks could later derive project via the linked lead; Wishlist has no project column. Companies/Contacts are shared across projects — per-project scoping is a separate design question.
 - **Tracker:** ALT-273 → In Progress (not Done — Tasks/Wishlist/Companies/Contacts not yet scoped). Done 146 / In Progress 18 / Planned 105.
 - **Nothing is running in the background** — the project-selector workflow completed; the "loop" is manual iteration. Next: a hard adversarial self-review pass (owner asked), then #6 Call module (ALT-269).
+
+---
+## 2026-06-21 (cont. 21) — Adversarial review of project selector + OWNER reshapes Portal direction
+- **Hostile review (workflow wh2yjqssa, 29 agents, find→refute):** 24 findings raised, **21 confirmed**. Logged as ALT-273B.
+  - **BLOCKER (FIXED, commit e4c94a4):** `apply-portal-rls.cjs` set `FORCE ROW LEVEL SECURITY` on `portal.meeting_snapshot` with no INSERT policy → the SECURITY DEFINER snapshot trigger (runs as owner `postgres`, no BYPASSRLS on Supabase) would be denied → **every meeting INSERT/UPDATE in prod would roll back** the moment the staged portal migrations were applied. Fixed: ENABLE (not FORCE) so owner/definer bypasses the write while portal-session reads stay gated. The "validate before prod" gate earned its keep.
+  - **HIGH (open):** Dashboard ignores the selected project — shows all-project totals while Leads/Meetings narrow.
+  - **10 MEDIUM / 8 LOW-NIT (open):** logout/login scope bleed on shared device (key scope by user_id; clear on signout); fetchMyProjects swallows errors→[] (can wipe saved selection); single-project user force-scoped with no "All projects" escape; Sales Portal silently inherits scope; Contacts+Companies ignore the global switcher AND show a competing local Project dropdown; digest dedup in-memory only (restart re-sends); portal feedback writes to a non-existent table; NULL project_id rows silently hidden; reminder bell double-fire; modal stale prefill; etc. (full list in ALT-273B notes).
+- **OWNER reshaped the Sales/Client Portal (2026-06-21) — locked in SALES-PORTAL.md "Owner decisions 2026-06-21" + ALT-274/275/276:**
+  - **ALT-274 — Client Portal = just that client's MEETINGS.** "As simple as that." No internal CRM tabs.
+  - **ALT-275 — record view = EXACT ditto copy of mobile `MeetingDetails.jsx`** for sales+portal users only: one scrollable screen, sections in mobile order (summary card → Pre-Sales Qs → Company → Lead/Contact → Agenda&Notes → Opportunity → Sales Intelligence). Mapped every section/field to the mobile source + our `meetings.ts` (Explore agents produced full specs). Data gaps to audit (turnover/sector/website/linkedin/altMobile/opportunity/salesIntelligence) → show N/A where absent.
+  - **ALT-276 — Sales/Portal Wishlist add** (company + prospect + location), mobile `Wishlist.jsx` parity → our `wishlist` table.
+- **Tracker:** Done 146 / In Progress 19 / Planned 108.
+- Next: decide sequencing with owner (finish project-selector review fixes vs build the mobile-ditto portal record view first), then execute.

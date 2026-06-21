@@ -2098,6 +2098,38 @@ const TICKETS = [
     owner:'Mohit',
     notes:'OWNER (#8) 2026-06-21: a PROJECT selector next to the global search bar on every screen. The selected project becomes the default pre-filter across ALL modules + records (so multi-project users see only that project by default). Default project changeable in personal Settings; persists. SHIPPED (commit 7241294): global ProjectContext (selected project_id, persisted to localStorage; default-project pref seeds new sessions), TopBar ProjectSwitcher (from the user\'s accessible projects via admin.fetchMyProjects — admin=all enabled, others=their project_user rows; self-hides for <2 projects), "All projects" = null = no filter, Settings "Default project" card. SCOPED on NUMERIC project_id (not name — duplicate/blank names + query drift can\'t hide records): Leads (RealLead.projectId from lead_master.project_id) + Meetings (MeetingRow.projectId via lead). REMAINING: Tasks + Wishlist left UNFILTERED (no reliable project field — documented TODO; Tasks could derive via linked lead later); Companies/Contacts are shared across projects (per-project scoping TBD). Status → In Progress until those modules are scoped or explicitly de-scoped by owner.'
   },
+  {
+    id:'ALT-273B', title:'Project-selector hardening — fixes from adversarial review (wh2yjqssa)',
+    type:'Bug', module:'Web core', wave:'Roadmap',
+    priority:'P1', status:'In Progress',
+    created: d(2026,6,21), updated: d(2026,6,21), finished: null,
+    owner:'Mohit',
+    notes:'Adversarial review of ALT-273 confirmed 21 defects. FIXED: portal-RLS BLOCKER (meeting_snapshot FORCE→ENABLE, commit e4c94a4). OPEN: HIGH Dashboard ignores selected project (shows all-project totals). MEDIUM: scope not cleared on logout (shared-device bleed) + not re-seeded on new login (key scope by user_id); fetchMyProjects swallows errors→[] can wipe saved selection; single-project user force-scoped w/ no "All projects" escape (switcher self-hides <2); Sales Portal silently inherits scope w/ no control; Contacts+Companies ignore global switcher while showing a competing local Project dropdown; daily-digest dedup in-memory only (restart re-sends); portal feedback writes to non-existent portal.meeting_feedback. LOW: NULL project_id rows silently hidden (no "N hidden" hint); reminder bell double-fire under overlapping ticks; CreateTaskModal stale prefill on reopen; MyTasks async setState/no in-flight guard. NIT: ProjectContext useMemo omits setter (latent stale closure); Tasks/Wishlist no-op need an on-screen "not project-scoped" hint.'
+  },
+  {
+    id:'ALT-274', title:'Client Portal = show that client\'s meetings (simple) — not the internal CRM',
+    type:'Feature', module:'Sales/Client Portal', wave:'Wave 2',
+    priority:'P1', status:'Planned',
+    created: d(2026,6,21), updated: d(2026,6,21), finished: null,
+    owner:'Mohit',
+    notes:'OWNER 2026-06-21: the client portal simply shows that client\'s MEETINGS (list + the mobile-ditto record view ALT-275). "As simple as that." Scoped by client_assoc_id via the portal snapshot/RLS already designed (apply-portal-*; blocker fixed e4c94a4, still STAGED pending validate + Supabase schema-expose). No internal CRM tabs/machinery exposed. See SALES-PORTAL.md "Owner decisions 2026-06-21" #1.'
+  },
+  {
+    id:'ALT-275', title:'Sales/Portal record view = EXACT ditto copy of mobile MeetingDetails (single consolidated screen)',
+    type:'Feature', module:'Sales/Client Portal', wave:'Wave 2',
+    priority:'P1', status:'Planned',
+    created: d(2026,6,21), updated: d(2026,6,21), finished: null,
+    owner:'Mohit',
+    notes:'OWNER 2026-06-21: sales + client-portal users must NOT see the internal CRM record screens (activity/lead-report/meeting tabs). Show ONE scrollable record view = ditto copy of mobile src/screens/meetings/MeetingDetails.jsx. Section order (mobile-authoritative): (1) meeting summary card [status badge w/ Confirmed→Scheduled, Cancelled→Dropped; company, meeting name, participant avatars, SP, date, time+duration, mode], (2) Pre-Sales Questions (excl. Discussion), (3) Company details, (4) Lead/Contact details + Email/Call/Join action buttons, (5) Agenda & Notes (+Discussion answer; Call Recording/Image for SALES_HEAD), (6) Opportunity Details, (7) Sales Intelligence. Data: meetings.ts fetchMeetingDetail already resolves most; AUDIT gaps (turnover/sector/size/website/linkedin/address, altMobile/roleAndResp/areaOfInterest, opportunity title/value/desc, salesIntelligence) — show N/A where absent (mobile does). Full spec in SALES-PORTAL.md #2.'
+  },
+  {
+    id:'ALT-276', title:'Sales/Portal Wishlist add (prospect capture) — company + lead + location, mobile-style',
+    type:'Feature', module:'Sales/Client Portal', wave:'Wave 2',
+    priority:'P2', status:'Planned',
+    created: d(2026,6,21), updated: d(2026,6,21), finished: null,
+    owner:'Mohit',
+    notes:'OWNER 2026-06-21: sales/portal users can ADD a wishlist by selecting Company name + Prospect(lead) + Location. Mirrors mobile src/screens/wishlist/Wishlist.jsx. Fields: Company (searchable autocomplete from company master, ≥2 chars, free-text ok), Lead name (+auto-fill designation from company leads), Mobile(10-digit), Designation, Branch picker (auto-fills addr/city/state/pin), Address1+2(req), State→City cascading(req), PIN(req), Country(India default), Description, optional geo image/GPS (web v1 = skip). Submit→ our wishlist table (data/wishlist.ts). Full payload spec in SALES-PORTAL.md #3.'
+  },
   ...uxAuditTickets(),
 ];
 

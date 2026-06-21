@@ -76,3 +76,35 @@ Recreate the vendor head dashboard: meeting-status stat strip (Scheduled/Complet
 
 ## Future — integrations (added to scope)
 Our own **workflow engine + public APIs + MCP server** so AltLeads integrates with other CRMs/tools (two-way sync, webhooks, automation). Tracked separately; design after internal launch + portal v1.
+
+---
+
+## OWNER DECISIONS — 2026-06-21 (portal scope locked + mobile-ditto record view + wishlist)
+
+These supersede/clarify earlier sections. Source of truth for the look = the legacy mobile app `old-code/amplior-mobile-app-main` (React Native). The sales-portal record screen must be an **exact ditto copy of the mobile record screen** — for sales + client-portal users ONLY (internal CRM screens stay as-is).
+
+### 1. Client Portal = meetings of that client, simple (ALT-274)
+- The client portal's job is simply to **show that client's meetings** (the meeting list + the record view below). No CRM tabs, no internal machinery. "As simple as that."
+- Portal user sees only their client's meetings (scoped by `client_assoc_id` via the portal snapshot/RLS already designed — but keep the surface minimal).
+
+### 2. Sales / Portal RECORD VIEW = single consolidated mobile-ditto screen (ALT-275)
+- **Do NOT** show the internal CRM record screens (activity feed, lead-report view, meeting tabs, disposition history, etc.) to sales/portal users.
+- Show **ONE single scrollable record view**, a ditto copy of mobile `src/screens/meetings/MeetingDetails.jsx`, in this section order (verified against the mobile code):
+  1. **Meeting summary card** — status badge (Confirmed→"Scheduled", Cancelled→"Dropped", Completed/Missed/Rescheduled), company name, meeting name, participant avatars (initials), Sales Person ("SP- name"), date (`ddd, DD MMM, YYYY`), time range + duration, meeting mode (Online/Offline/Telephonic), "Feedback Is Pending"/dropped-reason messages.
+  2. **Pre-Sales Questions** — `preSalesAnswersDtos` excluding the "Discussion" question; numbered question (`shortQuestion`) + answer. (Our DB: `pre_sales_answer` joined to `pre_sales_question` via `report_id` — already in `meetings.ts fetchMeetingDetail.preSales`.)
+  3. **Company details** (accordion) — Name, Turnover (Rs..Cr), Headquarters (city), Industry, Employee (companySize), Sector, Website, LinkedIn (copy), Address, "Meeting scheduled by <name>".
+  4. **Lead Details / Contact** (accordion) — Lead Name, Mobile (copy), Alt Mobile (copy), Designation, LinkedIn (copy), Email, Roles & Responsibilities, Area of Interest + action buttons (Email / Call / Join-or-Location-or-Telephonic by mode).
+  5. **Agenda & Notes** (accordion) — meeting description/agenda + "Discussion" answer; Call Recording / View Image buttons (SALES_HEAD only).
+  6. **Opportunity Details** (accordion) — Title, Value (Rs.), Description.
+  7. **Sales Intelligence** (accordion) — `leadRepostDto.salesIntelligence` free text (newline → bullets).
+- Owner's quick description ("presales → company → contact → sales intelligence → meeting") maps to the above; **mobile order is authoritative**.
+- **Data-mapping caveat:** our web reads Supabase directly (not the vendor Java DTOs). `meetings.ts fetchMeetingDetail` already resolves most fields (company, client, industry, city, lead, salesperson, stage, feedback, preSales). GAPS to source or mark N/A: company turnover/sector/employee-size/website/linkedin/address, lead altMobile/roleAndResp/areaOfInterest, opportunity title/value/description, salesIntelligence. Audit these columns before/while building; show "N/A" where absent (mobile does too).
+
+### 3. Sales / Portal WISHLIST add (ALT-276) — prospect capture, mobile-style
+- Sales/portal users can **add a wishlist** entry by selecting **Company name + Prospect (lead) with Location**. Mirrors mobile `src/screens/wishlist/Wishlist.jsx`.
+- Form fields (mobile parity): **Company name** (searchable autocomplete from company master, ≥2 chars; free-text allowed), **Lead/Prospect name** (+ auto-fill designation from the company's leads), **Mobile** (10-digit), **Designation**, **Branch address** (picker from company addresses → auto-fills address/city/state/pincode), **Address line 1 + 2** (required), **State→City cascading dropdowns** (required), **PIN** (required), **Country** (default India), **Description**, optional **geo-tagged image + GPS** (mobile-only; web = optional/skip for v1).
+- Submit payload (mobile `addToWishlist`): companyName, company{companyId}|null, leadName, leadNumber(mobile), designation, addressLine1/2, pincode, city{cityId}, wishlistAddress{addressId}|null, latitude/longitude, imageUrl, description, status:'WishList', assignTl/assignAgent = current user.
+- Maps to our existing `wishlist` table (already in web `data/wishlist.ts`). Web build = a create form on the Sales/Portal Wishlist screen using our Supabase company/city/state lookups; reuse the internal wishlist data layer where possible.
+
+### Sequencing note
+Portal/sales record view + wishlist are net-new builds grounded in the above specs. The project-selector adversarial-review fixes (blocker fixed; ~20 mediums/lows open) are a separate, in-flight cleanup track.
