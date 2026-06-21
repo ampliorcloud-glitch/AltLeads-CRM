@@ -53,24 +53,11 @@ export function deriveLinkedinClean(url: string | null | undefined): string | nu
   return cleaned || null;
 }
 
-/** Fetch all contacts via the masked view (company_name + city_name are flat columns). */
-export async function fetchAllContacts(): Promise<{
-  contacts: Contact[];
-  error: string | null;
-}> {
-  const { data, error } = await supabase
-    .from('contact_master_masked')
-    .select(
-      'contact_id, full_name, email, mobile_no, alt_mobile_no, designation, linkedin_url, linkedin_clean, company_id, city_id, is_demo, created_by, created_date, company_name, city_name',
-    )
-    .limit(1000)
-    .order('full_name', { ascending: true });
+const CONTACT_COLUMNS =
+  'contact_id, full_name, email, mobile_no, alt_mobile_no, designation, linkedin_url, linkedin_clean, company_id, city_id, is_demo, created_by, created_date, company_name, city_name';
 
-  if (error) {
-    return { contacts: [], error: error.message };
-  }
-
-  const contacts: Contact[] = (data ?? []).map((row: Record<string, unknown>) => ({
+function mapContactRow(row: Record<string, unknown>): Contact {
+  return {
     contact_id: row.contact_id as number,
     full_name: (row.full_name as string) ?? '',
     email: row.email as string | null,
@@ -86,15 +73,58 @@ export async function fetchAllContacts(): Promise<{
     created_date: row.created_date as string | null,
     company_name: (row.company_name as string | null) ?? null,
     city_name: (row.city_name as string | null) ?? null,
-  }));
-
-  return { contacts, error: null };
+  };
 }
 
-/** Fetch a single contact by id */
+/** PostgREST returns at most 1000 rows per request; page through to get the full set. */
+const CONTACTS_PAGE = 1000;
+/** Safety ceiling so a runaway never loops forever (50k contacts = 50 requests). */
+const CONTACTS_MAX = 50000;
+
+/**
+ * Fetch all contacts via the masked view (company_name + city_name are flat columns).
+ *
+ * Previously hard-capped at 1000 rows, which silently truncated the list AND broke
+ * fetchContactById for any contact past the first 1000 (UX-AUDIT quick-win #13).
+ * Now pages through with .range() up to CONTACTS_MAX; `truncated` flags the ceiling.
+ */
+export async function fetchAllContacts(): Promise<{
+  contacts: Contact[];
+  error: string | null;
+  truncated?: boolean;
+}> {
+  const contacts: Contact[] = [];
+  for (let from = 0; from < CONTACTS_MAX; from += CONTACTS_PAGE) {
+    const { data, error } = await supabase
+      .from('contact_master_masked')
+      .select(CONTACT_COLUMNS)
+      .order('full_name', { ascending: true })
+      .range(from, from + CONTACTS_PAGE - 1);
+
+    if (error) {
+      // Return whatever we have plus the error (don't throw away earlier pages).
+      return { contacts, error: error.message };
+    }
+    const rows = data ?? [];
+    contacts.push(...rows.map(mapContactRow));
+    if (rows.length < CONTACTS_PAGE) {
+      return { contacts, error: null };
+    }
+  }
+  // Hit the safety ceiling — more rows may exist than we fetched.
+  return { contacts, error: null, truncated: true };
+}
+
+/** Fetch a single contact by id (direct row query — not bounded by the list cap). */
 export async function fetchContactById(contactId: number): Promise<Contact | null> {
-  const { contacts } = await fetchAllContacts();
-  return contacts.find((c) => c.contact_id === contactId) ?? null;
+  const { data, error } = await supabase
+    .from('contact_master_masked')
+    .select(CONTACT_COLUMNS)
+    .eq('contact_id', contactId)
+    .maybeSingle();
+
+  if (error || !data) return null;
+  return mapContactRow(data as Record<string, unknown>);
 }
 
 /** A lead associated with a contact (HubSpot-style "associated leads" panel). */

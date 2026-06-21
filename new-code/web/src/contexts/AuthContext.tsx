@@ -26,6 +26,15 @@ interface AuthContextType {
   isSalesUser: boolean;
   /** True when the user has any internal role (ADMIN / TEAM_LEAD / AGENT / QC). */
   isInternalUser: boolean;
+  /** True when the user holds the ADMIN role. */
+  isAdmin: boolean;
+  /**
+   * Whether this user may CREATE core data entities (Company/Contact/Lead).
+   * Per ADR-21 the default is ADMIN-only; create is a per-project grantable
+   * setting (ALT-174, not built yet) so for now this equals isAdmin. Outreach
+   * roles (Agent/Sales) are update-only and must not see "New …" actions.
+   */
+  canCreateData: boolean;
   loading: boolean;
   /** Real email from auth session */
   userEmail: string;
@@ -128,6 +137,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const userEmail = user?.email ?? '';
   const isSalesUser = roles.some((r) => SALES_ROLE_NAMES.includes(r));
   const isInternalUser = roles.some((r) => INTERNAL_ROLE_NAMES.includes(r));
+  const isAdmin = roles.includes('ADMIN');
+  const canCreateData = isAdmin;
 
   return (
     <AuthContext.Provider value={{
@@ -137,6 +148,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       roles,
       isSalesUser,
       isInternalUser,
+      isAdmin,
+      canCreateData,
       loading,
       userEmail,
       signOut,

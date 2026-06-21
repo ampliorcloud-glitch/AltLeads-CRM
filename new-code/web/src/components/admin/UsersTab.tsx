@@ -22,6 +22,8 @@ import {
   EditIconButton,
 } from './primitives';
 import { Modal, Field, TextInput, SelectInput, PrimaryButton, GhostButton } from './Modal';
+import { useToast } from '../ui/Toast';
+import { useConfirm } from '../ui/ConfirmDialog';
 
 const ROLES = [
   { id: 1, label: 'Admin' },
@@ -41,6 +43,8 @@ export function UsersTab({ lookups, actorId }: { lookups: AdminLookups; actorId:
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(0);
   const [busyUserId, setBusyUserId] = useState<number | null>(null);
+  const toast = useToast();
+  const confirm = useConfirm();
 
   const [editUser, setEditUser] = useState<AdminUser | null>(null);
   const [editRoleIds, setEditRoleIds] = useState<Set<number>>(new Set());
@@ -95,14 +99,24 @@ export function UsersTab({ lookups, actorId }: { lookups: AdminLookups; actorId:
   const pageRows = filtered.slice(safePage * PAGE_SIZE, safePage * PAGE_SIZE + PAGE_SIZE);
 
   const handleToggle = async (u: AdminUser) => {
+    const disabling = u.enabled;
+    if (disabling) {
+      const ok = await confirm({
+        title: `Disable ${u.full_name || 'this user'}?`,
+        message: 'They will lose access to the app until re-enabled. Their existing data is unaffected.',
+        tone: 'danger',
+        confirmLabel: 'Disable user',
+      });
+      if (!ok) return;
+    }
     setBusyUserId(u.user_id);
     const err = await setUserEnabled(u.user_id, !u.enabled, actorId);
-    if (!err) {
-      setUsers((prev) =>
-        prev.map((x) => (x.user_id === u.user_id ? { ...x, enabled: !u.enabled } : x))
-      );
-    }
     setBusyUserId(null);
+    if (err) { toast.error(err); return; }
+    setUsers((prev) =>
+      prev.map((x) => (x.user_id === u.user_id ? { ...x, enabled: !u.enabled } : x))
+    );
+    toast.success(disabling ? 'User disabled' : 'User enabled');
   };
 
   const openEdit = (u: AdminUser) => {

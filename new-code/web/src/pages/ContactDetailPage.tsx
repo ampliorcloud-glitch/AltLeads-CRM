@@ -129,7 +129,7 @@ function InfoRow({ icon, label, value, href }: {
 export function ContactDetailPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const { profile } = useAuth();
+  const { profile, canCreateData } = useAuth();
 
   const contactId = id ? Number(id) : null;
 
@@ -479,6 +479,8 @@ export function ContactDetailPage() {
           <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
             {!editing ? (
               <>
+                {/* Create is admin-only by default (ADR-21); hidden from outreach roles. */}
+                {canCreateData && (
                 <button
                   type="button"
                   onClick={() =>
@@ -497,6 +499,7 @@ export function ContactDetailPage() {
                 >
                   <Plus size={13} /> New Lead
                 </button>
+                )}
                 <button
                   type="button"
                   onClick={startEdit}

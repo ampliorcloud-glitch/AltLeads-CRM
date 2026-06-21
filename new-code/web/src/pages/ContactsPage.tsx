@@ -15,6 +15,7 @@ import { useRowSelection } from '../components/ui/useRowSelection';
 import { ExportButton } from '../components/ui/ExportButton';
 import { ColumnCustomizer, defaultColumnPrefs } from '../components/ui/ColumnCustomizer';
 import { StatusBadge } from '../components/ui/StatusBadge';
+import { useToast } from '../components/ui/Toast';
 import type { ColumnDef, ExportColumn } from '../components/ui/columns';
 import type { ColumnPref } from '../data/views';
 import {
@@ -180,6 +181,7 @@ function InlineStatusCell({
   const [editing, setEditing] = useState(false);
   const [busy, setBusy] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
+  const toast = useToast();
 
   // Close on outside click
   useEffect(() => {
@@ -195,10 +197,14 @@ function InlineStatusCell({
     if (!projectId) return;
     setBusy(true);
     const newStatus = value === '' ? null : value;
-    await upsertContactStatus(contactId, projectId, { contact_status: newStatus }, actorId);
-    onUpdated(contactId, newStatus);
+    const { error } = await upsertContactStatus(contactId, projectId, { contact_status: newStatus }, actorId);
     setBusy(false);
     setEditing(false);
+    // Surface failures instead of silently flipping the badge (e.g. RLS 42501
+    // "you can only edit records you own"). Only update on success.
+    if (error) { toast.error(error); return; }
+    onUpdated(contactId, newStatus);
+    toast.success('Status updated');
   }
 
   if (!editing) {
@@ -244,7 +250,7 @@ interface SortState { key: SortKey; dir: 'asc' | 'desc' }
 
 export function ContactsPage() {
   const navigate = useNavigate();
-  const { profile } = useAuth();
+  const { profile, canCreateData } = useAuth();
   const userId = profile?.user_id ?? null;
   // actorId is numeric user_id as text for audit columns
   const actorId = userId != null ? String(userId) : null;
@@ -614,6 +620,8 @@ export function ContactsPage() {
               onChange={setColumnPrefs}
             />
 
+            {/* Create is admin-only by default (ADR-21); hidden from outreach roles. */}
+            {canCreateData && (
             <button
               onClick={() => navigate('/contacts/new')}
               style={{
@@ -635,6 +643,7 @@ export function ContactsPage() {
               <Plus size={13} strokeWidth={2.25} />
               New Contact
             </button>
+            )}
           </div>
         </div>
 

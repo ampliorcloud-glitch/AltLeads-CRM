@@ -25,6 +25,8 @@ import {
   EditIconButton,
 } from './primitives';
 import { Modal, Field, TextInput, SelectInput, PrimaryButton, GhostButton } from './Modal';
+import { useToast } from '../ui/Toast';
+import { useConfirm } from '../ui/ConfirmDialog';
 
 interface ClientOption {
   id: number;
@@ -55,6 +57,8 @@ export function ProjectsTab({ lookups, actorId }: { lookups: AdminLookups; actor
 
   const [busyProjectId, setBusyProjectId] = useState<number | null>(null);
   const [busyMemberId, setBusyMemberId] = useState<number | null>(null);
+  const toast = useToast();
+  const confirm = useConfirm();
 
   const load = async () => {
     setLoading(true);
@@ -100,13 +104,24 @@ export function ProjectsTab({ lookups, actorId }: { lookups: AdminLookups; actor
   };
 
   const handleToggle = async (p: AdminProject) => {
+    const disabling = p.enabled;
+    if (disabling) {
+      const ok = await confirm({
+        title: `Disable project "${p.project_name}"?`,
+        message: 'It will be hidden from project pickers until re-enabled. Existing leads and data are unaffected.',
+        tone: 'danger',
+        confirmLabel: 'Disable project',
+      });
+      if (!ok) return;
+    }
     setBusyProjectId(p.project_id);
     const err = await setProjectEnabled(p.project_id, !p.enabled, actorId);
-    if (!err)
-      setProjects((prev) =>
-        prev.map((x) => (x.project_id === p.project_id ? { ...x, enabled: !p.enabled } : x))
-      );
     setBusyProjectId(null);
+    if (err) { toast.error(err); return; }
+    setProjects((prev) =>
+      prev.map((x) => (x.project_id === p.project_id ? { ...x, enabled: !p.enabled } : x))
+    );
+    toast.success(disabling ? 'Project disabled' : 'Project enabled');
   };
 
   const openView = (p: AdminProject) => {
@@ -144,23 +159,30 @@ export function ProjectsTab({ lookups, actorId }: { lookups: AdminLookups; actor
   };
 
   const handleUnassign = async (projectUserId: number) => {
+    const ok = await confirm({
+      title: 'Remove this member from the project?',
+      message: 'They will no longer have access to this project\'s leads. You can re-add them later.',
+      tone: 'danger',
+      confirmLabel: 'Remove member',
+    });
+    if (!ok) return;
     setBusyMemberId(projectUserId);
     const err = await unassignProjectUser(projectUserId, actorId);
-    if (!err) {
-      setProjects((prev) =>
-        prev.map((p) => ({
-          ...p,
-          members: p.members.filter((m) => m.project_user_id !== projectUserId),
-        }))
-      );
-      // Also update viewProject so the modal reflects the change immediately
-      setViewProject((vp) =>
-        vp
-          ? { ...vp, members: vp.members.filter((m) => m.project_user_id !== projectUserId) }
-          : vp
-      );
-    }
     setBusyMemberId(null);
+    if (err) { toast.error(err); return; }
+    setProjects((prev) =>
+      prev.map((p) => ({
+        ...p,
+        members: p.members.filter((m) => m.project_user_id !== projectUserId),
+      }))
+    );
+    // Also update viewProject so the modal reflects the change immediately
+    setViewProject((vp) =>
+      vp
+        ? { ...vp, members: vp.members.filter((m) => m.project_user_id !== projectUserId) }
+        : vp
+    );
+    toast.success('Member removed');
   };
 
   const columns = [

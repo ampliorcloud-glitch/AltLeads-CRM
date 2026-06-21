@@ -253,7 +253,7 @@ const PAGE_SIZE_OPTIONS = [25, 50, 100];
 
 export function LeadsPage() {
   const navigate = useNavigate();
-  const { profile } = useAuth();
+  const { profile, canCreateData } = useAuth();
   const userId = profile?.user_id ?? null;
   // When reused inside the Sales Portal, keep navigation within /sales/*.
   const isSalesShell = useIsSalesShell();
@@ -712,6 +712,8 @@ export function LeadsPage() {
               disabled={loading || filteredData.length === 0}
             />
 
+            {/* Create is admin-only by default (ADR-21); hidden from outreach roles. */}
+            {canCreateData && (
             <button
               onClick={() => navigate('/leads/new')}
               style={{
@@ -733,6 +735,7 @@ export function LeadsPage() {
               <Plus size={13} strokeWidth={2.25} />
               New Lead
             </button>
+            )}
           </div>
         </div>
 

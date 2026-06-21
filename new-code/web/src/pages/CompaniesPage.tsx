@@ -233,7 +233,7 @@ const EXPORT_COLUMNS: ExportColumn<ExportRow>[] = [
 
 export function CompaniesPage() {
   const navigate = useNavigate();
-  const { profile } = useAuth();
+  const { profile, canCreateData } = useAuth();
   const userId = profile?.user_id ?? null;
 
   const [filters, setFilters] = useState<Filters>(defaultFilters);
@@ -612,6 +612,8 @@ export function CompaniesPage() {
               disabled={loading || filteredData.length === 0}
             />
 
+            {/* Create is admin-only by default (ADR-21); hidden from outreach roles. */}
+            {canCreateData && (
             <button
               onClick={() => navigate('/companies/new')}
               style={{
@@ -633,6 +635,7 @@ export function CompaniesPage() {
               <Plus size={13} strokeWidth={2.25} />
               New Company
             </button>
+            )}
           </div>
         </div>
 

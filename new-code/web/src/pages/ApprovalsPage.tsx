@@ -13,6 +13,7 @@ import { useNavigate } from 'react-router-dom';
 import { Eye, ThumbsUp, ThumbsDown, X, Loader2, ShieldOff, ChevronRight } from 'lucide-react';
 import { AppShell } from '../components/layout/AppShell';
 import { useAuth } from '../contexts/AuthContext';
+import { useConfirm } from '../components/ui/ConfirmDialog';
 import {
   fetchPendingApprovals,
   fetchReportDetail,
@@ -329,6 +330,7 @@ function RejectModal({
 export function ApprovalsPage() {
   const { profile } = useAuth();
   const navigate = useNavigate();
+  const confirm = useConfirm();
 
   // Audit identifier must ALWAYS be the current user's user_id (never a name),
   // since created_by/updated_by are keyed on user_id for ownership/RLS.
@@ -361,6 +363,12 @@ export function ApprovalsPage() {
       setErr('Your account is still loading. Please try again in a moment.');
       return;
     }
+    const ok = await confirm({
+      title: `Approve report for "${row.lead_name}"?`,
+      message: 'This advances the lead to Meeting Scheduled and emails the agent and salesperson. This cannot be undone.',
+      confirmLabel: 'Approve report',
+    });
+    if (!ok) return;
     setApproving(row.report_id);
     setErr('');
     setSuccess('');

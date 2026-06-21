@@ -551,3 +551,20 @@ TypeScript everywhere · Supabase (DB+Auth+Storage) · React + Vite · Tailwind 
 - TRACKER: +39 tickets → 215 total. ALT-177 (audit epic/report), ALT-178..207 (Top-30), ALT-208..214 (7 missing-capability bundles), ALT-215 (14 quick-wins batch). New wave "UX audit", new module "UX". Generator updated (gen-backlog-tracker.cjs uxAuditTickets(); TODAY→2026-06-21). xlsx regenerated.
 - NOT STARTED any implementation — report is for owner review first; owner to pick which of the 4 ship-with-launch items to build now.
 - UNPUSHED local commits remain (feedback 31e2b9c, CLAUDE.md/ADRs 9b2b177, open-questions a488860, email-templates 94fe984, + this audit). Push only on owner "push".
+
+---
+## 2026-06-21 (cont.) — Built launch-safety bundle (toast + confirm + gating + cap fix) + security pass
+- OWNER: "choose & start yourself, don't stop before testing, keep security checks after every big milestone."
+- CHOSE the launch-safety bundle from UX-AUDIT (the 4 "ship-with-launch" items + the foundational toast/confirm system they depend on). BUILT:
+  1. NEW src/components/ui/Toast.tsx — global ToastProvider + useToast() (success/error/info/warning, auto-dismiss 4s/6s, portal to body, aria-live + role=alert). [UX-AUDIT Top#2]
+  2. NEW src/components/ui/ConfirmDialog.tsx — ConfirmProvider + useConfirm(): Promise<boolean>; role=dialog/aria-modal, Esc + backdrop cancel, focus mgmt, danger tone, optional type-to-confirm. [Top#3]
+  3. App.tsx — mounted <ToastProvider><ConfirmProvider> at root.
+  4. AuthContext — added isAdmin + canCreateData (= isAdmin per ADR-21; create is admin-only by default).
+  5. Create-button gating (canCreateData) on 5 spots: Leads/Companies/Contacts list "New" buttons + ContactDetail "New Lead" + CompanyDetail "New lead". Outreach roles no longer see Create. [QW#4]
+  6. Error surfacing: ContactsPage InlineStatusCell now shows toast on failure + only updates badge on success (was silently flipping even on RLS 42501). UsersTab/ProjectsTab disable + unassign now toast errors instead of swallowing. [QW#9]
+  7. Destructive confirms (useConfirm): cancel meeting (UpdateMeetingModal), approve report (ApprovalsPage), disable user (UsersTab), disable project + remove member (ProjectsTab). [Top#3]
+  8. Contacts 1000-row cap FIXED (data/contacts.ts): fetchContactById now queries the masked view by id directly (was scanning a 1000-row page → contacts past #1000 unfindable); fetchAllContacts pages via .range() up to 50k with a truncated flag. [QW#13]
+  9. BONUS a11y: index.css restored a global :focus-visible brand ring (was stripping the outline from every control — WCAG 2.4.7). [Top#4]
+- TESTED: `npm run build` (tsc -b + vite build) PASSES clean (1866 modules, built 947ms). Lint on touched files shows only pre-existing issues + the same react-refresh/only-export-components pattern AuthContext already uses (provider+hook in one file) — no NEW violations. No test runner configured in the project.
+- SECURITY PASS (post-milestone): (a) No new vulns — toasts/confirms render strings as React text (XSS-safe, no dangerouslySetInnerHTML); masking preserved (still via contact_master_masked); no secrets; isAdmin is read-only derivation from existing user_role join. (b) FINDING → ALT-216 (P1): access-rls-v1.sql INSERT policies are WITH CHECK (is_admin() OR created_by=self), so ANY authenticated user can create owned records — contradicts ADR-21 "admin-only create". The new UI gate is client-side only/bypassable; true enforcement needs INSERT WITH CHECK = is_admin() (or +project-create-grant ALT-174), with owner sign-off + throwaway-role validation before prod. (c) The error-surfacing also makes the update-path blocker ALT-152 visibly toast "you can only edit records you own" — reinforces it must ship before launch.
+- TRACKER: +ALT-216 (security finding) → 216 total. NOT pushed (manual deploy; awaiting owner "push"). Implementation committed locally only.

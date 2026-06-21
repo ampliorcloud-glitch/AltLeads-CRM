@@ -69,12 +69,27 @@ body {
   text-align: left;
 }
 
-/* ---------- Focus resets ---------- */
+/* ---------- Focus visibility (a11y — UX-AUDIT #4) ----------
+   Keyboard users must see where focus is (WCAG 2.4.7). Suppress the default
+   outline only for MOUSE focus (:focus without :focus-visible), and show a clear
+   brand ring on KEYBOARD focus (:focus-visible) across all interactive controls. */
 input:focus,
 select:focus,
 textarea:focus,
-button:focus-visible {
+button:focus {
   outline: none;
+}
+
+button:focus-visible,
+a:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible,
+[tabindex]:focus-visible,
+[role="button"]:focus-visible {
+  outline: 2px solid var(--color-brand);
+  outline-offset: 2px;
+  border-radius: var(--radius-btn);
 }
 
 /* ---------- Link defaults ---------- */

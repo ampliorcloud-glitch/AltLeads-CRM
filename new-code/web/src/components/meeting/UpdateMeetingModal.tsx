@@ -23,6 +23,7 @@ import {
 } from '../lead/primitives';
 import { supabase } from '../../lib/supabase';
 import { notify, notifyInApp, resolveUserEmailAndName } from '../../lib/notify';
+import { useConfirm } from '../ui/ConfirmDialog';
 
 export function UpdateMeetingModal({
   meeting,
@@ -43,6 +44,7 @@ export function UpdateMeetingModal({
   const [newDuration, setNewDuration] = useState(meeting.duration || '00:30');
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState('');
+  const confirm = useConfirm();
 
   const today = new Date().toISOString().slice(0, 10);
   const byOptions = action === 'reschedule' ? POSTPONED_BY : CANCELLED_BY;
@@ -61,6 +63,16 @@ export function UpdateMeetingModal({
     if (action === 'reschedule' && !newDate) {
       setErr('Please choose a new date.');
       return;
+    }
+    if (action === 'cancel') {
+      const ok = await confirm({
+        title: 'Cancel this meeting?',
+        message: 'The meeting will be marked cancelled and the lead stage updated. The salesperson is notified. This cannot be undone.',
+        tone: 'danger',
+        confirmLabel: 'Cancel meeting',
+        cancelLabel: 'Keep meeting',
+      });
+      if (!ok) return;
     }
     setSaving(true);
     setErr('');

@@ -1627,6 +1627,14 @@ const TICKETS = [
     owner:'Claude',
     notes:'Future: import users (name/email/role/project) from CSV/XLSX to bulk-create logins + roles + project membership (extends the bulk-login work ALT-151 and the bulk import engine ALT-159). Launch-user list not needed now; this is the durable mechanism. PLAN ONLY.'
   },
+  {
+    id:'ALT-216', title:'INSERT RLS does not enforce admin-only create (contradicts ADR-21)',
+    type:'Security', module:'Security', wave:'Security hardening',
+    priority:'P1', status:'Planned',
+    created: d(2026,6,21), updated: d(2026,6,21), finished: null,
+    owner:'Mohit',
+    notes:'SECURITY FINDING (post-UX-audit milestone security pass, 2026-06-21). access-rls-v1.sql INSERT policies on lead_master/company_master/contact_master are WITH CHECK (is_admin() OR created_by = current_user_id()) — so ANY authenticated user can create records they own. This contradicts ADR-21 "create = admin-only by default". The new UI gate (canCreateData = isAdmin, hides New buttons) enforces it CLIENT-SIDE ONLY and is bypassable (e.g. navigate to /leads/new). To truly enforce: tighten INSERT WITH CHECK to is_admin() (or is_admin() OR has_project_create_grant(project) once the per-project create setting ALT-174 exists). NEEDS owner sign-off + throwaway-role login validation BEFORE applying to prod (do not change live RLS unilaterally). Pairs with the update-path blocker ALT-152.'
+  },
   ...uxAuditTickets(),
 ];
 

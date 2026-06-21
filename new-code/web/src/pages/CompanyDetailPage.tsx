@@ -972,7 +972,7 @@ function ActivityTab({ companyId, projectId }: ActivityTabProps) {
 export function CompanyDetailPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const { profile } = useAuth();
+  const { profile, canCreateData } = useAuth();
   const companyId = Number(id);
 
   // actorId is the acting user's user_id as text
@@ -1171,7 +1171,7 @@ export function CompanyDetailPage() {
                 </button>
               </div>
             )}
-            {tab === 'leads' && (
+            {tab === 'leads' && canCreateData && (
               <div className="flex items-center gap-2" style={{ paddingRight: 6 }}>
                 <button
                   onClick={() => navigate(`/leads/new?company=${company.id}`)}
