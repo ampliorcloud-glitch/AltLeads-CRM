@@ -22,7 +22,82 @@ const OUT_PATH = path.resolve(
 
 // ─── DATE HELPERS ─────────────────────────────────────────────────────────────
 const d = (y, m, day) => y + '-' + String(m).padStart(2, '0') + '-' + String(day).padStart(2, '0');
-const TODAY = d(2026, 6, 18);
+const TODAY = d(2026, 6, 21);
+
+// ─── UX AUDIT TICKETS (2026-06-21) ───────────────────────────────────────────
+// Generated from the 26-agent UX/UI/feature-gap audit (718 raw -> 170 deduped).
+// Full report: docs/product/UX-AUDIT.md. Epic ALT-177; Top-30 ALT-178..207;
+// missing-capability bundles ALT-208..214; quick-wins batch ALT-215.
+function uxAuditTickets() {
+  const AD = d(2026, 6, 21);
+  const mk = (id, title, type, module, priority, notes) => ({
+    id, title, type, module, wave: 'UX audit', priority, status: 'Planned',
+    created: AD, updated: AD, finished: null, owner: 'Claude', notes,
+  });
+  const out = [];
+  out.push(mk('ALT-177', 'UX/UI/feature-gap audit — 26-agent swarm (718→170 findings)', 'Docs', 'UX', 'P1',
+    'Full report: docs/product/UX-AUDIT.md. 26 agents (15 screen + 9 dimension + synthesis + critic). 718 raw → 170 deduped findings · 13 themes · 14 quick wins · Top-30 (ALT-178..207) · 27 missing capabilities (ALT-208..214) · quick-wins batch (ALT-215). Owner to REVIEW and pick the launch-with items before any build.'));
+
+  // [title, module, severity, effort, priority, detail]
+  const top = [
+    ['Bulk-action bars on all lists (multiselect only Exports today)', 'UX', 'High', 'L', 'P2', 'Shared SelectionActionBar when sel>0: bulk status/stage change, reassign, approve, login-provision. Needs new batch endpoints (data layer is single-record today).'],
+    ['One global toast + confirmation system', 'UX', 'High', 'M', 'P1', 'No app-wide toast; only one window.confirm in whole app. ToastProvider (auto-dismiss, success/error/info, aria-live) + branded ConfirmDialog routed through all write paths. Unlocks dozens of downstream findings.'],
+    ['Confirm every destructive / irreversible action', 'UX', 'High', 'M', 'P1', 'Clinch, confirm/cancel meeting, request-approval, approve, disable user/project, unassign, convert all fire on one click with no guard/undo. SHIP WITH LAUNCH.'],
+    ['Restore a visible keyboard focus indicator app-wide', 'UX', 'High', 'S', 'P2', 'index.css strips outline from every control — WCAG 2.4.7 fail. Add global :focus-visible ring + brand ring on form controls.'],
+    ['Make table rows + sortable headers keyboard-operable', 'UX', 'High', 'M', 'P2', 'Rows are onClick on non-focusable <tr>; headers no role/aria-sort. NotificationsPage already does it right — replicate.'],
+    ['Searchable multi-select filters (replace single-select dropdowns)', 'UX', 'High', 'M', 'P2', 'Every facet is a native single <select> over hundreds of options. SearchSelect combobox already exists but used in zero filters. Multi-select + chips + set.has() predicates.'],
+    ['Advanced / per-column filtering + missing core facets', 'UX', 'High', 'L', 'P2', 'No contains/is-empty/AND-OR; customizer-added columns un-filterable. Missing facets: Account Status/Demo/Size/Owner/date on Companies; Contact Status; Meeting Mode+Confirmed; Wishlist Unassigned.'],
+    ['Saved views capturing filters+sort+density (multiple, named)', 'UX', 'High', 'M', 'P2', 'user_view_pref has a name column but saveView persists only columns + one anonymous slot. Extend to {columns,filters,sorting,pageSize,density} + view picker (save-as/rename/delete).'],
+    ['Persist list/detail state (filters, sort, page, tab) in the URL', 'UX', 'High', 'M', 'P2', 'All state is React-only; refresh/back/share resets the worklist. Serialize to query params; sync active tab + projectId on detail pages.'],
+    ['"Select all N matching" across pages (not just current page)', 'UX', 'Medium', 'M', 'P3', 'Header checkbox toggles only the visible page; partial off-page selection silently scopes Export. Add "Select all N matching" banner.'],
+    ['Global search / Cmd-K command palette', 'UX', 'High', 'L', 'P2', 'No global search anywhere. Cmd/Ctrl-K across leads/companies/contacts/meetings by name/number/phone with deep-link navigation.'],
+    ['Converge on one DataTable engine (migrate Contacts + Approvals)', 'UX', 'High', 'L', 'P2', 'Contacts + Approvals are hand-rolled; others use TanStack — divergent headers/row-heights/sort-glyphs and every fix built 3×. One <DataTable> + shared spec.'],
+    ['Dirty-state navigation guard on all forms/modals', 'UX', 'High', 'M', 'P2', 'No form tracks dirty; Cancel/back/tab-switch/backdrop silently discards edits. Track isDirty + useBlocker + beforeunload + modal-close guard. Worst for ReportTab (~20 fields).'],
+    ['Move filter/sort/paginate server-side (stop loading whole datasets)', 'Data', 'High', 'L', 'P2', 'Every list downloads the full dataset + lookups on mount; Contacts capped at 1000. Push to Supabase range+filters or cache; remove the 1000 cap.'],
+    ['Role-aware, actionable dashboard ("what do I do today")', 'UX', 'High', 'L', 'P2', 'Dashboard never calls useAuth; same org-wide all-time totals for everyone. Scope to current user, add "my meetings today / follow-ups due / leads needing first contact", TL/ADMIN rollups.'],
+    ['Clickable dashboard drill-downs (cards/bars/activity rows)', 'UX', 'High', 'M', 'P2', 'All stat cards, stage bars, activity rows are static (some even fake a hover). Wire each to the filtered list / record.'],
+    ['Masked email/phone → distinct masked + click-to-reveal treatment', 'Security', 'High', 'M', 'P2', 'Masked values render identical to genuinely empty ("—"); the locked partial-mask+click-reveal decision (ADR-22) has no UI. Lock/dotted treatment + Reveal + copy. Pairs with ALT-173.'],
+    ['Sticky table headers + frozen identity column', 'UX', 'Medium', 'S', 'P3', 'No thead is sticky; with 100 rows/page headers scroll away. Sticky header + freeze select+name column + scroll-shadow cue.'],
+    ['Top-level React ErrorBoundary (+ per-route fallback)', 'UX', 'High', 'M', 'P2', 'Any uncaught render error white-screens the whole SPA. Add top-level ErrorBoundary + per-route fallbacks + logging.'],
+    ['Forgot-password + show/hide toggle; reauth on password change', 'Security', 'High', 'M', 'P2', '~110/111 users freshly provisioned will mistype initial passwords. Add reset flow + eye toggle + mailto help-desk; require current password before change in Settings.'],
+    ['Constrain header stage-select + meeting workflow transitions', 'Leads', 'High', 'M', 'P2', 'Stage dropdown lists every stage so an agent can jump to "Meeting Successful" bypassing report/approval; closed leads still mutable. Constrain to valid next steps / make read-only.'],
+    ['Form validation (email/phone/URL/required/dirty) + on-blur feedback', 'UX', 'Medium', 'M', 'P3', 'Phone accepts any text; email/URL validated inconsistently; required name can save empty; submit-only single error. Shared validators + on-blur inline errors.'],
+    ['Skeleton rows/cards instead of a single centered spinner', 'UX', 'Medium', 'M', 'P3', 'Loading collapses the table to one spinner row → layout jump on every navigation. Skeleton rows matching columns + role=status.'],
+    ['Collapsible filter panels + active-filter chips + per-filter clear', 'UX', 'Medium', 'M', 'P3', '8–11 filters in an always-open panel push the table below the fold; only all-or-nothing Clear. Collapsible "Filters" + active-count badge + removable chips.'],
+    ['Fix Companies Account-Status column (load full set; sort/filter/export)', 'Companies', 'High', 'M', 'P2', 'Status batch-fetched per page only → can\'t sort/filter, flickers on project change, export blanks unscrolled pages. Merge into row data + per-project cache.'],
+    ['Proper ARIA dialog semantics + focus trap on modals', 'UX', 'High', 'M', 'P2', 'Only AssignModal sets role=dialog. Centralize Esc-to-close, focus trap, initial focus, focus-restore, aria-labelledby in one Modal shell.'],
+    ['Approvals queue: age/SLA, sort, search, filters, pagination, in-modal approve', 'Leads', 'Medium', 'M', 'P3', 'No search/filters/sort/pagination/age/history/in-preview approve; sidebar badge lags 60s. Add SLA aging + Pending|Approved|Rejected + immediate badge refresh.'],
+    ['Inline-edit + quick row/hover actions across lists & detail panels', 'UX', 'Medium', 'M', 'P3', 'Editing one field needs a full page nav. Inline status/notes edit, per-field detail edit, hover quick-actions (copy email/phone, quick status). Core to update-only outreach.'],
+    ['Make the Sales Portal a first-class shell (not the internal grid reskinned)', 'Sales Portal', 'Medium', 'M', 'P3', '/sales reuses internal LeadsPage verbatim (unscoped, internal chrome, dead pencil link). Add sales dashboard/notifications/settings, gate internal controls, portal switcher.'],
+    ['Standardize shared primitives (Button/Badge/Avatar/Input/Modal/Pagination/EmptyState)', 'UX', 'Medium', 'M', 'P3', '3 button systems, 5 badge styles, 5 avatar copies, 4 input/pagination copies, hardcoded hex vs CSS tokens. Extract one component per atom; kill drift; enable theming.'],
+  ];
+  top.forEach((row, i) => {
+    const [title, module, sev, eff, pri, detail] = row;
+    out.push(mk('ALT-' + (178 + i), title, 'Feature', module, pri,
+      sev + ' severity · effort ' + eff + ' · UX-AUDIT Top-30 #' + (i + 1) + '. ' + detail));
+  });
+
+  // Missing-capability bundles (critic gaps — capabilities that don't exist yet)
+  const missing = [
+    ['Calling loop — single-screen queue→dial→log→auto-advance + click-to-call + call logging', 'Tasks', 'P2', 'Critic gap. Core to high-volume outreach speed; the recorded call history also feeds the AI "superpower" (RAG).'],
+    ['Task manager — follow-up reminders, callback scheduling, snooze/defer, to-dos', 'Tasks', 'P2', 'Owner-requested task manager. "Call back tomorrow 3pm" set on a record and surfaced when due; snooze pushes a lead out of today and brings it back.'],
+    ['Today work-queue / prioritized worklist (overdue, untouched, fresh assignments)', 'Tasks', 'P2', 'Turns the passive dashboard into a driver of next actions; the single screen a caller lives in.'],
+    ['Duplicate detection & merge (leads / contacts / companies)', 'Data', 'P2', 'Known risk after the bulk migration. Detect + merge dup records.'],
+    ['Data trust layer — freshness (days-since-touch), SLA/aging cues, per-record audit history', 'Data', 'P2', 'Helps agents prioritize + trust data, lets TLs manage the floor, and feeds AI. "Who changed what, when" surfaced consistently.'],
+    ['Quick-access — global quick-search, inline row quick-edit, recently-viewed/pinned, undo', 'UX', 'P2', 'Speed for users who live in lists all day. Overlaps Top-30 #11/#28; undo-toast for status/disposition/bulk edits.'],
+    ['Compliance & comfort — Do-Not-Call/opt-out, timezone-aware scheduling, density/compact mode, dark mode, per-user notif prefs, first-run onboarding, autosave of notes', 'UX', 'P3', 'Bundle of critic gaps: compliance flag + warning, caller-vs-prospect TZ, compact rows, theme, notification preferences, onboarding for the 110 first-login users, and autosave so a dropped session keeps call notes.'],
+  ];
+  missing.forEach((row, i) => {
+    const [title, module, pri, detail] = row;
+    out.push(mk('ALT-' + (208 + i), title, 'Feature', module, pri,
+      'Missing capability (UX-AUDIT §5, completeness critic). ' + detail));
+  });
+
+  out.push(mk('ALT-215', 'UX quick-wins batch — 14 small, high-payoff fixes', 'Task', 'UX', 'P1',
+    'All effort-S (hours each), UX-AUDIT §3: (1) tooltips on truncated cells (2) remove dev "read-only preview" banners (3) wire bell→/notifications + unread badge (4) hide create buttons from outreach roles (5) global focus ring (6) search clear (×) (7) mailto/tel + copy-to-clipboard (8) checkbox/bell aria-labels (9) SURFACE swallowed inline status/stage/toggle errors (10) persist tab/banner state (11) "no data" vs "no match" empty states (12) Retry on load errors (13) fix Contacts 1000-row cap (14) modal Esc + dirty-backdrop guard. Items 4, 9, 13 + Top-30 #3 = SHIP WITH LAUNCH (they hide failure / data loss).'));
+
+  return out;
+}
 
 // ─── TICKET DATA ──────────────────────────────────────────────────────────────
 // Columns: ID, Title, Type, Module, Wave/Epic, Priority, Status,
@@ -1552,6 +1627,7 @@ const TICKETS = [
     owner:'Claude',
     notes:'Future: import users (name/email/role/project) from CSV/XLSX to bulk-create logins + roles + project membership (extends the bulk-login work ALT-151 and the bulk import engine ALT-159). Launch-user list not needed now; this is the durable mechanism. PLAN ONLY.'
   },
+  ...uxAuditTickets(),
 ];
 
 // ─── MERGE LOGIC ─────────────────────────────────────────────────────────────
