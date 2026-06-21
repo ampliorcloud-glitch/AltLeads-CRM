@@ -1509,9 +1509,9 @@ const TICKETS = [
     id:'ALT-160', title:'Task Manager — scheduled tasks as tickets, associated to records (HubSpot/Zoho-style)',
     type:'Feature', module:'Tasks', wave:'Roadmap',
     priority:'P1', status:'Planned',
-    created: d(2026,6,18), updated: d(2026,6,18), finished: null,
+    created: d(2026,6,18), updated: d(2026,6,21), finished: null,
     owner:'Claude',
-    notes:'New task + task_association tables; schedule task -> ticket linked to contact/company/lead + attach more records from other modules; reminders -> notifications; per-record Tasks tab + global My Tasks. See VISION.md.'
+    notes:'OWNER RE-CONFIRMED 2026-06-21: a per-CRM-user Task Manager as a SEPARATE module. Each user can schedule or 1-CLICK create a Call task / Meeting / general task, associated to a record (lead/company/contact/meeting), with EMAIL + BROWSER reminders so a "call this customer" ask is not forgotten. HubSpot/Zoho-style (check their task/engagement model). Build: task + task_association tables; reminders -> notifications + email + web push; per-record Tasks tab + global "My Tasks"/Today queue (overlaps ALT-209/210). See VISION.md.'
   },
   {
     id:'ALT-161', title:'Client portal — clients see scheduled/success post-scheduling + dashboard',
@@ -1522,12 +1522,12 @@ const TICKETS = [
     notes:'SUPERSEDED/EXPANDED by epic ALT-221 (see docs/product/CLIENT-PORTAL.md, planned 2026-06-21 from CEO transcript). Client-scoped read views of lead reports/meetings/dashboard + governance/onboarding/invoices, Amplior-branded.'
   },
   {
-    id:'ALT-221', title:'EPIC: Client Portal (Amplior-branded, external) — plan in docs/product/CLIENT-PORTAL.md',
+    id:'ALT-221', title:'EPIC: Client Portal / Sales Screen (white-label Amplior + AltLeads) — plan in docs/product/CLIENT-PORTAL.md',
     type:'Feature', module:'Client Portal', wave:'Roadmap',
     priority:'P2', status:'Planned',
     created: d(2026,6,21), updated: d(2026,6,21), finished: null,
     owner:'Mohit',
-    notes:'PLANNED 2026-06-21 (CEO transcript). Premium, Amplior-branded, web-only, client-leadership-facing portal = single source of truth per client: onboarding/ICP, LIVE lead reports + meetings + dashboard (scoped by client_assoc_id), governance notes (Fathom manual→auto), updates/action-log/escalation, invoices, + an internal knowledge/performance mirror. Access by seniority (client leadership + ADMIN/SALES_HEAD/leadership; agents only if elevated). RECOMMENDATION: same Supabase project + Pro ($25) + dedicated portal schema/views + CLIENT role + adversarial multi-tenant RLS validation (switch to a separate project if it scales/too risky). Phase 1 = mostly static staff-uploaded content + a few live CRM reads. OWNER decisions open: see CLIENT-PORTAL.md §10. Build only after sign-off.'
+    notes:'PLANNED 2026-06-21 (CEO transcript + 2 owner interviews; see CLIENT-PORTAL.md v1-v3). ONE white-label product, TWO brands (Amplior + AltLeads), absolute brand isolation, 2 domains. Client roles = Company Admin > Sales Head > Sales Person (these were the vendor MOBILE app users = CLIENT, never Amplior staff). Replaces the mobile app; the /sales shell is the seed. APPROVED: same Supabase project + Pro ($25) + curated client-scoped read-only views + CLIENT role + adversarial multi-tenant RLS validation. PHASE-1 ORDER: (1) sales screens = view + assign/reassign meetings (port old-code/amplior-mobile-app-main); (2) ICP/docs/decks (edit by Company Admin+Sales Head w/ notify-on-save); (3) governance scheduling = review-meeting reminders + calendar view. Feedback available once meeting STARTED; recorded in CRM. DATA ISOLATION: client owns only MEETING records (not company/contact); sees company info as a SNAPSHOT captured up to their meeting; never another project/client meeting on the same shared company. Dashboard spec TBD. Build after Phase-1 spec finalised.'
   },
   {
     id:'ALT-162', title:'Chrome extension — LinkedIn contact details + inline CRM edit (writes back live)',

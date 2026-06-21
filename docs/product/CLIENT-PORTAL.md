@@ -146,3 +146,45 @@ Amplior ADMIN onboards the client + creates the first **Company Admin** login; t
 
 ### 12.7 Open for round 2
 Is the AltLeads-branded portal the SAME full product or a LIGHTER sales-only version? · brand list + domains · dashboard scope per role · invoices visibility · "How the week went" weekly summary phase · confirm portal data = scoped live view of CRM.
+
+---
+## 13. v3 — Round-2 confirmations + data-isolation rule (owner interview, 2026-06-21)
+
+### 13.1 Decisions locked
+- **Supabase: SAME project + Pro ($25) — APPROVED by owner** (with the §4/§12.6 guardrails).
+- **ONE product, TWO brands** (Amplior + AltLeads), white-labeled; **2 domains for now**, more later. The mobile-app "sales screen" is the CORE of this product, offered under both brands.
+
+### 13.2 Phase-1 BUILD ORDER (owner-specified)
+1. **Sales screens** — view + **assign/reassign all meetings**, recreating the vendor mobile app (old-code/amplior-mobile-app-main) as web.
+2. **ICP, docs & decks** (upload/view; edit by Company Admin + Sales Head, with notify-on-save).
+3. **Governance scheduling** — governance = a **review meeting** between Amplior leaders (TL/Manager) and the **Company Admin**; so just a **meeting reminder (email) + calendar-style details** (Google/Outlook-like). Not complex.
+- Dashboard spec: owner to share later. The attached **Amplior×HungerBox Three-Year Partnership Review PDF** = the reference for premium look + the kind of governance/review/metrics content (meetings delivered, funnel dials→connects→pitches→scheduled→successful, coverage by vertical, enterprise wins, etc.).
+
+### 13.3 Vendor mobile app → web (Phase-1 sales screens to recreate)
+The old RN app was the CLIENT sales-team app. Screens (old-code/amplior-mobile-app-main/src/screens):
+- Auth: Login / OTP / Forgot / Set-Password.
+- Home + small dashboard: Home, MeetingOverview, IndustrySpread, City/Industry graphs.
+- Meetings: Meetings (list), StatusWiseMeetings, MeetingDetails.
+- Meeting submodules: Lead / LeadDetails, **Feedback**, MeetingReview.
+- **Assign/reassign:** SalesPersonModal.
+- **Wishlist:** Wishlist, WishListCompanies (+ SearchCompany = pick existing company), WishListView/Details.
+- HotProspect / HotProspectPreview; Notifications; Profile.
+
+### 13.4 Feedback flow (confirmed)
+- Meetings Amplior generates are handed to the client sales team to attend. **Once a meeting has STARTED, the Feedback option becomes available.**
+- **Sales Rep (Sales Person / Sales Head) provides feedback**; Sales Head can edit.
+- **Recorded in the CRM** → Amplior agent/TL/managers see the outcome, plus the sales rep and their uplines.
+- **Assign/reassign** applies **only to the meetings Amplior generated** for that lead/project.
+
+### 13.5 DATA ISOLATION (critical design rule)
+- The client team does **NOT own** the company/contact — they **own only the MEETING records** Amplior generated for them.
+- They can **see the company/contact info as captured UP TO their meeting** (a **snapshot** at meeting-generation time) — NOT a live, ever-updating company record.
+- They must **NEVER see another project's / another client's meeting on the same shared company** — that would breach others' data. (Companies are shared in the CRM, but each client sees a company only **through the lens of their own meeting**.)
+- The snapshot refreshes only if Amplior **generates a new meeting** from that company/prospect for them.
+- **Build implication:** snapshot the company/contact fields onto the meeting (or a linked record) at meeting-generation time; portal company views read that snapshot, scoped per project; cross-project visibility is impossible by construction.
+
+### 13.6 "Same live companies/leads/meetings as the CRM" — explained
+There is **ONE database**. The portal keeps **no separate copy** — it reads the same records the CRM uses, but each client sees **only their own meeting-scoped slice** (+ the company snapshot above). One source of truth, many isolated views. This is why same-Supabase-project is the right call.
+
+### 13.7 Task Manager (separate CRM module — re-confirmed; ALT-160 / ALT-209)
+A **Task Manager** per CRM user (internal: agent/TL/etc.) — schedule or **1-click** create **Call / Meeting / general** tasks, associated to records, with **email + browser reminders** (so a "call this customer" ask isn't forgotten). HubSpot/Zoho-style. To be planned as its own module next.
