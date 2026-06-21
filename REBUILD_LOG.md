@@ -729,3 +729,13 @@ Built via workflow (foundation -> 3 screens -> adversarial isolation review), wi
 - **To go live (gated):** (1) owner approves applying apply-portal-foundation + apply-portal-rls (+ ALT-229 break-in test); (2) add `portal` to Supabase API exposed schemas; (3) provision >=1 enabled client_portal_user row. Until then every fetcher returns error -> UI shows empty/error (expected).
 - Covers ALT-230/231/233/234/237/240. NEXT portal (2b): Wishlist (safe name-only suggest), Notifications feed, assign/reassign, governance reminders.
 Loop continues. Nothing pushed.
+
+---
+## 2026-06-21 (cont. 16) — Task Manager DB APPLIED to prod (owner-authorised) — module is LIVE
+Owner: "yes apply migration - task manager not working, make it work." Applied the TASK migrations to the live Supabase DB (additive, low-risk: new tables + fail-closed RLS on those tables only; existing CRM RLS untouched).
+- `node apply-create-task-table.cjs` -> public.task + public.task_user_pref created (idempotent, txn-wrapped). Verified columns.
+- `node apply-task-rls.cjs` -> RLS enabled; policies TO authenticated (owner_user_id = current_user_id() OR is_admin() OR manages_user()); manages_user() present + FAILS CLOSED. Verified pg_policies + helpers.
+- Smoke test (service connection): INSERT computed reminder_at = due_at - offset via the BEFORE trigger, defaults OPEN/NORMAL, reminder_sent_at NULL; row cleaned up. `NOTIFY pgrst, 'reload schema'` issued so the REST API serves /task immediately.
+- => My Tasks (/tasks) now functional on the live app: create Call/Meeting/To-do, Overdue/Today/Upcoming buckets (IST), done/skip/snooze. ALT-250..255 DONE.
+- NOT yet built (Increment 2): email reminder scanner (ALT-256), server-side bell insert (257), ~60s live web timer (258), one-click-from-record (260), TL reassign (261), digest opt-in toggle.
+- PORTAL migrations NOT applied yet: higher blast radius (CRM-wide RESTRICTIVE deny_portal_session policy on every RLS table) -> must validate with a throwaway portal login that CRM staff are NOT locked out + isolation holds (ALT-229) BEFORE applying to the live CRM; also needs a one-time Supabase dashboard step (expose the `portal` schema). Handling that as a separate careful step.

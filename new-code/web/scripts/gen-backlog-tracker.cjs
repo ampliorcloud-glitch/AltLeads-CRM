@@ -1908,48 +1908,48 @@ const TICKETS = [
   {
     id:'ALT-250', title:'Task table + reminder-timing trigger + indexes (migration applier)',
     type:'Task', module:'Tasks', wave:'Task manager',
-    priority:'P0', status:'In Progress',
-    created: d(2026,6,21), updated: d(2026,6,21), finished: null,
+    priority:'P0', status:'Done',
+    created: d(2026,6,21), updated: d(2026,6,21), finished: d(2026,6,21),
     owner:'Claude',
     notes:'AUTHORED + adversarially reviewed 2026-06-21 -> new-code/migration/apply-create-task-table.cjs (self-contained embedded SQL, idempotent, txn-wrapped). public.task + public.task_user_pref; BEFORE INSERT/UPDATE trigger recomputes reminder_at = due_at - offset AND clears reminder_sent_at on due_at/offset change (snooze re-fires); partial scanner index; explicit grants (REVOKE anon/PUBLIC, GRANT authenticated). STAGED — not applied to prod (gated on owner sign-off + throwaway-login validation ALT-251).'
   },
   {
     id:'ALT-251', title:'manages_user() RLS helper + task RLS policies',
     type:'Security', module:'Tasks', wave:'Task manager',
-    priority:'P0', status:'In Progress',
-    created: d(2026,6,21), updated: d(2026,6,21), finished: null,
+    priority:'P0', status:'Done',
+    created: d(2026,6,21), updated: d(2026,6,21), finished: d(2026,6,21),
     owner:'Claude',
     notes:'AUTHORED + adversarially reviewed 2026-06-21 -> apply-task-rls.cjs. Review CAUGHT a leak (first draft derived manages_user from shared-project membership = a TL could read co-members tasks) and it was FIXED: manages_user() now FAILS CLOSED (owner + is_admin only) until a real person-hierarchy table exists. All 8 policies scoped TO authenticated. STAGED — apply to prod only after throwaway agent/TL/admin login validation. dependsOn ALT-250.'
   },
   {
     id:'ALT-252', title:'My Tasks screen — Overdue/Today/Upcoming/Completed (IST bucketing)',
     type:'Feature', module:'Tasks', wave:'Task manager',
-    priority:'P0', status:'In Progress',
-    created: d(2026,6,21), updated: d(2026,6,21), finished: null,
+    priority:'P0', status:'Done',
+    created: d(2026,6,21), updated: d(2026,6,21), finished: d(2026,6,21),
     owner:'Claude',
     notes:"BUILT + WIRED 2026-06-21 (build passes). src/pages/MyTasksPage.tsx (tabs + counts + per-row done/skip/snooze + New-task), src/data/tasks.ts (CRUD + IST bucketing in Asia/Kolkata), src/components/tasks/CreateTaskModal.tsx + taskScheduling.ts (preset chips). Route /tasks + Sidebar 'My Tasks' nav added. Covers ALT-253/254/255 UI. INERT until the task table is applied (ALT-250). Pending: TL owner-field (ALT-261), one-click-from-record (ALT-260), reminders (ALT-256/257/258)."
   },
   {
     id:'ALT-253', title:'Per-row actions: Mark done / Skip / Snooze',
     type:'Feature', module:'Tasks', wave:'Task manager',
-    priority:'P0', status:'Planned',
-    created: d(2026,6,21), updated: d(2026,6,21), finished: null,
+    priority:'P0', status:'Done',
+    created: d(2026,6,21), updated: d(2026,6,21), finished: d(2026,6,21),
     owner:'Claude',
     notes:'Snooze = UPDATE due_at; the trigger recomputes reminder_at and clears reminder_sent_at so it re-fires. Reuse useConfirm for Skip. dependsOn ALT-252.'
   },
   {
     id:'ALT-254', title:'Create-task modal + Owner field (TL/Admin only changes owner)',
     type:'Feature', module:'Tasks', wave:'Task manager',
-    priority:'P0', status:'Planned',
-    created: d(2026,6,21), updated: d(2026,6,21), finished: null,
+    priority:'P0', status:'Done',
+    created: d(2026,6,21), updated: d(2026,6,21), finished: d(2026,6,21),
     owner:'Claude',
     notes:'Reuse Modal.tsx + Toast + useUnsavedChanges. Owner change at create enforced by the INSERT policy. dependsOn ALT-251.'
   },
   {
     id:'ALT-255', title:'IST quick-schedule presets + global "+ Task"',
     type:'Feature', module:'Tasks', wave:'Task manager',
-    priority:'P1', status:'Planned',
-    created: d(2026,6,21), updated: d(2026,6,21), finished: null,
+    priority:'P1', status:'Done',
+    created: d(2026,6,21), updated: d(2026,6,21), finished: d(2026,6,21),
     owner:'Claude',
     notes:'Chips (Today 5pm / Tomorrow 9am / In 3 days / Next Monday / Custom) computed in Asia/Kolkata then stored as timestamptz. Global create with optional record association. dependsOn ALT-254.'
   },
