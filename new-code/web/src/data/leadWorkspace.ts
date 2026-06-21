@@ -66,6 +66,7 @@ export interface PreSalesAnswerRow {
 export interface NewQuestionRow {
   // client-side rows; new_sal_que_id only present once persisted
   new_sal_que_id?: number;
+  _uid?: string;
   question: string;
   answer: string;
 }
@@ -161,13 +162,15 @@ async function resolveUserNames(ids: string[]): Promise<Map<string, string>> {
 /* ─────────────────────── ACTIVITY TAB ─────────────────────── */
 
 export async function fetchActivity(leadId: number): Promise<WorkspaceActivity[]> {
-  const { data } = await supabase
+  const { data, error } = await supabase
     .from('lead_activity')
     .select('activity_id, lead_comments, created_by, created_date, is_generated')
     .eq('lead_id', leadId)
     .is('deleted_date', null)
     .order('created_date', { ascending: false })
     .limit(200);
+
+  if (error) throw error;
 
   const rows = (data ?? []) as {
     activity_id: number;
@@ -413,7 +416,7 @@ export async function fetchReport(leadId: number): Promise<{
   newQuestions: NewQuestionRow[];
   schedule: ScheduleOutcome | null;
 }> {
-  const { data: lr } = await supabase
+  const { data: lr, error } = await supabase
     .from('lead_report')
     .select('report_id, lead_id, stage_id, user_id, sales_intelligence, report_approval, report_status, lead_request')
     .eq('lead_id', leadId)
@@ -423,6 +426,7 @@ export async function fetchReport(leadId: number): Promise<{
     .limit(1)
     .maybeSingle();
 
+  if (error) console.error('[leadWorkspace] fetchReport', error);
   if (!lr) return { report: null, answers: [], newQuestions: [], schedule: null };
 
   const report = lr as ReportData;

@@ -105,6 +105,7 @@ export function UsersTab({ lookups, actorId }: { lookups: AdminLookups; actorId:
   const pageCount = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
   const safePage = Math.min(page, pageCount - 1);
   const pageRows = filtered.slice(safePage * PAGE_SIZE, safePage * PAGE_SIZE + PAGE_SIZE);
+  const emailOk = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(addEmail.trim());
 
   const handleToggle = async (u: AdminUser) => {
     const disabling = u.enabled;
@@ -432,7 +433,7 @@ export function UsersTab({ lookups, actorId }: { lookups: AdminLookups; actorId:
               <GhostButton onClick={() => { setAddModalOpen(false); resetAddModal(); }} disabled={addLoading}>
                 Cancel
               </GhostButton>
-              <PrimaryButton onClick={handleAddUser} disabled={addLoading || !addFullName.trim() || !addEmail.trim()}>
+              <PrimaryButton onClick={handleAddUser} disabled={addLoading || !addFullName.trim() || !emailOk}>
                 {addLoading && <Loader2 size={13} className="animate-spin" />}
                 Create User
               </PrimaryButton>
@@ -505,6 +506,9 @@ export function UsersTab({ lookups, actorId }: { lookups: AdminLookups; actorId:
                 placeholder="jane@company.com"
               />
             </Field>
+            {addEmail.trim() && !emailOk && (
+              <p style={{ fontSize: 12, color: '#EF4444', margin: 0 }}>Enter a valid email address.</p>
+            )}
             <Field label="Role *">
               <SelectInput value={addRoleId} onChange={setAddRoleId}>
                 {ROLES.map((r) => (

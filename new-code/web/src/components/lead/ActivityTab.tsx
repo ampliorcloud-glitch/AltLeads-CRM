@@ -20,11 +20,16 @@ export function ActivityTab({ leadId, actor }: { leadId: number; actor: string }
   const [comment, setComment] = useState('');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+  const [loadError, setLoadError] = useState('');
 
   const load = useCallback(async () => {
     setLoading(true);
-    const data = await fetchActivity(leadId);
-    setItems(data);
+    setLoadError('');
+    try {
+      setItems(await fetchActivity(leadId));
+    } catch {
+      setLoadError('Could not load activity. Please try again.');
+    }
     setLoading(false);
   }, [leadId]);
 
@@ -82,6 +87,8 @@ export function ActivityTab({ leadId, actor }: { leadId: number; actor: string }
       <div className={`${card} p-4`}>
         {loading ? (
           <LoadingBlock />
+        ) : loadError ? (
+          <InlineNote kind="error">{loadError}</InlineNote>
         ) : items.length === 0 ? (
           <EmptyBlock message="No activity recorded for this lead yet." />
         ) : (

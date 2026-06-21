@@ -140,6 +140,7 @@ export interface MeetingsResult {
   modes: string[];
   industries: string[];
   cities: string[];
+  truncated: boolean; // true when the meeting list hit the hard cap and older rows were dropped
   error: string | null;
 }
 
@@ -306,8 +307,10 @@ function salespersonLabel(name: string, roleId: number | undefined): string {
 export async function fetchMeetings(): Promise<MeetingsResult> {
   const empty: MeetingsResult = {
     meetings: [], agents: [], salespeople: [], statuses: [], modes: [],
-    industries: [], cities: [], error: null,
+    industries: [], cities: [], truncated: false, error: null,
   };
+
+  const MEETINGS_CAP = 2000;
 
   // 1. Meetings (most recent first)
   const { data: meetingsRaw, error: meetingsError } = await supabase
@@ -317,12 +320,14 @@ export async function fetchMeetings(): Promise<MeetingsResult> {
     )
     .is('deleted_date', null)
     .order('meeting_date', { ascending: false, nullsFirst: false })
-    .limit(2000);
+    .limit(MEETINGS_CAP);
 
   if (meetingsError || !meetingsRaw) {
     return { ...empty, error: meetingsError?.message ?? 'Failed to fetch meetings' };
   }
   const meetings = meetingsRaw as unknown as MeetingMasterRow[];
+  // Signal to the UI when the hard cap was hit and older meetings were silently dropped.
+  const truncated = meetings.length >= MEETINGS_CAP;
   const meetingIds = meetings.map((m) => m.meeting_id);
 
   // 2. Schedules -> report_id for each meeting
@@ -504,6 +509,7 @@ export async function fetchMeetings(): Promise<MeetingsResult> {
     modes: uniq(mapped.map((m) => m.mode)),
     industries: uniq(mapped.map((m) => m.industry)),
     cities: uniq(mapped.map((m) => m.city)),
+    truncated,
     error: null,
   };
 }

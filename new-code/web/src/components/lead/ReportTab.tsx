@@ -133,7 +133,7 @@ export function ReportTab({
       const ansMap: Record<number, string> = {};
       existing.answers.forEach((a) => (ansMap[a.pre_sa_que_id] = a.answer));
       setAnswers(ansMap);
-      setNewQuestions(existing.newQuestions.map((n) => ({ ...n })));
+      setNewQuestions(existing.newQuestions.map((n) => ({ ...n, _uid: n._uid ?? crypto.randomUUID() })));
 
       // Hydrate the previously-saved meeting / outcome so editing updates in place.
       const own = await fetchLeadMeeting(existing.report.report_id);
@@ -180,7 +180,7 @@ export function ReportTab({
 
   const addNewQuestion = () => {
     if (newQuestions.length >= MAX_NEW_QUESTIONS) return;
-    setNewQuestions((prev) => [...prev, { question: '', answer: '' }]);
+    setNewQuestions((prev) => [...prev, { _uid: crypto.randomUUID(), question: '', answer: '' }]);
   };
   const updateNewQuestion = (idx: number, key: 'question' | 'answer', val: string) =>
     setNewQuestions((prev) => prev.map((n, i) => (i === idx ? { ...n, [key]: val } : n)));
@@ -595,7 +595,7 @@ export function ReportTab({
         ) : (
           <div className="space-y-3">
             {newQuestions.map((nq, idx) => (
-              <div key={idx} className="flex gap-2 items-start">
+              <div key={nq._uid ?? idx} className="flex gap-2 items-start">
                 <div className="flex-1 grid grid-cols-1 sm:grid-cols-2 gap-2">
                   <input
                     type="text"
@@ -850,11 +850,11 @@ export function ReportTab({
 
       {!locked && (
         <div className="flex flex-wrap items-center gap-2">
-          <PrimaryButton onClick={doSave} loading={saving} disabled={viewMode}>
+          <PrimaryButton onClick={doSave} loading={saving} disabled={viewMode || requesting}>
             <Save size={14} />
             Save
           </PrimaryButton>
-          <PrimaryButton onClick={handleRequestApproval} loading={requesting} disabled={viewMode}>
+          <PrimaryButton onClick={handleRequestApproval} loading={requesting} disabled={viewMode || saving}>
             <CheckCircle2 size={14} />
             Request Approval
           </PrimaryButton>

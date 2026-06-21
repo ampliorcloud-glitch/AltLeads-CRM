@@ -42,13 +42,24 @@ export function DispositionForm({
   const [noteText, setNoteText] = useState('');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [loaded, setLoaded] = useState(false);
   const toast = useToast();
 
   useEffect(() => {
     let cancelled = false;
-    fetchOptions('call_disposition').then((rows) => {
-      if (!cancelled) setOptions(rows);
-    });
+    fetchOptions('call_disposition')
+      .then((rows) => {
+        if (!cancelled) {
+          setOptions(rows);
+          setLoaded(true);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setError('Could not load dispositions.');
+          setLoaded(true);
+        }
+      });
     return () => {
       cancelled = true;
     };
@@ -106,6 +117,11 @@ export function DispositionForm({
           </option>
         ))}
       </select>
+      {loaded && options.length === 0 && (
+        <div style={{ fontSize: 12, color: '#a16207' }}>
+          No dispositions available. Please contact an admin.
+        </div>
+      )}
       <textarea
         value={noteText}
         onChange={(e) => setNoteText(e.target.value)}

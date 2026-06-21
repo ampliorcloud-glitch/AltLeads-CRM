@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useEffect, useState } from 'react';
+import React, { createContext, useContext, useEffect, useMemo, useState } from 'react';
 import type { ReactNode } from 'react';
 import type { Session, User } from '@supabase/supabase-js';
 import { supabase } from '../lib/supabase';
@@ -156,8 +156,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const isAdmin = roles.includes('ADMIN');
   const canCreateData = isAdmin;
 
-  return (
-    <AuthContext.Provider value={{
+  const value = useMemo(
+    () => ({
       session,
       user,
       profile,
@@ -170,7 +170,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       userEmail,
       signOut,
       logout: signOut,
-    }}>
+    }),
+    // signOut is intentionally omitted: it is recreated each render but is
+    // stale-closure-safe (only touches module-level/stable state setters),
+    // so including it would defeat the memo. Derived booleans come from `roles`.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [session, user, profile, roles, loading, userEmail],
+  );
+
+  return (
+    <AuthContext.Provider value={value}>
       {children}
     </AuthContext.Provider>
   );

@@ -140,7 +140,12 @@ async function requireAuth(req, res, next) {
   const auth = req.headers.authorization || '';
   const token = auth.startsWith('Bearer ') ? auth.slice(7) : null;
   if (!token) return res.status(401).json({ error: 'missing token' });
-  const { data: { user }, error } = await admin.auth.getUser(token);
+  let user, error;
+  try {
+    ({ data: { user }, error } = await admin.auth.getUser(token));
+  } catch (e) {
+    return res.status(503).json({ error: 'auth check failed' });
+  }
   if (error || !user) return res.status(401).json({ error: 'invalid token' });
   req.actorUserId = user.id;
   next();
@@ -154,12 +159,16 @@ async function requireAdmin(req, res, next) {
   const auth = req.headers.authorization || '';
   const token = auth.startsWith('Bearer ') ? auth.slice(7) : null;
   if (!token) return res.status(401).json({ error: 'missing token' });
-  const { data: { user }, error } = await admin.auth.getUser(token);
-  if (error || !user) return res.status(401).json({ error: 'invalid token' });
-  const { data: prof } = await admin.from('profiles').select('role').eq('id', user.id).single();
-  if (!prof || prof.role !== 'ADMIN') return res.status(403).json({ error: 'admin only' });
-  req.actorUserId = user.id;
-  next();
+  try {
+    const { data: { user }, error } = await admin.auth.getUser(token);
+    if (error || !user) return res.status(401).json({ error: 'invalid token' });
+    const { data: prof } = await admin.from('profiles').select('role').eq('id', user.id).single();
+    if (!prof || prof.role !== 'ADMIN') return res.status(403).json({ error: 'admin only' });
+    req.actorUserId = user.id;
+    next();
+  } catch (e) {
+    return res.status(503).json({ error: 'auth check failed' });
+  }
 }
 
 /* ── Rate limiter (30 req / min / IP) ────────────────────────────── */
@@ -298,9 +307,15 @@ app.post('/api/users/create', requireAdmin, async (req, res) => {
   if (role_id === undefined || role_id === null || role_id === '') {
     return res.status(400).json({ error: 'role_id is required.' });
   }
+  if (typeof role_id !== 'number' && typeof role_id !== 'string') {
+    return res.status(400).json({ error: 'role_id must be a number.' });
+  }
   const roleIdInt = parseInt(role_id, 10);
   if (isNaN(roleIdInt) || roleIdInt < 1 || roleIdInt > 6) {
     return res.status(400).json({ error: 'role_id must be an integer between 1 and 6.' });
+  }
+  if (mobile_number != null && String(mobile_number).trim().length > 20) {
+    return res.status(400).json({ error: 'mobile_number is too long.' });
   }
 
   /* 2. Shared service-role admin client (requireAdmin already verified env). */
@@ -312,6 +327,7 @@ app.post('/api/users/create', requireAdmin, async (req, res) => {
   const trimmedEmail = String(email).trim().toLowerCase();
   const trimmedName = String(full_name).trim();
 
+  try {
   /* 3. Derive created_by from the VERIFIED caller — look up the numeric
         user_id from profiles by the auth uid. Never trust req.body.created_by. */
   let actor = 'system';
@@ -357,7 +373,7 @@ app.post('/api/users/create', requireAdmin, async (req, res) => {
   if (insertErr || !insertedUsers || insertedUsers.length === 0) {
     const msg = insertErr ? insertErr.message : 'user_master insert returned no row';
     console.error('[users/create] user_master insert failed:', msg);
-    return res.status(500).json({ error: `Failed to create user record: ${msg}` });
+    return res.status(500).json({ error: 'Failed to create user record.' });
   }
   const newUser = insertedUsers[0];
 
@@ -375,7 +391,7 @@ app.post('/api/users/create', requireAdmin, async (req, res) => {
     // Best-effort cleanup
     await supabaseAdmin.from('user_master').delete().eq('user_id', newUser.user_id);
     console.error('[users/create] user_role insert failed:', roleErr.message);
-    return res.status(500).json({ error: `Failed to assign role: ${roleErr.message}` });
+    return res.status(500).json({ error: 'Failed to assign role.' });
   }
 
   /* 8. Generate temp password */
@@ -396,7 +412,7 @@ app.post('/api/users/create', requireAdmin, async (req, res) => {
     // Best-effort cleanup
     await supabaseAdmin.from('user_role').delete().eq('user_id', newUser.user_id);
     await supabaseAdmin.from('user_master').delete().eq('user_id', newUser.user_id);
-    return res.status(500).json({ error: `Failed to create auth user: ${msg}` });
+    return res.status(500).json({ error: 'Failed to create auth user.' });
   }
 
   /* 10b. Explicitly link auth uid -> numeric user_id in profiles. Don't rely on
@@ -413,6 +429,10 @@ app.post('/api/users/create', requireAdmin, async (req, res) => {
 
   /* 11. Return success */
   return res.status(200).json({ ok: true, user_id: newUser.user_id, tempPassword });
+  } catch (e) {
+    console.error('[users/create]', e);
+    return res.status(500).json({ error: 'Failed to create user' });
+  }
 });
 
 /* ── POST /api/users/reset-password ─────────────────────────────── */
@@ -446,6 +466,7 @@ app.post('/api/users/reset-password', requireAdmin, async (req, res) => {
     return res.status(503).json({ error: 'Supabase env vars not set (SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)' });
   }
 
+  try {
   /* 3. Resolve the user's email + numeric id + name from user_master. The email
         (not a fragile profiles link) is the authoritative key to the auth account. */
   let targetUserId = (user_id !== undefined && user_id !== null && user_id !== '') ? user_id : null;
@@ -482,7 +503,7 @@ app.post('/api/users/reset-password', requireAdmin, async (req, res) => {
     });
     if (updateErr) {
       console.error('[users/reset-password] updateUserById failed:', updateErr.message);
-      return res.status(500).json({ error: `Failed to reset password: ${updateErr.message}` });
+      return res.status(500).json({ error: 'Failed to set password.' });
     }
   } else {
     const { data: authData, error: createErr } = await supabaseAdmin.auth.admin.createUser({
@@ -494,7 +515,7 @@ app.post('/api/users/reset-password', requireAdmin, async (req, res) => {
     if (createErr || !authData?.user) {
       const msg = createErr ? createErr.message : 'auth user creation returned no user';
       console.error('[users/reset-password] createUser failed:', msg);
-      return res.status(500).json({ error: `Failed to create login: ${msg}` });
+      return res.status(500).json({ error: 'Failed to set password.' });
     }
     authUid = authData.user.id;
     created = true;
@@ -507,6 +528,10 @@ app.post('/api/users/reset-password', requireAdmin, async (req, res) => {
 
   /* 7. Return success */
   return res.status(200).json({ ok: true, tempPassword, created });
+  } catch (err) {
+    console.error('[users/reset-password] unexpected error:', err);
+    return res.status(500).json({ error: 'Failed to set password.' });
+  }
 });
 
 /* ── Serve React web app (static + SPA fallback) ─────────────────── */

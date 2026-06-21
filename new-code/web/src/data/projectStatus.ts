@@ -230,7 +230,7 @@ export async function upsertContactStatus(
     };
   }
 
-  await appendInteraction({
+  const histRes = await appendInteraction({
     recordType: 'contact',
     recordId: contactId,
     projectId,
@@ -239,6 +239,9 @@ export async function upsertContactStatus(
     noteText: describeChange(patch as Record<string, unknown>),
     actorId,
   });
+  if (histRes.error) {
+    console.error('[projectStatus] contact history write failed', histRes.error);
+  }
 
   return { error: null };
 }
@@ -302,7 +305,7 @@ export async function upsertCompanyStatus(
     };
   }
 
-  await appendInteraction({
+  const { error: histError } = await appendInteraction({
     recordType: 'company',
     recordId: companyId,
     projectId,
@@ -311,6 +314,7 @@ export async function upsertCompanyStatus(
     noteText: describeChange(patch as Record<string, unknown>),
     actorId,
   });
+  if (histError) console.error('Failed to append company status_change interaction:', histError);
 
   return { error: null };
 }

@@ -179,6 +179,14 @@ export function WishlistDetailPage() {
     load();
   }, [load]);
 
+  // Local success banner is set via setToast(...) but otherwise never cleared,
+  // so it would stay on screen forever. Auto-dismiss after 3s like app toasts.
+  useEffect(() => {
+    if (!toast) return;
+    const t = window.setTimeout(() => setToast(null), 3000);
+    return () => window.clearTimeout(t);
+  }, [toast]);
+
   const refresh = useCallback(async () => {
     const detail = await fetchWishlistDetail(wishlistId);
     if (detail.item) setItem(detail.item);

@@ -40,6 +40,7 @@ import {
   EmptyBlock,
   InlineNote,
 } from './primitives';
+import { useConfirm } from '../ui/ConfirmDialog';
 
 function modePlaceholder(mode: string | null): string {
   switch ((mode ?? '').toLowerCase()) {
@@ -393,6 +394,7 @@ function PastMeetingCard({
   onChanged: () => void | Promise<void>;
 }) {
   const [open, setOpen] = useState(false);
+  const confirm = useConfirm();
   const [answers, setAnswers] = useState<FeedbackAnswerRow[]>([]);
   const [loadingFb, setLoadingFb] = useState(false);
   const [loadedFb, setLoadedFb] = useState(false);
@@ -502,6 +504,16 @@ function PastMeetingCard({
     if (outcome === 'reschedule' && !newDate) {
       setFbErr('Please choose a new date.');
       return;
+    }
+    if (outcome === 'cancel') {
+      const ok = await confirm({
+        title: 'Cancel / drop this meeting?',
+        message: 'The meeting will be marked cancelled and the lead stage updated. This cannot be undone.',
+        tone: 'danger',
+        confirmLabel: 'Cancel meeting',
+        cancelLabel: 'Keep meeting',
+      });
+      if (!ok) return;
     }
     setSubmitting(true);
     const res = await updateMeeting({
@@ -849,6 +861,7 @@ function UpdateMeetingModal({
   const [newDuration, setNewDuration] = useState(meeting.duration ?? '00:30');
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState('');
+  const confirm = useConfirm();
 
   const today = new Date().toISOString().slice(0, 10);
 
@@ -871,6 +884,16 @@ function UpdateMeetingModal({
     if (action === 'reschedule' && !newDate) {
       setErr('Please choose a new date.');
       return;
+    }
+    if (action === 'cancel') {
+      const ok = await confirm({
+        title: 'Cancel this meeting?',
+        message: 'The meeting will be marked cancelled and the lead stage updated. This cannot be undone.',
+        tone: 'danger',
+        confirmLabel: 'Cancel meeting',
+        cancelLabel: 'Keep meeting',
+      });
+      if (!ok) return;
     }
     setSaving(true);
     setErr('');

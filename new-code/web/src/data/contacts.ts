@@ -203,22 +203,33 @@ export async function logCallInteraction(params: {
 
 /** Fetch companies for dropdown */
 export async function fetchCompanyOptions(): Promise<CompanyOption[]> {
-  const { data } = await supabase
+  const { data, error } = await supabase
     .from('company_master')
     .select('company_id, company_name')
     .order('company_name', { ascending: true })
     .limit(5000);
+  if (error) console.error('[contacts] fetchCompanyOptions', error);
   return (data ?? []) as CompanyOption[];
 }
 
 /** Fetch cities for dropdown */
 export async function fetchCityOptions(): Promise<CityOption[]> {
-  const { data } = await supabase
-    .from('city_master')
-    .select('city_id, city_name')
-    .order('city_name', { ascending: true })
-    .limit(5000);
-  return (data ?? []) as CityOption[];
+  const cities: CityOption[] = [];
+  for (let from = 0; from < CONTACTS_MAX; from += CONTACTS_PAGE) {
+    const { data, error } = await supabase
+      .from('city_master')
+      .select('city_id, city_name')
+      .order('city_name', { ascending: true })
+      .range(from, from + CONTACTS_PAGE - 1);
+    if (error) {
+      console.error('fetchCityOptions failed:', error.message);
+      return cities;
+    }
+    const rows = (data ?? []) as CityOption[];
+    cities.push(...rows);
+    if (rows.length < CONTACTS_PAGE) break;
+  }
+  return cities;
 }
 
 /** Check for duplicate contact via the find_contact_dup RPC (SECURITY DEFINER, no detail leak). */
