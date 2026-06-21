@@ -298,3 +298,13 @@ Epic **ALT-221** (Client Portal — Amplior). Phase-1 tickets:
 - **Column whitelist (ALT-243): RESOLVED.** Clients see **everything the vendor mobile-app user could see** — the full field set the old client app surfaced for meetings/leads/companies. Owner will refine later (eventual target: "all that any project CRM user can see"). → Build the `meeting_snapshot` columns from the **mobile-app field set** (see the mobile inventory referenced in the plan), not a guessed subset.
 - **Snapshot writer (ALT-224): RESOLVED (owner delegated to Claude).** Mechanism = a **SECURITY DEFINER Postgres function fired by a DB trigger** (AFTER INSERT/UPDATE on the meeting source). Chosen over an app endpoint because the snapshot is isolation-critical and must be **atomic + unbypassable** (never forgotten at a call site). Browser never writes snapshots.
 - **Build go:** owner said "lets start building." Migrations are authored as appliers but **applied to the live DB only after owner sign-off + the throwaway-login RLS validation (ALT-229)**.
+
+---
+## BUILD STATUS — foundation migrations (2026-06-21, STAGED — not applied)
+Authored + adversarially reviewed + revised (code only; **do not apply until ALT-229 throwaway-login validation passes**):
+- `apply-portal-foundation.cjs` — portal schema, client_portal_user, meeting_snapshot (denormalised project_id+client_assoc_id+assigned_user_id per row), SECURITY-INVOKER portal_* views, portal.notification; clients granted SELECT on views only, ZERO on base tables.
+- `apply-portal-rls.cjs` — review caught two EXISTENTIAL gaps, both fixed: (1) policies target the real **authenticated** role gated by `portal.caller_client_assoc_id() IS NOT NULL` (the earlier unbridged `portal_client` role is removed); (2) **base-table leak closure** — an `AS RESTRICTIVE deny_portal_session` policy is added to every RLS-enabled public table so a portal session fails the CRM's permissive `USING(true)` base-table reads, while CRM staff (NULL) are unaffected. This is a CRM-wide RLS change → the ALT-229 break-in test is mandatory before apply.
+- `apply-portal-snapshot-writer.cjs` — SECURITY DEFINER `portal.write_meeting_snapshot()` + AFTER INSERT/UPDATE trigger (Decision D); `REVOKE EXECUTE FROM PUBLIC`.
+- `apply-portal-snapshot-backfill.cjs` — idempotent backfill of existing meetings.
+
+**Remaining VERIFY items before apply (caught in review):** `started_at` cast on free-text `meeting_time` (guard dirty values), deterministic meeting→lead_report resolution (avoid wrong-tenant stamp on reschedules), backfill completeness gate must abort (not just print), and the `downline_user_ids()` definition (currently project co-membership) needs the owner's reporting-tree decision.

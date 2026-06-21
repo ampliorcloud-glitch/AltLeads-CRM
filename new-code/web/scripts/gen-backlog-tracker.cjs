@@ -1710,10 +1710,10 @@ const TICKETS = [
   {
     id:'ALT-222', title:'Portal schema + CLIENT role + client_portal_user table',
     type:'Task', module:'Client Portal', wave:'Client portal P1',
-    priority:'P0', status:'Planned',
+    priority:'P0', status:'In Progress',
     created: d(2026,6,21), updated: d(2026,6,21), finished: null,
     owner:'Claude',
-    notes:'Foundation. Ties one Supabase Auth user to one client_assoc_id + one portal role (COMPANY_ADMIN/SALES_HEAD/SALES_PERSON) + enabled flag. See CLIENT-PORTAL-PHASE1.md.'
+    notes:'AUTHORED + adversarially reviewed + revised 2026-06-21 -> apply-portal-foundation.cjs (portal schema, client_portal_user[auth_uid->client_assoc_id+role], meeting_snapshot, SECURITY-INVOKER portal_* views, portal.notification, explicit grants — only views granted, ZERO on base tables). Covers ALT-223/226/228. STAGED — gated on ALT-229 throwaway-login validation. See CLIENT-PORTAL-PHASE1.md.'
   },
   {
     id:'ALT-223', title:'portal.meeting_snapshot table (denormalised, per-meeting frozen copy)',
@@ -1750,10 +1750,10 @@ const TICKETS = [
   {
     id:'ALT-227', title:'Portal RLS policies (snapshot/wishlist/feedback/docs/governance)',
     type:'Security', module:'Client Portal', wave:'Client portal P1',
-    priority:'P0', status:'Planned',
+    priority:'P0', status:'In Progress',
     created: d(2026,6,21), updated: d(2026,6,21), finished: null,
     owner:'Claude',
-    notes:'Company Admin = client scope; Sales Head = project + downline; Sales Person = own assigned. NO meeting create/reschedule/delete policy for clients. Validate before prod. dependsOn ALT-223.'
+    notes:'AUTHORED + adversarially reviewed + revised 2026-06-21 -> apply-portal-rls.cjs. Review caught 2 EXISTENTIAL gaps, both FIXED: (1) policies now target the real authenticated role (gated by portal.caller_client_assoc_id() IS NOT NULL), not an unbridged portal_client role; (2) BASE-TABLE LEAK CLOSURE — an AS RESTRICTIVE deny_portal_session policy is added to EVERY RLS-enabled public table so a portal session fails the CRM permissive USING(true) reads while CRM staff are unaffected. Company Admin=client scope; Sales Head=project+downline; Sales Person=own assigned; NO client write policy. This is a CRM-WIDE RLS change — MUST pass ALT-229 throwaway-login validation before prod. dependsOn ALT-223.'
   },
   {
     id:'ALT-228', title:'Portal notifications table + RLS (portal.notification)',
@@ -1908,26 +1908,26 @@ const TICKETS = [
   {
     id:'ALT-250', title:'Task table + reminder-timing trigger + indexes (migration applier)',
     type:'Task', module:'Tasks', wave:'Task manager',
-    priority:'P0', status:'Planned',
+    priority:'P0', status:'In Progress',
     created: d(2026,6,21), updated: d(2026,6,21), finished: null,
     owner:'Claude',
-    notes:'create-task-table.sql + tracked apply-task-table.js (pattern of apply-access-rls.js). BEFORE INSERT/UPDATE trigger sets reminder_at = due_at - offset and clears reminder_sent_at on change; partial scanner index; soft-delete + updated_date conventions.'
+    notes:'AUTHORED + adversarially reviewed 2026-06-21 -> new-code/migration/apply-create-task-table.cjs (self-contained embedded SQL, idempotent, txn-wrapped). public.task + public.task_user_pref; BEFORE INSERT/UPDATE trigger recomputes reminder_at = due_at - offset AND clears reminder_sent_at on due_at/offset change (snooze re-fires); partial scanner index; explicit grants (REVOKE anon/PUBLIC, GRANT authenticated). STAGED — not applied to prod (gated on owner sign-off + throwaway-login validation ALT-251).'
   },
   {
     id:'ALT-251', title:'manages_user() RLS helper + task RLS policies',
     type:'Security', module:'Tasks', wave:'Task manager',
-    priority:'P0', status:'Planned',
+    priority:'P0', status:'In Progress',
     created: d(2026,6,21), updated: d(2026,6,21), finished: null,
     owner:'Claude',
-    notes:'NEW SECURITY DEFINER helper manages_user(target) — the existing manages_project is project-keyed and unusable for person-owned tasks. SELECT/UPDATE/DELETE: own OR is_admin OR manages_user(owner). Validate with agent/TL/admin throwaway logins before prod. dependsOn ALT-250.'
+    notes:'AUTHORED + adversarially reviewed 2026-06-21 -> apply-task-rls.cjs. Review CAUGHT a leak (first draft derived manages_user from shared-project membership = a TL could read co-members tasks) and it was FIXED: manages_user() now FAILS CLOSED (owner + is_admin only) until a real person-hierarchy table exists. All 8 policies scoped TO authenticated. STAGED — apply to prod only after throwaway agent/TL/admin login validation. dependsOn ALT-250.'
   },
   {
     id:'ALT-252', title:'My Tasks screen — Overdue/Today/Upcoming/Completed (IST bucketing)',
     type:'Feature', module:'Tasks', wave:'Task manager',
-    priority:'P0', status:'Planned',
+    priority:'P0', status:'In Progress',
     created: d(2026,6,21), updated: d(2026,6,21), finished: null,
     owner:'Claude',
-    notes:"Today/Overdue computed in SQL with AT TIME ZONE 'Asia/Kolkata' so buckets are correct near midnight. Reuse SkeletonTable/ErrorBoundary/empty-state. dependsOn ALT-251."
+    notes:"BUILT + WIRED 2026-06-21 (build passes). src/pages/MyTasksPage.tsx (tabs + counts + per-row done/skip/snooze + New-task), src/data/tasks.ts (CRUD + IST bucketing in Asia/Kolkata), src/components/tasks/CreateTaskModal.tsx + taskScheduling.ts (preset chips). Route /tasks + Sidebar 'My Tasks' nav added. Covers ALT-253/254/255 UI. INERT until the task table is applied (ALT-250). Pending: TL owner-field (ALT-261), one-click-from-record (ALT-260), reminders (ALT-256/257/258)."
   },
   {
     id:'ALT-253', title:'Per-row actions: Mark done / Skip / Snooze',

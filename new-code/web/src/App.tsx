@@ -17,6 +17,7 @@ import { LeadDetailPage } from './pages/LeadDetailPage';
 import { LeadFormPage } from './pages/LeadFormPage';
 import { MeetingsPage } from './pages/MeetingsPage';
 import { MeetingDetailPage } from './pages/MeetingDetailPage';
+import { MyTasksPage } from './pages/MyTasksPage';
 import { WishlistPage } from './pages/WishlistPage';
 import { WishlistDetailPage } from './pages/WishlistDetailPage';
 import AdminPage from './pages/AdminPage';
@@ -252,6 +253,14 @@ function AppRoutes() {
         element={
           <ProtectedRoute>
             <MeetingDetailPage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/tasks"
+        element={
+          <ProtectedRoute>
+            <MyTasksPage />
           </ProtectedRoute>
         }
       />

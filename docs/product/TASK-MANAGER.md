@@ -276,3 +276,14 @@ The sales portal (2nd login `/sales`, `SalesShellProvider`) could later get a **
 ## Decisions LOCKED — 2026-06-21 (owner go to build)
 - **Reminder email volume (ALT-262): RESOLVED.** **Per-task email WITH a safety cap** (per-user, per-window — protects Gmail deliverability) **+ an optional daily-summary digest that is OPT-IN, default OFF.** → Scanner sends one capped email per due task; a separate daily-digest job is gated by a per-user pref defaulting to `false`.
 - **Build go:** owner said "lets start building." The task table + RLS migration is authored as an applier but **applied to the live DB only after owner sign-off + throwaway-login validation (ALT-251)**.
+
+---
+## BUILD STATUS — Increment 1 (2026-06-21)
+**Built & build-verified (code only; table NOT yet applied to prod):**
+- `new-code/migration/apply-create-task-table.cjs` — public.task + public.task_user_pref, reminder-timing trigger, scanner index, explicit grants. Adversarially reviewed; idempotent; STAGED.
+- `new-code/migration/apply-task-rls.cjs` — `manages_user()` helper (FAILS CLOSED: owner + admin only) + RLS. Review caught & fixed a shared-project leak. STAGED.
+- Frontend: `src/data/tasks.ts`, `src/components/tasks/{CreateTaskModal,taskScheduling}.tsx`, `src/pages/MyTasksPage.tsx`; wired as `/tasks` route + Sidebar "My Tasks". Inert until the table is applied.
+
+**CANONICAL CONTRACT RECONCILIATION:** the code/migration follow the canonical column contract (table `public.task`; `task_type` CALL/MEETING/TODO; `status` OPEN/DONE/SKIPPED; `priority` LOW/NORMAL/HIGH; `owner_user_id`, `remind_offset_minutes`, `reminder_at`/`reminder_sent_at`, `assoc_label`/`assoc_phone`, soft-delete `deleted_date`). Where §3.1 above lists older names (is_all_day, reminder_offset, contact_name/company_name/phone, completed_at/skipped_at, NONE/MEDIUM priorities), **the canonical contract here wins** — §3.1 is superseded for the build.
+
+**Not yet built (next slices, need the table live):** email reminder scanner (ALT-256, per-task capped + opt-in digest), server-side bell insert (ALT-257), the ~60s web timer (ALT-258), one-click-from-record (ALT-260), TL owner/reassign (ALT-261), digest opt-in toggle in Settings.

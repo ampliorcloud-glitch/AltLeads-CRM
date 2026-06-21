@@ -687,3 +687,22 @@ Owner: "i want both via different sub agents that you control as ultracode." Ran
    **OWNER DECISION PENDING:** **per-task vs digest** reminder email (ALT-262, Gmail throttling) — blocks the email slice (ALT-256). Default-offset (fire-at-due vs 10-min-before) also open.
 
 STATE: still 22 CRM commits unpushed on clean-main (portal/task-manager are PLAN docs, not code). Next: owner answers the 4 blocking decisions (ALT-243, ALT-224, ALT-262, + Add/Edit bug go-ahead), then we build Phase-1 sales screens first.
+
+---
+## 2026-06-21 (cont. 12) — Increment 1 BUILT (Task Manager + Portal foundation), code-only, staged
+Owner: "lets start building" + answered A/B/D + C go. Built via a multi-agent workflow (3 parallel build agents → adversarial RLS review → revise), then integrated + build-verified centrally. Nothing applied to the live DB; nothing pushed.
+
+**C (ALT-244) DONE:** UsersTab Edit-roles modal now always offers SALES_HEAD/SALES_PERSON, so an admin can GRANT a sales role (not just remove one already held). Build passes.
+
+**Decisions locked:** A = clients see the full vendor-mobile-app field set (refine later); B = per-task reminder email capped + opt-in daily digest (default OFF); D = snapshot writer is a SECURITY DEFINER fn + DB trigger (atomic, unbypassable).
+
+**Task Manager (ALT-250/251/252 → In Progress, code-complete, STAGED):**
+- apply-create-task-table.cjs (task + task_user_pref, reminder-timing trigger that re-fires on snooze, scanner index, explicit anon-revoke/authenticated-grant).
+- apply-task-rls.cjs — review CAUGHT a real leak (manages_user derived from shared-project membership → a TL could read co-members' tasks) and FIXED it: manages_user() now FAILS CLOSED (owner + admin only). All policies TO authenticated.
+- Frontend: data/tasks.ts + components/tasks/{CreateTaskModal,taskScheduling} + pages/MyTasksPage; wired as /tasks + Sidebar "My Tasks". Build passes. Inert until the table is applied.
+
+**Portal foundation (ALT-222/227 → In Progress, code-complete, STAGED):** 4 appliers. Review CAUGHT two EXISTENTIAL gaps, both FIXED in revise: (1) policies were targeting an unbridged custom role; now target the real `authenticated` role gated by portal.caller_client_assoc_id(); (2) base-table leak — portal sessions would inherit the CRM's permissive `USING(true)` company/contact reads; now closed by an `AS RESTRICTIVE deny_portal_session` policy applied to every RLS-enabled public table. Snapshot writer = SECURITY DEFINER fn + trigger, REVOKE EXECUTE FROM PUBLIC. Remaining VERIFY items (started_at cast on dirty meeting_time, deterministic meeting→report resolution, backfill completeness abort, downline definition) to confirm during the ALT-229 throwaway-login validation, which is MANDATORY before apply (it's a CRM-wide RLS change).
+
+**Parallel:** a read-only audit workflow (find-small-fixes-r1) returned 29 vetted small fixes (a11y aria-labels, dead imports, stuck-spinner unhandled rejections, IST/UTC week-bucket bug, approve-self-notify, time-field clobber). Applying next in a batch.
+
+STATE: ~25 commits unpushed on clean-main. NEXT GATE for the owner: (a) review + approve applying the staged DB migrations (then I run them + the throwaway-login validation), (b) continue Increment 2 (reminders, one-click, portal app/screens). Continuous find-and-fix loop running per owner's "keep working" directive.
