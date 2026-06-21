@@ -30,6 +30,7 @@ import { ContactFormPage } from './pages/ContactFormPage';
 import { CompaniesPage } from './pages/CompaniesPage';
 import { CompanyDetailPage } from './pages/CompanyDetailPage';
 import { CompanyFormPage } from './pages/CompanyFormPage';
+import { PortalRoutes } from './portal/PortalRoutes';
 
 /** Shared full-screen loading spinner used while auth/roles hydrate. */
 function RouteLoader() {
@@ -312,6 +313,12 @@ function AppRoutes() {
           </ProtectedRoute>
         }
       />
+      {/* ───────────────────────── Client Portal (/portal/*) ─────────────────────────
+         White-label (Amplior) client-facing portal. Net-new, fully isolated module:
+         it owns its OWN login + guard (PortalProtectedRoute via usePortalSession) and
+         reads ONLY the portal.* snapshot views — never CRM live-data pages. Sits OUTSIDE
+         the CRM/sales guards. Inert until the portal schema is applied + exposed (ALT-229). */}
+      <Route path="/portal/*" element={<PortalRoutes />} />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   );

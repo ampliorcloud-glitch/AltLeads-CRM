@@ -1772,17 +1772,17 @@ const TICKETS = [
     notes:'One login per portal role on a test client; PROVE no cross-client snapshot read, no peer-meeting read, no cross-client notification read. Run pre-prod AND after backfill on real volume. Multi-tenant leak is existential. dependsOn ALT-227, ALT-228.'
   },
   {
-    id:'ALT-230', title:'New Amplior portal Vite app skeleton (separate build/deploy/domain)',
+    id:'ALT-230', title:'Portal app skeleton (net-new /portal route tree)',
     type:'Task', module:'Client Portal', wave:'Client portal P1',
-    priority:'P0', status:'Planned',
+    priority:'P0', status:'In Progress',
     created: d(2026,6,21), updated: d(2026,6,21), finished: null,
     owner:'Claude',
-    notes:'Resolves the architecture contradiction: a BRAND-NEW app sharing only data-free primitives + brand seam + data layer. Explicitly NOT the /sales shell (that flag only lets reused live-data CRM pages render a sales nav). dependsOn ALT-222.'
+    notes:'BUILT + isolation-reviewed + wired 2026-06-21 (build passes). PRAGMATIC DEVIATION from "separate Vite app": built as a NET-NEW, fully isolated /portal route tree inside the existing web app (src/portal/**) with its OWN login + guard + layout + data layer — mounted in App.tsx OUTSIDE the CRM/sales guards. Adversarial review VERIFIED: zero imports of CRM pages/live-data modules (only portal data layer + ui primitives), data layer hits ONLY supabase.schema(portal) views. Separate-origin brand isolation still achievable via per-deploy VITE_BRAND + 2 domains -> same build. Covers ALT-231/233/234/237/240 in 2a. INERT until portal schema applied + exposed (ALT-229). dependsOn ALT-222.'
   },
   {
     id:'ALT-231', title:'Brand seam — web (BrandContext + per-brand CSS vars)',
     type:'Task', module:'Client Portal', wave:'Client portal P1',
-    priority:'P1', status:'Planned',
+    priority:'P1', status:'In Progress',
     created: d(2026,6,21), updated: d(2026,6,21), finished: null,
     owner:'Claude',
     notes:'useBrand() resolves from VITE_BRAND/hostname; data-brand tokens; Logo/login/error/help read it. Amplior vs AltLeads brand isolation by separate origins. dependsOn ALT-230.'
@@ -1798,7 +1798,7 @@ const TICKETS = [
   {
     id:'ALT-233', title:'Portal auth (own guard: login/forgot/set-password)',
     type:'Feature', module:'Client Portal', wave:'Client portal P1',
-    priority:'P0', status:'Planned',
+    priority:'P0', status:'In Progress',
     created: d(2026,6,21), updated: d(2026,6,21), finished: null,
     owner:'Claude',
     notes:"Portal's OWN guard accepting only enabled client_portal_user rows (not the CRM SalesProtectedRoute). OPEN: OTP vs email-link. dependsOn ALT-230, ALT-222."
@@ -1806,7 +1806,7 @@ const TICKETS = [
   {
     id:'ALT-234', title:'Meetings list / status / detail (NET-NEW pages, snapshot-only)',
     type:'Feature', module:'Client Portal', wave:'Client portal P1',
-    priority:'P0', status:'Planned',
+    priority:'P0', status:'In Progress',
     created: d(2026,6,21), updated: d(2026,6,21), finished: null,
     owner:'Claude',
     notes:'Reads ONLY portal_meetings snapshot. FORBIDDEN to reuse CRM LeadsPage/LeadDetailPage (they query live company_master/lead_report). No reschedule/drop/cancel buttons. dependsOn ALT-226, ALT-233.'
@@ -1830,7 +1830,7 @@ const TICKETS = [
   {
     id:'ALT-237', title:'Feedback (started-gated) + MeetingReview',
     type:'Feature', module:'Client Portal', wave:'Client portal P1',
-    priority:'P0', status:'Planned',
+    priority:'P0', status:'In Progress',
     created: d(2026,6,21), updated: d(2026,6,21), finished: null,
     owner:'Claude',
     notes:'Enabled only when meeting_snapshot.started_at <= now(). Sales Person own; Sales Head edit in-scope. Writes portal_feedback; records back into the CRM + notifies Amplior (portal.notification + email). dependsOn ALT-234.'
@@ -1854,7 +1854,7 @@ const TICKETS = [
   {
     id:'ALT-240', title:'Home + dashboard shell + Profile',
     type:'Feature', module:'Client Portal', wave:'Client portal P1',
-    priority:'P2', status:'Planned',
+    priority:'P2', status:'In Progress',
     created: d(2026,6,21), updated: d(2026,6,21), finished: null,
     owner:'Mohit',
     notes:'Status cards + date-range from portal_dashboard_metrics; role-gated extras. Full chart spec DEFERRED until owner provides it. dependsOn ALT-233.'

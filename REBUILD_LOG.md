@@ -719,3 +719,13 @@ Loop continues (round 2 next). Nothing pushed.
 ---
 ## 2026-06-21 (cont. 14) — find-and-fix loop round 2 (12 files incl. backend)
 Build + node --check pass. ALT-263. Web: swallowed Supabase errors now logged/surfaced (contacts/leadWorkspace/projectStatus/meetings); AuthContext provider value memoized; ReportTab new-question rows keyed on stable _uid; ActivityTab + DispositionForm load error/empty states; MeetingTab delete -> ConfirmDialog; WishlistDetail toast auto-dismiss; UsersTab Add-User email validation. Backend (notify-service) hardened x8: async route handlers wrapped in try/catch -> 503, input validation, no internal-error leakage. Loop continues (now alternating with portal build). Local stack confirmed up: web :5174 + notify :8787 healthy.
+
+---
+## 2026-06-21 (cont. 15) — Client Portal app Increment 2a BUILT (net-new /portal, isolated)
+Built via workflow (foundation -> 3 screens -> adversarial isolation review), wired + build-verified. Code only; inert until DB applied + exposed.
+- **Pragmatic architecture call:** instead of a separate Vite app, built a NET-NEW, fully isolated /portal route tree inside the existing web app (src/portal/**) with its OWN login + guard + layout + data layer, mounted in App.tsx OUTSIDE the CRM/sales guards. (Separate-origin brand isolation still possible via VITE_BRAND + 2 domains -> same build.)
+- Files: src/portal/{data/portal.ts, brand.ts, usePortalSession.ts, PortalProtectedRoute.tsx, PortalLayout.tsx, PortalRoutes.tsx} + pages/{PortalLoginPage, PortalHomePage, PortalMeetingsPage, PortalMeetingDetailPage}.
+- **Isolation review PASSED (verified):** zero imports of CRM pages or live-data modules (greppped); data layer queries ONLY supabase.schema('portal') views; raw supabase client used ONLY for auth. Feedback DOUBLE-gated (UI + server re-read) on snapshot started_at <= now(). Types derived 1:1 from the real portal_meetings/portal_lead/portal_notifications view columns in apply-portal-foundation.cjs.
+- **To go live (gated):** (1) owner approves applying apply-portal-foundation + apply-portal-rls (+ ALT-229 break-in test); (2) add `portal` to Supabase API exposed schemas; (3) provision >=1 enabled client_portal_user row. Until then every fetcher returns error -> UI shows empty/error (expected).
+- Covers ALT-230/231/233/234/237/240. NEXT portal (2b): Wishlist (safe name-only suggest), Notifications feed, assign/reassign, governance reminders.
+Loop continues. Nothing pushed.
