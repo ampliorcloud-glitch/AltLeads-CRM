@@ -2130,6 +2130,22 @@ const TICKETS = [
     owner:'Mohit',
     notes:'OWNER 2026-06-21: sales/portal users can ADD a wishlist by selecting Company name + Prospect(lead) + Location. Mirrors mobile src/screens/wishlist/Wishlist.jsx. Fields: Company (searchable autocomplete from company master, ≥2 chars, free-text ok), Lead name (+auto-fill designation from company leads), Mobile(10-digit), Designation, Branch picker (auto-fills addr/city/state/pin), Address1+2(req), State→City cascading(req), PIN(req), Country(India default), Description, optional geo image/GPS (web v1 = skip). Submit→ our wishlist table (data/wishlist.ts). Full payload spec in SALES-PORTAL.md #3.'
   },
+  {
+    id:'ALT-277', title:'Site feasibility + per-site/city employee size (primary research) for calling agents',
+    type:'Feature', module:'Companies/Market', wave:'Wave 2',
+    priority:'P1', status:'Planned',
+    created: d(2026,6,21), updated: d(2026,6,21), finished: null,
+    owner:'Mohit',
+    notes:'OWNER 2026-06-21: agents waste time calling company SITES that aren\'t feasible for a given PROJECT (e.g. HungerBox non-feasible at many sites). Owner HAS primary market-researched data per company × site/city: feasible/non-feasible + employee size per site. Leverage the existing city-wise prospect grouping (COMPANIES-CONTACTS-BLUEPRINT.md) as the unit: show employee size per site/group + feasible/non-feasible badge for the active project; de-emphasise/filter non-feasible. Build: new per-(company,site/city,project) feasibility table + bulk import of owner\'s research sheet + surface in the grouped view (project-scoped via #8). Full spec: docs/product/SITE-FEASIBILITY.md. Sequencing: AFTER ALT-275/276, BEFORE live-data handoff to real calling agents. Design UX TBD with owner.'
+  },
+  {
+    id:'ALT-278', title:'Pre-production readiness audit — "where do calling agents get stuck?"',
+    type:'Task', module:'QA/Launch', wave:'Wave 2',
+    priority:'P1', status:'Planned',
+    created: d(2026,6,21), updated: d(2026,6,21), finished: null,
+    owner:'Mohit',
+    notes:'OWNER 2026-06-21: before real calling agents get LIVE production data, walk the agent\'s actual path and enumerate every place they can stall (missing feasibility/employee-size, non-feasible sites unflagged, ambiguous lead ownership, masked contact info they actually need, broken write-path, etc.) → produce a go/no-go checklist. Depends on ALT-277 (feasibility data) landing. See SITE-FEASIBILITY.md.'
+  },
   ...uxAuditTickets(),
 ];
 
