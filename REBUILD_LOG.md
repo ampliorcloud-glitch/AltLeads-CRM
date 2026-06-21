@@ -619,3 +619,33 @@ TypeScript everywhere · Supabase (DB+Auth+Storage) · React + Vite · Tailwind 
 - QW#2: removed the dev-era "Connected to live Supabase data — read-only preview" banners from Leads, Wishlist and Dashboard (+ their now-unused bannerDismissed state). The app no longer tells users it's a read-only preview.
 - QW#11: Leads/Contacts/Companies empty state now distinguishes "No <x> yet." (genuinely empty) from "No <x> match the current filters." + an inline "Clear filters" button (Meetings/Wishlist already distinguished). 
 - Build passes. Additive/low-risk. Tracker ALT-215 note updated (#2,#11 shipped). Not pushed.
+
+---
+## 2026-06-21 (cont. 8) — "Clear all not-done tickets" campaign: Bucket A build-out (8 commits)
+Owner directive: "do all pending = every not-done ticket out of the 220." I triaged the 98 not-done into A (build-now, frontend), B (needs owner/ops/DB+RLS validation), C (major new subsystems). This session cleared a large slice of **Bucket A**, each batch build-verified (tsc -b + vite) and committed (NOT pushed). Two parallel sub-agent workflows used for fan-out (infra files; list-a11y replication), integrated + build-verified centrally.
+
+SHIPPED (commit-by-commit):
+- INFRA (ALT-196/200/199/186/197): ErrorBoundary at app root (no more white-screen); Skeleton family; pure validators (email/phone/url/required + validateField/Form); useUrlState hooks (URL persistence foundation); self-serve **Forgot/Reset password** pages + routes + LoginPage show/hide toggle + Forgot link.
+- A11Y/SAFETY (ALT-203/180): new useFocusTrap → Tab-trap on the shared admin Modal + global ConfirmDialog (completes dialog a11y); **clinch/close** now confirms + toasts.
+- DASHBOARD (ALT-193, ALT-192 partial): personalized header (greeting + role chip) and every card/stage-bar/activity-row is a keyboard-operable drill-down (cards→list, bars→/leads?stage=, rows→/leads/:id).
+- GLOBAL SEARCH (ALT-188/213 partial): Cmd/Ctrl-K CommandPalette across leads/companies/contacts (keyboard nav + deep-link) + TopBar "Search ⌘K" button. Index reuses existing RLS-safe fetchers, cached at module scope, **cleared on logout**.
+- LISTS a11y/loading (ALT-200/215#12/182/215#8) on ALL 5 lists: column-aligned skeleton rows on load; error state with Retry (reloadKey); keyboard-operable rows (role=link, Enter/Space) + sortable headers (role=button, aria-sort, keyboard); checkbox aria-labels.
+- APPROVALS (ALT-204): SLA age badge (escalates colour as a report ages), search, sort (oldest-first SLA / name), no-match state, in-modal Approve/Reject.
+- SECURITY (ALT-220, new): post-milestone review caught that the Cmd-K search index (module-scope cache) wasn't cleared on logout → cross-session leak on a shared machine. signOut() now calls clearSearchIndex().
+- TRACKER: gen-backlog-tracker.cjs PROGRESS map updated; merge logic fixed so the GENERATOR is authoritative for Status/Notes (was always preserving stale xlsx status). ALT-010/055/085 confirmed already-done and marked Done. **Done 121 → 134**, In Progress 7, Planned 79 (of 220).
+
+SECURITY PASS (this milestone): new-tab links carry rel=noreferrer noopener; ErrorBoundary hides stack outside DEV; Toast/Confirm/CommandPalette render strings as React text (no XSS); search only surfaces RLS-readable rows (contacts via contact_master_masked) and is purged on logout; password reset never reveals whether an email exists; no new endpoints/RLS/secrets. One finding (ALT-220) fixed.
+
+DEFERRED — needs OWNER decision / ops / DB+RLS validation (Bucket B), NOT done blind:
+- ALT-063 Hostinger env vars; ALT-095/096 parallel-run + cutover; ALT-020 go-live password emails; ALT-021 firewall prune; ALT-137 Gmail rotation; ALT-154 email sign-off; ALT-121 owner doc review; ALT-056 notif-recipient tuning; ALT-045 QC workflow; ALT-108/109/110 Apple/Google/keystore.
+- ALT-152 write-path/ownership RLS (THE launch blocker) + ALT-153 RLS validation w/ throwaway logins + ALT-022/167 team-scope/sales-downline RLS + ALT-216/174 admin-only-create enforcement + ALT-176 bulk user import → all DB/RLS, validate before prod.
+- ALT-197 OPS: add <origin>/reset-password to Supabase Auth Redirect URLs before the reset flow works in prod.
+- ALT-198 stage-select forward-skip constraint: needs the stage state-machine confirmed (closed-lead lock already works); moved off blind-build.
+- ALT-112/192 per-role dashboard NUMBERS: blocked on ALT-152 ownership model (scoping "my leads" wrong would mislead the team) — drill-downs + framing shipped.
+
+DEFERRED — major new subsystems, each needs its own plan + owner input (Bucket C):
+- ALT-104/106/107 mobile RN rewire; ALT-162 Chrome extension; ALT-116/117/164 AI/RAG+pgvector; ALT-161 client portal; ALT-208 calling loop; ALT-160/209 task manager; ALT-172 integrations/MCP; ALT-163 market-mapping; ALT-166/169/170/171/206 sales-portal build-out.
+
+REMAINING Bucket A (build-now, next sessions): ALT-199 wire validators into forms; ALT-186/215#10 wire URL persistence into lists; ALT-184 advanced facets; ALT-185 saved views; ALT-187 select-all-N; ALT-195 sticky headers (visual—needs a browser check); ALT-201 collapsible filters+chips; ALT-205/157 inline-edit + quick actions; ALT-212 freshness column; ALT-214 density/autosave; ALT-207 standardize primitives; ALT-155/156 record/form UX; ALT-194/173 masking treatment; ALT-190 dirty-guard on detail/modals.
+
+STATE: 21 commits unpushed on clean-main (13 prior + 8 this turn). I cannot browser-test (no runner). Recommend the owner spot-test on localhost (cd new-code/web && npm run dev) or say "push" to deploy (git push altleads clean-main:main).

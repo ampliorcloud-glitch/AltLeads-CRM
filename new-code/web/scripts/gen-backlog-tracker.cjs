@@ -97,12 +97,22 @@ function uxAuditTickets() {
   // Mark what shipped locally so the board reflects reality.
   const PROGRESS = {
     'ALT-179': { status: 'Done',        finished: AD, extra: ' ✅ DONE 2026-06-21: ToastProvider/useToast + ConfirmProvider/useConfirm built and mounted at App root (src/components/ui/Toast.tsx + ConfirmDialog.tsx). Now used by the launch-safety wiring; remaining pages migrate to it incrementally.' },
-    'ALT-180': { status: 'In Progress', finished: null, extra: ' 🔧 IN PROGRESS 2026-06-21: confirm wired on cancel-meeting, approve-report (Approvals + inline ReportTab), request-approval (locks form), disable-user, disable-project, remove-member. Convert-to-lead uses a deliberate modal + now a success toast. Remaining: clinch/close, dropdown-option disable.' },
+    'ALT-180': { status: 'Done',        finished: AD, extra: ' ✅ DONE 2026-06-21: confirm wired on cancel-meeting, approve-report (Approvals + inline ReportTab), request-approval (locks form), disable-user, disable-project, remove-member, convert-to-lead, and now clinch/close (mark-successful). Irreversible actions guarded by the branded ConfirmDialog + toast feedback.' },
     'ALT-181': { status: 'Done',        finished: AD, extra: ' ✅ DONE 2026-06-21: global :focus-visible brand ring restored in index.css (was stripping outline from every control).' },
+    'ALT-182': { status: 'Done',        finished: AD, extra: ' ✅ DONE 2026-06-21: all 5 lists — data rows keyboard-operable (role=link, tabIndex, Enter/Space opens) and sortable headers get role=button + aria-sort + Enter/Space-to-sort.' },
+    'ALT-186': { status: 'In Progress', finished: null, extra: ' 🔧 IN PROGRESS 2026-06-21: useUrlState/useUrlString/useUrlNumber/useUrlStringArray hooks built (src/lib/useUrlState.ts, on react-router useSearchParams); dashboard drill-downs already deep-link /leads?stage=. Remaining: wire list filters/sort/page/tab to the URL.' },
+    'ALT-188': { status: 'Done',        finished: AD, extra: ' ✅ DONE 2026-06-21: global Cmd/Ctrl-K CommandPalette across leads/companies/contacts (keyboard nav + deep-link) + TopBar Search button. Index reuses existing RLS-safe fetchers, cached, cleared on logout.' },
+    'ALT-193': { status: 'Done',        finished: AD, extra: ' ✅ DONE 2026-06-21: dashboard stat cards, stage bars, and recent-activity rows are keyboard-operable drill-downs (cards→list, bars→/leads?stage=, rows→/leads/:id) + personalized header.' },
+    'ALT-196': { status: 'Done',        finished: AD, extra: ' ✅ DONE 2026-06-21: top-level ErrorBoundary at app root (Reload / Go to dashboard fallback; DEV-only stack). RouteErrorBoundary helper available for per-route use.' },
+    'ALT-197': { status: 'Done',        finished: AD, extra: ' ✅ DONE 2026-06-21: ForgotPasswordPage + ResetPasswordPage (+ routes), LoginPage show/hide toggle + Forgot link. OWNER OPS: add <origin>/reset-password to Supabase Auth Redirect URLs for prod.' },
+    'ALT-199': { status: 'In Progress', finished: null, extra: ' 🔧 IN PROGRESS 2026-06-21: shared pure validators built (src/lib/validators.ts: isEmail/isPhone/isUrl/isRequired + validateField/validateForm). Remaining: wire on-blur inline errors into Contact/Company/Lead forms.' },
+    'ALT-200': { status: 'Done',        finished: AD, extra: ' ✅ DONE 2026-06-21: Skeleton/SkeletonText/SkeletonTable/SkeletonCards built; all 5 lists render column-aligned skeleton rows on load instead of one spinner (no layout jump).' },
+    'ALT-204': { status: 'Done',        finished: AD, extra: ' ✅ DONE 2026-06-21: Approvals queue gained an SLA age badge (escalating colour), search, sort (oldest-first SLA / name), no-match state, and in-modal Approve/Reject. Pagination deferred (low value at current volume).' },
+    'ALT-213': { status: 'In Progress', finished: null, extra: ' 🔧 IN PROGRESS 2026-06-21: global quick-search delivered via the Cmd-K palette (ALT-188). Remaining: inline row quick-edit, recently-viewed/pinned, undo-toast.' },
     'ALT-183': { status: 'Done',        finished: AD, extra: ' ✅ DONE 2026-06-21 (owner #1 ask): reusable MultiSelectFilter (searchable popover + checkboxes + chip count, OR-within-facet, empty=all) now on ALL FIVE lists — Leads (Agent/Project/City/Source/Industry/Stage), Contacts (Company/City), Companies (Industry/City), Meetings (Agent/Industry/City/Salesperson/Status), Wishlist (Status/Agent/TeamLead/Industry/City). Separate follow-up: per-column/advanced operators (Top#7, ALT-184).' },
-    'ALT-203': { status: 'In Progress', finished: null, extra: ' 🔧 IN PROGRESS 2026-06-21: shared admin Modal now has Escape-to-close + role=dialog/aria-modal/aria-label + initial focus (covers Users/Projects/Clients/etc modals). Remaining: full focus-trap + apply to the bespoke meeting/approval modals.' },
+    'ALT-203': { status: 'Done',        finished: AD, extra: ' ✅ DONE 2026-06-21: shared admin Modal + global ConfirmDialog now have role=dialog/aria-modal/aria-label, Escape-to-close, initial focus, focus-restore, AND a real focus-trap (useFocusTrap — Tab/Shift+Tab cycle inside). Bespoke meeting/approval modals can adopt the hook as touched.' },
     'ALT-190': { status: 'In Progress', finished: null, extra: ' 🔧 IN PROGRESS 2026-06-21: useUnsavedChanges hook (localStorage draft cache + restore + beforeunload warn) wired into the New/Edit Lead, Contact and Company forms with Cancel-confirm; drafts cleared on save + on logout. Remaining: detail-page edit modes + modals + (optional) in-app route blocker (needs data-router).' },
-    'ALT-215': { status: 'In Progress', finished: null, extra: ' 🔧 IN PROGRESS 2026-06-21: shipped #1 (truncation tooltips), #2 (removed dev "read-only preview" banners on Leads/Wishlist/Dashboard), #3 (bell → /notifications + unread badge), #4 (hide create from non-admins), #5 (focus ring, see ALT-181), #6 (search-clear ×), #7 (copy-to-clipboard + mailto/tel via CopyButton), #9 (surface swallowed errors), #11 (no-data vs no-match empty states + inline Clear-filters on Leads/Contacts/Companies), #13 (Contacts 1000-row cap), #14 (modal Esc). Remaining: #8 (checkbox aria-labels), #10 (persist filters/tab to URL), #12 (Retry on load error).' },
+    'ALT-215': { status: 'In Progress', finished: null, extra: ' 🔧 IN PROGRESS 2026-06-21: shipped #1 (truncation tooltips), #2 (removed dev "read-only preview" banners on Leads/Wishlist/Dashboard), #3 (bell → /notifications + unread badge), #4 (hide create from non-admins), #5 (focus ring, see ALT-181), #6 (search-clear ×), #7 (copy-to-clipboard + mailto/tel via CopyButton), #9 (surface swallowed errors), #11 (no-data vs no-match empty states + inline Clear-filters on Leads/Contacts/Companies), #13 (Contacts 1000-row cap), #14 (modal Esc). NOW ALSO #8 (checkbox aria-labels on all 5 lists) + #12 (Retry on load error on all 5 lists). Remaining: #10 (persist filters/tab to URL — hook built, see ALT-186).' },
   };
 
   out.push(mk('ALT-215', 'UX quick-wins batch — 14 small, high-payoff fixes', 'Task', 'UX', 'P1',
@@ -210,10 +220,10 @@ const TICKETS = [
   {
     id:'ALT-010', title:'Remove dead placeholder code (mockLeads.ts, PlaceholderPage.tsx)',
     type:'Chore', module:'Data', wave:'Foundation',
-    priority:'P2', status:'Planned',
-    created: d(2026,6,12), updated: d(2026,6,17), finished: null,
+    priority:'P2', status:'Done',
+    created: d(2026,6,12), updated: d(2026,6,21), finished: d(2026,6,21),
     owner:'Claude',
-    notes:''
+    notes:'Verified 2026-06-21: mockLeads.ts + PlaceholderPage.tsx no longer exist (removed in an earlier cleanup). Only the actively-used SalesPlaceholderPage remains.'
   },
 
   // ══════════════════════════════════════════════════════════════════════
@@ -590,10 +600,10 @@ const TICKETS = [
   {
     id:'ALT-055', title:'Mark-as-read / unread state on Notifications page',
     type:'Feature', module:'Notifications', wave:'Per-project status',
-    priority:'P2', status:'Planned',
-    created: d(2026,6,14), updated: d(2026,6,17), finished: null,
+    priority:'P2', status:'Done',
+    created: d(2026,6,14), updated: d(2026,6,21), finished: d(2026,6,21),
     owner:'Claude',
-    notes:'is_seen column exists; read-state reconciliation not yet built.'
+    notes:'Verified 2026-06-21: NotificationsPage already has per-row Mark-read, Mark-all-as-read, optimistic+revert, all/unread tabs, mark-on-open — backed by markNotificationSeen/markAllNotificationsSeen.'
   },
   {
     id:'ALT-056', title:'Tune notification recipients per action (owner to specify each event)',
@@ -838,10 +848,10 @@ const TICKETS = [
   {
     id:'ALT-085', title:'Company detail: LinkedIn field display',
     type:'Feature', module:'Companies', wave:'Per-project status',
-    priority:'P1', status:'Planned',
-    created: d(2026,6,17), updated: d(2026,6,17), finished: null,
-    owner:'Sub-agent',
-    notes:'Part of Wave E company detail account fields expansion.'
+    priority:'P1', status:'Done',
+    created: d(2026,6,17), updated: d(2026,6,21), finished: d(2026,6,21),
+    owner:'Claude',
+    notes:'Done 2026-06-21: LinkedIn shown in the company "About" grid (CompanyDetailPage), alongside revenue/employees/website/email/CIN.'
   },
 
   // ══════════════════════════════════════════════════════════════════════
@@ -1675,6 +1685,14 @@ const TICKETS = [
     owner:'Claude',
     notes:'DONE 2026-06-21 (owner ask: "if something is edited and someone tries something that loses it, save in cache + warn to save or discard"). New useUnsavedChanges hook: caches the in-progress draft to localStorage while dirty, warns on browser close/refresh (beforeunload), and offers to RESTORE the draft when the user returns. Wired into Lead/Contact/Company New+Edit forms with a Discard-changes confirm on Cancel/Back, cache cleared on successful save and on logout (shared-computer hardening). Implements UX-AUDIT Top-30 #13 (ALT-190) for forms; modals/detail-edit remain.'
   },
+  {
+    id:'ALT-220', title:'Security: clear global-search index cache on logout (cross-session leak)',
+    type:'Security', module:'Security', wave:'UX audit',
+    priority:'P1', status:'Done',
+    created: d(2026,6,21), updated: d(2026,6,21), finished: d(2026,6,21),
+    owner:'Claude',
+    notes:'DONE 2026-06-21 (found in post-milestone security review). The Cmd-K search index is cached at module scope; the SPA does not full-page reload on logout, so on a shared machine the next user could see the previous user\'s cached leads/companies/contacts. signOut() now calls clearSearchIndex() alongside the existing draft-cache purge.'
+  },
   ...uxAuditTickets(),
 ];
 
@@ -1690,13 +1708,19 @@ function mergeTickets(existingRows, newTickets) {
   for (const t of newTickets) {
     if (existingMap[t.id]) {
       const ex = existingMap[t.id];
-      // Preserve: Created date, manually-edited Notes, manually-edited Status
+      // The GENERATOR (this tracked file) is the source of truth for Status + Notes
+      // — it drives them via the PROGRESS map and per-ticket fields. The xlsx is
+      // gitignored and regenerated, so we only carry the original Created date over.
+      // Exception: if the generator left a ticket at the default 'Planned' but the
+      // existing sheet has a more-advanced status, keep the advanced one (so a manual
+      // bump in Excel isn't silently reverted).
+      const generatorIsAuthoritative = t.status && t.status !== 'Planned';
       merged.push({
         ...t,
         created: ex.created || t.created,
-        notes: ex.notes !== undefined ? ex.notes : t.notes,
-        // Only preserve status if it was manually changed (i.e. different from script default)
-        status: ex.status || t.status,
+        status: generatorIsAuthoritative ? t.status : (ex.status || t.status),
+        notes: generatorIsAuthoritative ? t.notes : (ex.notes !== undefined ? ex.notes : t.notes),
+        finished: generatorIsAuthoritative ? t.finished : (ex.finished || t.finished),
         updated: TODAY,
       });
     } else {
