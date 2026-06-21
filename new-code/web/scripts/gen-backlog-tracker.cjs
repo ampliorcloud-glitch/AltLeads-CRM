@@ -2082,6 +2082,22 @@ const TICKETS = [
     owner:'Claude',
     notes:'OWNER 2026-06-21: AFTER the feedback items (#1-6) are fixed/built, web-search the basic B2B CRM features; IGNORE sales features but STILL create a separate list of them (invoice, quotes, etc.). Produce a categorized feature inventory to gap-check AltLeads against.'
   },
+  {
+    id:'ALT-272', title:'Global fuzzy search — grouped results (Leads/Companies/Contacts/Tasks/Meetings), Zoho/HubSpot-style',
+    type:'Feature', module:'Web core', wave:'UX audit',
+    priority:'P1', status:'Planned',
+    created: d(2026,6,21), updated: d(2026,6,21), finished: null,
+    owner:'Mohit',
+    notes:'OWNER (#7) 2026-06-21: enhance the EXISTING global search (Cmd-K CommandPalette / TopBar Search, ALT-188) -> always-visible search bar at the top of every screen; FUZZY matching; results GROUPED by type (All Leads / All Companies / All Contacts / All Tasks / All Meetings) like Zoho/HubSpot. Extend the search index (globalSearch.ts) to also include TASKS + MEETINGS; add group headers + per-group "see all"; keyboard nav across groups.'
+  },
+  {
+    id:'ALT-273', title:'Global PROJECT selector (top bar) — pre-filters all modules/records; default in personal settings',
+    type:'Feature', module:'Web core', wave:'Roadmap',
+    priority:'P1', status:'Planned',
+    created: d(2026,6,21), updated: d(2026,6,21), finished: null,
+    owner:'Mohit',
+    notes:'OWNER (#8) 2026-06-21: a PROJECT selector next to the global search bar on every screen. The selected project becomes the default pre-filter across ALL modules + records (so multi-project users see only that project by default). Default project changeable in personal Settings; persists. Build: a global ProjectContext (selected project_id, persisted to localStorage + a user pref), a TopBar project dropdown (from the user\'s accessible projects), and have every list query (leads/companies/contacts/meetings/tasks/wishlist) read the context to scope by project_id. "All projects" option for users with access. Cross-cutting — touches every list data path; validate scoping carefully.'
+  },
   ...uxAuditTickets(),
 ];
 
