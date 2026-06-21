@@ -5,6 +5,7 @@ import { SalesShellProvider } from './contexts/SalesShellContext';
 import { ToastProvider } from './components/ui/Toast';
 import { ConfirmProvider } from './components/ui/ConfirmDialog';
 import { ErrorBoundary } from './components/ui/ErrorBoundary';
+import { CommandPalette } from './components/ui/CommandPalette';
 import { LoginPage } from './pages/LoginPage';
 import { ForgotPasswordPage } from './pages/ForgotPasswordPage';
 import { ResetPasswordPage } from './pages/ResetPasswordPage';
@@ -317,6 +318,8 @@ function App() {
                shows a calm fallback instead of white-screening the whole SPA. */}
             <ErrorBoundary>
               <AppRoutes />
+              {/* Global Cmd-K search (ALT-188); self-gates to logged-in internal users. */}
+              <CommandPalette />
             </ErrorBoundary>
           </BrowserRouter>
         </ConfirmProvider>
