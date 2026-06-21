@@ -2093,10 +2093,10 @@ const TICKETS = [
   {
     id:'ALT-273', title:'Global PROJECT selector (top bar) — pre-filters all modules/records; default in personal settings',
     type:'Feature', module:'Web core', wave:'Roadmap',
-    priority:'P1', status:'Planned',
+    priority:'P1', status:'In Progress',
     created: d(2026,6,21), updated: d(2026,6,21), finished: null,
     owner:'Mohit',
-    notes:'OWNER (#8) 2026-06-21: a PROJECT selector next to the global search bar on every screen. The selected project becomes the default pre-filter across ALL modules + records (so multi-project users see only that project by default). Default project changeable in personal Settings; persists. Build: a global ProjectContext (selected project_id, persisted to localStorage + a user pref), a TopBar project dropdown (from the user\'s accessible projects), and have every list query (leads/companies/contacts/meetings/tasks/wishlist) read the context to scope by project_id. "All projects" option for users with access. Cross-cutting — touches every list data path; validate scoping carefully.'
+    notes:'OWNER (#8) 2026-06-21: a PROJECT selector next to the global search bar on every screen. The selected project becomes the default pre-filter across ALL modules + records (so multi-project users see only that project by default). Default project changeable in personal Settings; persists. SHIPPED (commit 7241294): global ProjectContext (selected project_id, persisted to localStorage; default-project pref seeds new sessions), TopBar ProjectSwitcher (from the user\'s accessible projects via admin.fetchMyProjects — admin=all enabled, others=their project_user rows; self-hides for <2 projects), "All projects" = null = no filter, Settings "Default project" card. SCOPED on NUMERIC project_id (not name — duplicate/blank names + query drift can\'t hide records): Leads (RealLead.projectId from lead_master.project_id) + Meetings (MeetingRow.projectId via lead). REMAINING: Tasks + Wishlist left UNFILTERED (no reliable project field — documented TODO; Tasks could derive via linked lead later); Companies/Contacts are shared across projects (per-project scoping TBD). Status → In Progress until those modules are scoped or explicitly de-scoped by owner.'
   },
   ...uxAuditTickets(),
 ];
