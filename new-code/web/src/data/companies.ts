@@ -32,6 +32,10 @@ export interface Company {
   industry: string;
   city: string;
   size: number | null;
+  /** Revenue / turnover band label (from turnover_master.turnover), '' when unset. */
+  turnover: string;
+  /** Free-text company description from company_master.description, '' when unset. */
+  description: string;
   email: string;
   linkedin: string;
   isDemo: boolean;
@@ -84,6 +88,8 @@ interface CompanyRow {
   industry_id: number | null;
   city_id: number | null;
   company_size: number | null;
+  turnover_id: number | null;
+  description: string | null;
   email: string | null;
   linkedin_url: string | null;
   is_demo: boolean | null;
@@ -189,6 +195,8 @@ export async function fetchCompanies(): Promise<CompaniesResult> {
     industry: c.industry_id != null ? (industryMap.get(c.industry_id) ?? '') : '',
     city: c.city_id != null ? (cityMap.get(c.city_id) ?? '') : '',
     size: c.company_size ?? null,
+    turnover: '', // not needed for the list view; populated on the detail fetch
+    description: '',
     email: c.email ?? '',
     linkedin: c.linkedin_url ?? '',
     isDemo: Boolean(c.is_demo),
@@ -212,7 +220,7 @@ export async function fetchCompanyById(companyId: number): Promise<Company | nul
   const { data, error } = await supabase
     .from('company_master')
     .select(
-      'company_id, company_name, domain_clean, company_web_url, cin_number, industry_id, city_id, company_size, email, linkedin_url, is_demo, created_date',
+      'company_id, company_name, domain_clean, company_web_url, cin_number, industry_id, city_id, company_size, turnover_id, description, email, linkedin_url, is_demo, created_date',
     )
     .eq('company_id', companyId)
     .is('deleted_date', null)
@@ -238,6 +246,15 @@ export async function fetchCompanyById(companyId: number): Promise<Company | nul
       .maybeSingle();
     city = (cty as { city_name: string } | null)?.city_name ?? '';
   }
+  let turnover = '';
+  if (c.turnover_id != null) {
+    const { data: tov } = await supabase
+      .from('turnover_master')
+      .select('turnover')
+      .eq('turnover_id', c.turnover_id)
+      .maybeSingle();
+    turnover = (tov as { turnover: string } | null)?.turnover ?? '';
+  }
 
   return {
     id: String(c.company_id),
@@ -248,6 +265,8 @@ export async function fetchCompanyById(companyId: number): Promise<Company | nul
     industry,
     city,
     size: c.company_size ?? null,
+    turnover,
+    description: c.description ?? '',
     email: c.email ?? '',
     linkedin: c.linkedin_url ?? '',
     isDemo: Boolean(c.is_demo),

@@ -14,6 +14,7 @@ import {
   X,
   Save,
   Plus,
+  ExternalLink,
 } from 'lucide-react';
 import { AppShell } from '../components/layout/AppShell';
 import { useAuth } from '../contexts/AuthContext';
@@ -467,10 +468,14 @@ export function ContactDetailPage() {
             {contact.company_name && contact.company_id && (
               <Link
                 to={`/companies/${contact.company_id}`}
+                target="_blank"
+                rel="noreferrer noopener"
+                title="Open company in a new tab"
                 style={{ fontSize: 13, color: '#1A7EE8', textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: 4, marginTop: 4 }}
               >
                 <Building2 size={13} />
                 {contact.company_name}
+                <ExternalLink size={11} style={{ opacity: 0.6 }} />
               </Link>
             )}
           </div>
@@ -588,9 +593,13 @@ export function ContactDetailPage() {
                     {contact.company_name && contact.company_id ? (
                       <Link
                         to={`/companies/${contact.company_id}`}
-                        style={{ fontSize: 13, color: '#1A7EE8', textDecoration: 'none' }}
+                        target="_blank"
+                        rel="noreferrer noopener"
+                        title="Open company in a new tab"
+                        style={{ fontSize: 13, color: '#1A7EE8', textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: 4 }}
                       >
                         {contact.company_name}
+                        <ExternalLink size={11} style={{ opacity: 0.6 }} />
                       </Link>
                     ) : (
                       <span style={{ fontSize: 13, color: '#D1D5DB' }}>—</span>
@@ -828,17 +837,20 @@ export function ContactDetailPage() {
             ) : (
               <div className="space-y-2">
                 {leads.map((l) => (
-                  <div
+                  <a
                     key={l.id}
-                    onClick={() => navigate(`/leads/${l.id}`)}
+                    href={`/leads/${l.id}`}
+                    target="_blank"
+                    rel="noreferrer noopener"
                     className="flex items-center justify-between gap-3 rounded-lg px-3 py-2 cursor-pointer"
-                    style={{ border: '1px solid #E5E7EB', background: '#fff' }}
+                    style={{ border: '1px solid #E5E7EB', background: '#fff', textDecoration: 'none' }}
                     onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = '#F9FAFB'; }}
                     onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = '#fff'; }}
                   >
                     <div className="min-w-0">
-                      <p className="truncate" style={{ fontSize: 13, fontWeight: 500, color: '#111827', margin: 0 }}>
+                      <p className="truncate inline-flex items-center gap-1" style={{ fontSize: 13, fontWeight: 500, color: '#111827', margin: 0 }}>
                         {l.leadName || <span style={{ color: '#9CA3AF' }}>Untitled lead</span>}
+                        <ExternalLink size={11} style={{ color: '#9CA3AF' }} />
                       </p>
                       {l.leadNumber && (
                         <p style={{ fontSize: 11, color: '#9CA3AF', margin: 0, fontFamily: 'monospace' }}>
@@ -850,7 +862,7 @@ export function ContactDetailPage() {
                       {l.stage && <StageBadge stage={l.stage} />}
                       <span style={{ fontSize: 11, color: '#9CA3AF' }}>{l.createdDate || '—'}</span>
                     </div>
-                  </div>
+                  </a>
                 ))}
               </div>
             )}
@@ -873,6 +885,9 @@ export function ContactDetailPage() {
                   <Link
                     key={s.id}
                     to={`/contacts/${s.id}`}
+                    target="_blank"
+                    rel="noreferrer noopener"
+                    title="Open contact in a new tab"
                     style={{
                       display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8,
                       fontSize: 13, color: '#374151', textDecoration: 'none',
@@ -881,8 +896,9 @@ export function ContactDetailPage() {
                     onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = '#F9FAFB'; }}
                     onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = 'transparent'; }}
                   >
-                    <span className="truncate" style={{ fontWeight: 500, color: '#111827' }}>
+                    <span className="truncate inline-flex items-center gap-1" style={{ fontWeight: 500, color: '#111827' }}>
                       {s.fullName || '—'}
+                      <ExternalLink size={11} style={{ color: '#9CA3AF' }} />
                     </span>
                     <span className="truncate" style={{ color: '#9CA3AF', fontSize: 12 }}>
                       {s.designation || ''}

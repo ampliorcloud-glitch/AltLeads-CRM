@@ -131,6 +131,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const signOut = async () => {
+    // Clear any cached form drafts (unsaved-changes guard) so a draft typed on a
+    // shared computer isn't recoverable by the next user after logout.
+    try {
+      const keys: string[] = [];
+      for (let i = 0; i < localStorage.length; i += 1) {
+        const k = localStorage.key(i);
+        if (k && k.startsWith('altleads:draft:')) keys.push(k);
+      }
+      keys.forEach((k) => localStorage.removeItem(k));
+    } catch {
+      /* storage unavailable — ignore */
+    }
     await supabase.auth.signOut();
   };
 

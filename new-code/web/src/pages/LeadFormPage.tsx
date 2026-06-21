@@ -13,7 +13,7 @@
  *     phase-3 feature), stage (managed via lead_report in detail view).
  */
 
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { ArrowLeft, Loader2, ChevronRight, AlertCircle, Check } from 'lucide-react';
 import { AppShell } from '../components/layout/AppShell';
@@ -28,6 +28,9 @@ import {
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import { SearchSelect, type SearchSelectOption } from '../components/ui/SearchSelect';
+import { useToast } from '../components/ui/Toast';
+import { useConfirm } from '../components/ui/ConfirmDialog';
+import { useUnsavedChanges } from '../components/ui/useUnsavedChanges';
 import { fetchAllContacts, type Contact } from '../data/contacts';
 
 /* ── Shared styles ───────────────────────────────────────────────────────── */
@@ -363,6 +366,50 @@ export function LeadFormPage() {
     if (errors[key]) setErrors((prev) => ({ ...prev, [key]: '' }));
   };
 
+  // ── Unsaved-changes guard (warn + Cancel-confirm; cache only for new leads) ──
+  const toast = useToast();
+  const confirm = useConfirm();
+  // Capture the post-load form as the baseline so prefilled/edit values aren't "unsaved".
+  // State (not a ref) so the dirty comparison is render-safe.
+  const [baseline, setBaseline] = useState<string | null>(null);
+  useEffect(() => {
+    if (!loading && baseline === null) {
+      setBaseline(JSON.stringify(form));
+    }
+  }, [loading, form, baseline]);
+  const dirty = baseline !== null && JSON.stringify(form) !== baseline;
+  const { cachedDraft, clearCache, dismissCached } = useUnsavedChanges({
+    dirty, draft: form, cacheKey: isEdit ? null : 'lead:new',
+  });
+  const promptedRef = useRef(false);
+  useEffect(() => {
+    if (!cachedDraft || promptedRef.current) return;
+    promptedRef.current = true;
+    (async () => {
+      const ok = await confirm({
+        title: 'Restore unsaved changes?',
+        message: 'You have an unsaved new lead from a previous session. Restore it?',
+        confirmLabel: 'Restore', cancelLabel: 'Discard',
+      });
+      if (ok) { setForm(cachedDraft); toast.info('Restored your unsaved changes'); }
+      else { clearCache(); }
+      dismissCached();
+    })();
+  }, [cachedDraft, confirm, toast, clearCache, dismissCached]);
+
+  const handleCancel = async () => {
+    if (dirty) {
+      const ok = await confirm({
+        title: 'Discard unsaved changes?',
+        message: 'Your changes to this lead will be lost.',
+        tone: 'danger', confirmLabel: 'Discard', cancelLabel: 'Keep editing',
+      });
+      if (!ok) return;
+      clearCache();
+    }
+    navigate(isEdit && leadId ? `/leads/${leadId}` : '/leads');
+  };
+
   const validate = (): boolean => {
     const e: Errors = {};
     // Only truly required fields block save. Company is optional: ~79% of existing
@@ -414,8 +461,11 @@ export function LeadFormPage() {
       setSubmitting(false);
       if (result?.error) {
         setErrors({ submit: result.error });
+        toast.error(result.error);
       } else {
         setSubmitSuccess(true);
+        clearCache();
+        toast.success('Lead saved');
         setTimeout(() => navigate(`/leads/${leadId}`), 600);
       }
     } else {
@@ -423,8 +473,11 @@ export function LeadFormPage() {
       setSubmitting(false);
       if ('error' in result) {
         setErrors({ submit: result.error });
+        toast.error(result.error);
       } else {
         setSubmitSuccess(true);
+        clearCache();
+        toast.success('Lead created');
         setTimeout(() => navigate(`/leads/${result.lead_id}`), 600);
       }
     }
@@ -489,7 +542,7 @@ export function LeadFormPage() {
         <div className="flex items-center gap-2 text-zinc-400 mb-4" style={{ fontSize: 12 }}>
           <button
             type="button"
-            onClick={() => navigate(isEdit && leadId ? `/leads/${leadId}` : '/leads')}
+            onClick={handleCancel}
             className="flex items-center gap-1 hover:text-zinc-700 transition-colors"
           >
             <ArrowLeft size={13} />
@@ -719,7 +772,7 @@ export function LeadFormPage() {
           <div className="pt-2 flex items-center justify-between gap-4 border-t border-zinc-100">
             <button
               type="button"
-              onClick={() => navigate(isEdit && leadId ? `/leads/${leadId}` : '/leads')}
+              onClick={handleCancel}
               className="border border-zinc-300 hover:border-zinc-400 bg-white hover:bg-zinc-50 text-zinc-600 font-medium rounded-lg transition-colors"
               style={{ fontSize: 13, padding: '7px 16px' }}
               disabled={submitting}

@@ -93,9 +93,23 @@ function uxAuditTickets() {
       'Missing capability (UX-AUDIT §5, completeness critic). ' + detail));
   });
 
+  // ── Progress (2026-06-21 launch-safety bundle, commit aa9375e) ──────────────
+  // Mark what shipped locally so the board reflects reality.
+  const PROGRESS = {
+    'ALT-179': { status: 'Done',        finished: AD, extra: ' ✅ DONE 2026-06-21: ToastProvider/useToast + ConfirmProvider/useConfirm built and mounted at App root (src/components/ui/Toast.tsx + ConfirmDialog.tsx). Now used by the launch-safety wiring; remaining pages migrate to it incrementally.' },
+    'ALT-180': { status: 'In Progress', finished: null, extra: ' 🔧 IN PROGRESS 2026-06-21: confirm wired on cancel-meeting, approve-report, disable-user, disable-project, remove-member. Remaining: clinch/close, request-approval, convert-to-lead, dropdown disable.' },
+    'ALT-181': { status: 'Done',        finished: AD, extra: ' ✅ DONE 2026-06-21: global :focus-visible brand ring restored in index.css (was stripping outline from every control).' },
+    'ALT-190': { status: 'In Progress', finished: null, extra: ' 🔧 IN PROGRESS 2026-06-21: useUnsavedChanges hook (localStorage draft cache + restore + beforeunload warn) wired into the New/Edit Lead, Contact and Company forms with Cancel-confirm; drafts cleared on save + on logout. Remaining: detail-page edit modes + modals + (optional) in-app route blocker (needs data-router).' },
+    'ALT-215': { status: 'In Progress', finished: null, extra: ' 🔧 IN PROGRESS 2026-06-21: shipped #4 (hide create from non-admins), #9 (surface swallowed status/toggle errors), #13 (Contacts 1000-row cap). Remaining: #1,2,3,5,6,7,8,10,11,12,14.' },
+  };
+
   out.push(mk('ALT-215', 'UX quick-wins batch — 14 small, high-payoff fixes', 'Task', 'UX', 'P1',
     'All effort-S (hours each), UX-AUDIT §3: (1) tooltips on truncated cells (2) remove dev "read-only preview" banners (3) wire bell→/notifications + unread badge (4) hide create buttons from outreach roles (5) global focus ring (6) search clear (×) (7) mailto/tel + copy-to-clipboard (8) checkbox/bell aria-labels (9) SURFACE swallowed inline status/stage/toggle errors (10) persist tab/banner state (11) "no data" vs "no match" empty states (12) Retry on load errors (13) fix Contacts 1000-row cap (14) modal Esc + dirty-backdrop guard. Items 4, 9, 13 + Top-30 #3 = SHIP WITH LAUNCH (they hide failure / data loss).'));
 
+  for (const t of out) {
+    const p = PROGRESS[t.id];
+    if (p) { t.status = p.status; t.finished = p.finished; t.notes += p.extra; }
+  }
   return out;
 }
 
@@ -1628,12 +1642,36 @@ const TICKETS = [
     notes:'Future: import users (name/email/role/project) from CSV/XLSX to bulk-create logins + roles + project membership (extends the bulk-login work ALT-151 and the bulk import engine ALT-159). Launch-user list not needed now; this is the durable mechanism. PLAN ONLY.'
   },
   {
-    id:'ALT-216', title:'INSERT RLS does not enforce admin-only create (contradicts ADR-21)',
+    id:'ALT-216', title:'INSERT RLS does not enforce admin-only create — DEFER, but REQUIRED before sales portal shows companies/contacts',
     type:'Security', module:'Security', wave:'Security hardening',
-    priority:'P1', status:'Planned',
+    priority:'P2', status:'Planned',
     created: d(2026,6,21), updated: d(2026,6,21), finished: null,
     owner:'Mohit',
-    notes:'SECURITY FINDING (post-UX-audit milestone security pass, 2026-06-21). access-rls-v1.sql INSERT policies on lead_master/company_master/contact_master are WITH CHECK (is_admin() OR created_by = current_user_id()) — so ANY authenticated user can create records they own. This contradicts ADR-21 "create = admin-only by default". The new UI gate (canCreateData = isAdmin, hides New buttons) enforces it CLIENT-SIDE ONLY and is bypassable (e.g. navigate to /leads/new). To truly enforce: tighten INSERT WITH CHECK to is_admin() (or is_admin() OR has_project_create_grant(project) once the per-project create setting ALT-174 exists). NEEDS owner sign-off + throwaway-role login validation BEFORE applying to prod (do not change live RLS unilaterally). Pairs with the update-path blocker ALT-152.'
+    notes:'SECURITY FINDING (security pass 2026-06-21). access-rls-v1.sql INSERT policies on lead_master/company_master/contact_master are WITH CHECK (is_admin() OR created_by = current_user_id()) — so ANY authenticated user can create records they own, contradicting ADR-21 "admin-only create". OWNER DECISION 2026-06-21: DO NOT harden the DB now — the internal team is trusted and the UI gate (canCreateData=isAdmin, hides New buttons) is sufficient for the internal launch. HOWEVER this MUST be enforced at the DB before the SALES PORTAL exposes companies/contacts: sales users (SALES_HEAD/SALES_PERSON) must NOT be able to create company/contact/lead. Action when that lands: tighten INSERT WITH CHECK to is_admin() (or is_admin() OR has_project_create_grant) AND ensure sales-role users fail the check; validate with throwaway sales logins before prod. Pairs with sales-portal RLS scoping (ALT-167) + update-path blocker ALT-152.'
+  },
+  {
+    id:'ALT-217', title:'Company record — richer "About" details (revenue, employees, website, email, LinkedIn, description)',
+    type:'Feature', module:'Companies', wave:'Companies & Contacts',
+    priority:'P2', status:'Done',
+    created: d(2026,6,21), updated: d(2026,6,21), finished: d(2026,6,21),
+    owner:'Claude',
+    notes:'DONE 2026-06-21 (owner ask). CompanyDetailPage now shows an "About this company" grid: Industry, Employees (company_size), Revenue (turnover_master.turnover via turnover_id), City, Website, Email, LinkedIn, CIN + the free-text description. companies.ts fetchCompanyById extended (turnover_id, description joins). Build passes.'
+  },
+  {
+    id:'ALT-218', title:'Inline Zoho-style tick-to-save contact editor inside company + cross-record new-tab redirects',
+    type:'Feature', module:'Companies', wave:'Companies & Contacts',
+    priority:'P2', status:'Done',
+    created: d(2026,6,21), updated: d(2026,6,21), finished: d(2026,6,21),
+    owner:'Claude',
+    notes:'DONE 2026-06-21 (owner ask). Replaced the confusing expand-arrow+Save with an always-visible inline editor strip (status + description + comments) that uses the row width; a green ✓ tick saves (Enter also saves) and ✗ discards, only while dirty; toast feedback. Contact name now links to the contact record. ALL cross-record redirects now open in a NEW TAB with rel=noreferrer noopener: company→contact, company→lead (DealsTab), contact→company, contact→lead, contact→colleague. "Add new contact" inside company gated by canCreateData.'
+  },
+  {
+    id:'ALT-219', title:'Unsaved-changes guard + draft cache + restore on New/Edit forms',
+    type:'Feature', module:'Web core', wave:'UX audit',
+    priority:'P1', status:'Done',
+    created: d(2026,6,21), updated: d(2026,6,21), finished: d(2026,6,21),
+    owner:'Claude',
+    notes:'DONE 2026-06-21 (owner ask: "if something is edited and someone tries something that loses it, save in cache + warn to save or discard"). New useUnsavedChanges hook: caches the in-progress draft to localStorage while dirty, warns on browser close/refresh (beforeunload), and offers to RESTORE the draft when the user returns. Wired into Lead/Contact/Company New+Edit forms with a Discard-changes confirm on Cancel/Back, cache cleared on successful save and on logout (shared-computer hardening). Implements UX-AUDIT Top-30 #13 (ALT-190) for forms; modals/detail-edit remain.'
   },
   ...uxAuditTickets(),
 ];

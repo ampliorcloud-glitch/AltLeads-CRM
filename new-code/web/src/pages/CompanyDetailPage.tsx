@@ -15,8 +15,11 @@ import {
   ChevronDown,
   UserPlus,
   X,
+  Check,
   Save,
   ExternalLink,
+  Users,
+  IndianRupee,
 } from 'lucide-react';
 import { AppShell } from '../components/layout/AppShell';
 import { StageBadge } from '../components/ui/Badge';
@@ -44,6 +47,7 @@ import {
 } from '../data/projectStatus';
 import { fetchOptions, type DropdownOption } from '../data/dropdowns';
 import { SearchSelect, type SearchSelectOption } from '../components/ui/SearchSelect';
+import { useToast } from '../components/ui/Toast';
 import { useAuth } from '../contexts/AuthContext';
 import type { Interaction } from '../data/contacts';
 
@@ -79,6 +83,24 @@ function MetaItem({ icon, children }: { icon: React.ReactNode; children: React.R
       {children}
     </span>
   );
+}
+
+/* Labelled detail cell for the company "About" grid (icon + label + value). */
+function Detail({ icon, label, children }: { icon: React.ReactNode; label: string; children: React.ReactNode }) {
+  return (
+    <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8, minWidth: 0 }}>
+      <span style={{ color: '#9CA3AF', marginTop: 1, flexShrink: 0 }}>{icon}</span>
+      <div style={{ minWidth: 0 }}>
+        <div style={{ fontSize: 10, fontWeight: 600, color: '#9CA3AF', textTransform: 'uppercase', letterSpacing: 0.4 }}>{label}</div>
+        <div style={{ fontSize: 13, color: '#374151', wordBreak: 'break-word' }}>{children}</div>
+      </div>
+    </div>
+  );
+}
+
+/** Format an employee count with Indian grouping; em-dash when unknown. */
+function fmtSize(size: number | null): string {
+  return size != null ? size.toLocaleString('en-IN') : '—';
 }
 
 /* ------------------------------------------------------------------
@@ -483,21 +505,25 @@ function ContactRowPanel({
   showComments,
 }: ContactRowPanelProps) {
   const contactIdNum = Number(contact.id);
-  const [expanded, setExpanded] = useState(false);
+  const toast = useToast();
+  const [logOpen, setLogOpen] = useState(false);
   const [contactStatusOpts, setContactStatusOpts] = useState<DropdownOption[]>([]);
   const [draftStatus, setDraftStatus] = useState('');
   const [draftDesc, setDraftDesc] = useState('');
   const [draftComments, setDraftComments] = useState('');
   const [saving, setSaving] = useState(false);
-  const [saveOk, setSaveOk] = useState(false);
-  const [saveErr, setSaveErr] = useState<string | null>(null);
   const [dispKey, setDispKey] = useState(0); // forces DispositionForm remount on log
+
+  // The last-saved values (from statusLite) — drafts are "dirty" when they differ.
+  const savedStatus = statusLite?.contact_status ?? '';
+  const savedDesc = statusLite?.description ?? '';
+  const savedComments = statusLite?.comments ?? '';
 
   // Seed draft from statusLite whenever it changes
   useEffect(() => {
-    setDraftStatus(statusLite?.contact_status ?? '');
-    setDraftDesc(statusLite?.description ?? '');
-    setDraftComments(statusLite?.comments ?? '');
+    setDraftStatus(savedStatus);
+    setDraftDesc(savedDesc);
+    setDraftComments(savedComments);
   }, [statusLite]);
 
   // Load contact_status options once
@@ -505,10 +531,18 @@ function ContactRowPanel({
     fetchOptions('contact_status').then(setContactStatusOpts);
   }, []);
 
+  const dirty =
+    draftStatus !== savedStatus || draftDesc !== savedDesc || draftComments !== savedComments;
+
+  function discard() {
+    setDraftStatus(savedStatus);
+    setDraftDesc(savedDesc);
+    setDraftComments(savedComments);
+  }
+
   async function handleSave() {
-    if (!projectId) return;
+    if (!projectId || !dirty) return;
     setSaving(true);
-    setSaveErr(null);
     const patch = {
       contact_status: draftStatus || null,
       description: draftDesc || null,
@@ -516,41 +550,42 @@ function ContactRowPanel({
     };
     const { error } = await upsertContactStatus(contactIdNum, projectId, patch, actorId);
     setSaving(false);
-    if (error) { setSaveErr(error); return; }
-    setSaveOk(true);
-    setTimeout(() => setSaveOk(false), 1800);
+    if (error) { toast.error(error); return; }
     onStatusChange(contactIdNum, {
       contact_status: draftStatus || null,
       description: draftDesc || null,
       comments: draftComments || null,
     });
+    toast.success(`Saved ${contact.fullName || 'contact'}`);
   }
 
-  const fieldSm: React.CSSProperties = {
-    fontSize: 12, padding: '4px 7px',
-    border: '1px solid #d4d4d8', borderRadius: 5,
-    background: '#fff', color: '#18181b',
-    width: '100%',
+  const inputSm: React.CSSProperties = {
+    fontSize: 12, padding: '5px 8px',
+    border: `1px solid ${dirty ? '#93c5fd' : '#d4d4d8'}`, borderRadius: 5,
+    background: '#fff', color: '#18181b', width: '100%', fontFamily: 'inherit',
   };
-  const labelSm: React.CSSProperties = {
-    fontSize: 10, color: '#6B7280', fontWeight: 500,
-    display: 'block', marginBottom: 2,
-  };
-
-  const hasProjectFields = showDescription || showComments || showDisposition;
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
-      {/* Main contact row */}
-      <div
-        className="flex items-start justify-between gap-4 rounded-lg px-4 py-3"
-        style={{ border: '1px solid var(--border-color)', background: 'var(--color-surface)' }}
-      >
+    <div
+      className="rounded-lg"
+      style={{ border: `1px solid ${dirty ? '#bfdbfe' : 'var(--border-color)'}`, background: 'var(--color-surface)' }}
+    >
+      {/* Main contact row: identity (left) + Log-call toggle (right) */}
+      <div className="flex items-start justify-between gap-4 px-4 py-3">
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2 flex-wrap">
-            <p className="font-medium text-zinc-900" style={{ fontSize: 14 }}>
+            {/* Name → opens the contact record in a NEW TAB */}
+            <a
+              href={`/contacts/${contactIdNum}`}
+              target="_blank"
+              rel="noreferrer noopener"
+              className="font-medium text-zinc-900 hover:text-blue-600 hover:underline inline-flex items-center gap-1"
+              style={{ fontSize: 14 }}
+              title="Open contact in a new tab"
+            >
               {contact.fullName || <span className="text-zinc-400">Unnamed contact</span>}
-            </p>
+              <ExternalLink size={11} className="text-zinc-400" />
+            </a>
             {contact.designation && (
               <span className="text-zinc-500" style={{ fontSize: 12 }}>· {contact.designation}</span>
             )}
@@ -576,161 +611,147 @@ function ContactRowPanel({
               <span style={{ fontSize: 12, color: '#D1D5DB' }}>—</span>
             )}
             {contact.linkedin ? (
-              linkedinAsText ? (
-                <a
-                  href={fullUrl(contact.linkedin)}
-                  target="_blank"
-                  rel="noreferrer noopener"
-                  className="flex items-center gap-1 text-zinc-500 hover:text-blue-600"
-                  style={{ fontSize: 12 }}
-                >
-                  <ExternalLink size={12} />
-                  {contact.linkedin}
-                </a>
-              ) : (
-                <a
-                  href={fullUrl(contact.linkedin)}
-                  target="_blank"
-                  rel="noreferrer noopener"
-                  className="flex items-center gap-1 text-zinc-500 hover:text-blue-600"
-                  title={contact.linkedin}
-                  style={{ fontSize: 12 }}
-                >
-                  <Link2 size={12} />
-                  LinkedIn
-                </a>
-              )
+              <a
+                href={fullUrl(contact.linkedin)}
+                target="_blank"
+                rel="noreferrer noopener"
+                className="flex items-center gap-1 text-zinc-500 hover:text-blue-600"
+                title={contact.linkedin}
+                style={{ fontSize: 12 }}
+              >
+                {linkedinAsText ? <ExternalLink size={12} /> : <Link2 size={12} />}
+                {linkedinAsText ? contact.linkedin : 'LinkedIn'}
+              </a>
             ) : (
               <span style={{ fontSize: 12, color: '#D1D5DB' }}>—</span>
             )}
           </div>
-          {/* Compact project status bar (visible without expand) */}
-          {projectId && !expanded && (
-            <div className="flex items-center gap-3 mt-1 flex-wrap">
-              {statusLite?.description && (
-                <span style={{ fontSize: 11, color: '#6B7280', fontStyle: 'italic' }}>
-                  {statusLite.description}
-                </span>
-              )}
-            </div>
-          )}
         </div>
 
-        {/* Right: status select (compact inline) + expand toggle */}
-        <div className="flex items-center gap-2 shrink-0">
-          {projectId && (
-            <div className="relative" style={{ minWidth: 110 }}>
+        {/* Log-call toggle (replaces the bare expand arrow) */}
+        {showDisposition && projectId && (
+          <button
+            type="button"
+            onClick={() => setLogOpen((v) => !v)}
+            className="shrink-0 inline-flex items-center gap-1.5 font-medium transition-colors"
+            style={{
+              fontSize: 11, padding: '4px 10px', borderRadius: 5,
+              border: '1px solid #d4d4d8', background: logOpen ? '#EFF6FF' : '#fff',
+              color: logOpen ? '#1A7EE8' : '#6B7280', cursor: 'pointer',
+            }}
+            title="Log a call for this contact"
+          >
+            <ChevronDown size={12} style={{ transform: logOpen ? 'rotate(180deg)' : 'none', transition: 'transform 0.15s' }} />
+            Log call
+          </button>
+        )}
+      </div>
+
+      {/* Inline editor strip — uses the row width; tick (✓) saves, ✗ discards.
+          No need to expand a panel; edit any field then click the green check. */}
+      {projectId ? (
+        <div
+          className="px-4 pb-3"
+          style={{ display: 'flex', alignItems: 'flex-end', gap: 8, flexWrap: 'wrap' }}
+        >
+          <div style={{ minWidth: 150 }}>
+            <label style={{ fontSize: 10, color: '#6B7280', fontWeight: 600, display: 'block', marginBottom: 2 }}>Status</label>
+            <div className="relative">
               <select
                 value={draftStatus}
                 onChange={(e) => setDraftStatus(e.target.value)}
                 title="Contact status for this project"
-                style={{
-                  fontSize: 11, padding: '3px 20px 3px 7px',
-                  border: '1px solid #d4d4d8', borderRadius: 4,
-                  background: '#fff', color: '#374151',
-                  appearance: 'none', cursor: 'pointer', width: '100%',
-                }}
+                style={{ ...inputSm, padding: '5px 22px 5px 8px', appearance: 'none', cursor: 'pointer', color: '#374151' }}
               >
                 <option value="">Status…</option>
                 {contactStatusOpts.map((o) => (
                   <option key={o.option_id} value={o.value}>{o.label}</option>
                 ))}
               </select>
-              <ChevronDown size={10} style={{ position: 'absolute', right: 5, top: '50%', transform: 'translateY(-50%)', color: '#9ca3af', pointerEvents: 'none' }} />
+              <ChevronDown size={11} style={{ position: 'absolute', right: 6, top: '50%', transform: 'translateY(-50%)', color: '#9ca3af', pointerEvents: 'none' }} />
             </div>
-          )}
-          {hasProjectFields && projectId && (
-            <button
-              type="button"
-              onClick={() => setExpanded((v) => !v)}
-              title={expanded ? 'Collapse' : 'Expand per-project fields'}
-              style={{
-                background: 'none', border: 'none', cursor: 'pointer',
-                color: '#9ca3af', padding: 2, display: 'flex', alignItems: 'center',
-              }}
-            >
-              <ChevronDown size={14} style={{ transform: expanded ? 'rotate(180deg)' : 'none', transition: 'transform 0.15s' }} />
-            </button>
-          )}
-        </div>
-      </div>
-
-      {/* Expanded panel */}
-      {expanded && projectId && (
-        <div
-          style={{
-            border: '1px solid #e5e7eb', borderTop: 'none',
-            borderRadius: '0 0 8px 8px',
-            background: '#f9fafb',
-            padding: '10px 14px',
-            display: 'flex', flexDirection: 'column', gap: 8,
-          }}
-        >
-          <div style={{ display: 'grid', gridTemplateColumns: `${showDescription ? '1fr ' : ''}${showComments ? '1fr ' : ''}`, gap: 8 }}>
-            {showDescription && (
-              <div>
-                <label style={labelSm}>Description</label>
-                <textarea
-                  value={draftDesc}
-                  onChange={(e) => setDraftDesc(e.target.value)}
-                  rows={2}
-                  placeholder="Description…"
-                  style={{ ...fieldSm, resize: 'vertical', fontFamily: 'inherit' }}
-                />
-              </div>
-            )}
-            {showComments && (
-              <div>
-                <label style={labelSm}>Comments</label>
-                <textarea
-                  value={draftComments}
-                  onChange={(e) => setDraftComments(e.target.value)}
-                  rows={2}
-                  placeholder="Comments…"
-                  style={{ ...fieldSm, resize: 'vertical', fontFamily: 'inherit' }}
-                />
-              </div>
-            )}
           </div>
 
-          {saveErr && <div style={{ fontSize: 11, color: '#dc2626' }}>{saveErr}</div>}
-
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-            <button
-              type="button"
-              onClick={handleSave}
-              disabled={saving}
-              style={{
-                fontSize: 11, fontWeight: 600,
-                padding: '4px 12px',
-                border: 'none', borderRadius: 4,
-                background: saving ? '#93c5fd' : '#1A7EE8',
-                color: '#fff', cursor: saving ? 'not-allowed' : 'pointer',
-                display: 'inline-flex', alignItems: 'center', gap: 4,
-              }}
-            >
-              {saving ? <Loader2 size={11} className="animate-spin" /> : <Save size={11} />}
-              {saving ? 'Saving…' : 'Save'}
-            </button>
-            {saveOk && <span style={{ fontSize: 11, color: '#16a34a' }}>Saved</span>}
-          </div>
-
-          {showDisposition && (
-            <div style={{ marginTop: 4, borderTop: '1px solid #e5e7eb', paddingTop: 8 }}>
-              <div style={{ fontSize: 11, fontWeight: 600, color: '#6B7280', marginBottom: 6, textTransform: 'uppercase', letterSpacing: 0.4 }}>
-                Log call
-              </div>
-              <DispositionForm
-                key={dispKey}
-                recordType="contact"
-                recordId={contactIdNum}
-                projectId={projectId}
-                ownerUserId={null}
-                actorId={actorId}
-                onLogged={() => setDispKey((k) => k + 1)}
+          {showDescription && (
+            <div style={{ flex: 1, minWidth: 180 }}>
+              <label style={{ fontSize: 10, color: '#6B7280', fontWeight: 600, display: 'block', marginBottom: 2 }}>Description</label>
+              <input
+                value={draftDesc}
+                onChange={(e) => setDraftDesc(e.target.value)}
+                placeholder="Add a description…"
+                style={inputSm}
+                onKeyDown={(e) => { if (e.key === 'Enter' && dirty) void handleSave(); }}
               />
             </div>
           )}
+
+          {showComments && (
+            <div style={{ flex: 1, minWidth: 180 }}>
+              <label style={{ fontSize: 10, color: '#6B7280', fontWeight: 600, display: 'block', marginBottom: 2 }}>Comments</label>
+              <input
+                value={draftComments}
+                onChange={(e) => setDraftComments(e.target.value)}
+                placeholder="Add a comment…"
+                style={inputSm}
+                onKeyDown={(e) => { if (e.key === 'Enter' && dirty) void handleSave(); }}
+              />
+            </div>
+          )}
+
+          {/* Save (tick) / Discard (✗) — only while there are unsaved changes */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, height: 30 }}>
+            <button
+              type="button"
+              onClick={handleSave}
+              disabled={!dirty || saving}
+              title={dirty ? 'Save changes' : 'No changes to save'}
+              style={{
+                width: 30, height: 30, borderRadius: 6, border: 'none',
+                display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                background: dirty && !saving ? '#16A34A' : '#E5E7EB',
+                color: dirty && !saving ? '#fff' : '#9CA3AF',
+                cursor: dirty && !saving ? 'pointer' : 'not-allowed',
+              }}
+            >
+              {saving ? <Loader2 size={14} className="animate-spin" /> : <Check size={16} strokeWidth={2.5} />}
+            </button>
+            {dirty && !saving && (
+              <button
+                type="button"
+                onClick={discard}
+                title="Discard changes"
+                style={{
+                  width: 30, height: 30, borderRadius: 6,
+                  border: '1px solid #E5E7EB', background: '#fff', color: '#9CA3AF',
+                  display: 'inline-flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer',
+                }}
+              >
+                <X size={15} />
+              </button>
+            )}
+          </div>
+        </div>
+      ) : (
+        <div className="px-4 pb-3" style={{ fontSize: 11, color: '#9CA3AF' }}>
+          Select a project (top-right) to update this contact's status.
+        </div>
+      )}
+
+      {/* Log-call panel (toggled) */}
+      {logOpen && showDisposition && projectId && (
+        <div style={{ borderTop: '1px solid #e5e7eb', background: '#f9fafb', padding: '10px 14px', borderRadius: '0 0 8px 8px' }}>
+          <div style={{ fontSize: 11, fontWeight: 600, color: '#6B7280', marginBottom: 6, textTransform: 'uppercase', letterSpacing: 0.4 }}>
+            Log call
+          </div>
+          <DispositionForm
+            key={dispKey}
+            recordType="contact"
+            recordId={contactIdNum}
+            projectId={projectId}
+            ownerUserId={null}
+            actorId={actorId}
+            onLogged={() => setDispKey((k) => k + 1)}
+          />
         </div>
       )}
     </div>
@@ -894,7 +915,6 @@ function ContactsTab({ contacts, companyId, projectId, actorId }: ContactsTabPro
    DEALS tab
 ------------------------------------------------------------------ */
 function DealsTab({ deals }: { deals: CompanyDeal[] }) {
-  const navigate = useNavigate();
   if (deals.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center gap-2 py-12 text-center">
@@ -906,17 +926,20 @@ function DealsTab({ deals }: { deals: CompanyDeal[] }) {
   return (
     <div className="space-y-2">
       {deals.map((d) => (
-        <div
+        <a
           key={d.id}
-          onClick={() => navigate(`/leads/${d.id}`)}
+          href={`/leads/${d.id}`}
+          target="_blank"
+          rel="noreferrer noopener"
           className="flex items-center justify-between gap-4 rounded-lg px-4 py-3 cursor-pointer transition-colors"
           style={{ border: '1px solid var(--border-color)', background: 'var(--color-surface)' }}
           onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = 'var(--color-gray-50)'; }}
           onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = 'var(--color-surface)'; }}
         >
           <div className="min-w-0">
-            <p className="font-medium text-zinc-900 truncate" style={{ fontSize: 14 }}>
+            <p className="font-medium text-zinc-900 truncate inline-flex items-center gap-1" style={{ fontSize: 14 }}>
               {d.leadName || <span className="text-zinc-400">Untitled lead</span>}
+              <ExternalLink size={11} className="text-zinc-400" />
             </p>
             {d.leadNumber && (
               <p className="text-zinc-400 font-mono" style={{ fontSize: 11 }}>{d.leadNumber}</p>
@@ -926,7 +949,7 @@ function DealsTab({ deals }: { deals: CompanyDeal[] }) {
             <StageBadge stage={d.stage} />
             <span className="text-zinc-400" style={{ fontSize: 12 }}>{d.createdDate || '—'}</span>
           </div>
-        </div>
+        </a>
       ))}
     </div>
   );
@@ -1112,7 +1135,63 @@ export function CompanyDetailPage() {
             </div>
           </div>
 
-          {/* ACCOUNT PANEL (per-project status) — shown below header meta */}
+          {/* ABOUT — company details grid (revenue, employees, website, etc.) */}
+          <div style={{ marginTop: 16, paddingTop: 14, borderTop: '1px solid #f3f4f6' }}>
+            <div style={{ fontSize: 11, fontWeight: 600, color: '#6B7280', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 10 }}>
+              About this company
+            </div>
+            <div
+              style={{
+                display: 'grid',
+                gridTemplateColumns: 'repeat(auto-fill, minmax(190px, 1fr))',
+                gap: 14,
+              }}
+            >
+              <Detail icon={<Building2 size={14} />} label="Industry">
+                {company.industry || '—'}
+              </Detail>
+              <Detail icon={<Users size={14} />} label="Employees">
+                {fmtSize(company.size)}
+              </Detail>
+              <Detail icon={<IndianRupee size={14} />} label="Revenue">
+                {company.turnover || '—'}
+              </Detail>
+              <Detail icon={<MapPin size={14} />} label="City">
+                {company.city || '—'}
+              </Detail>
+              <Detail icon={<Globe size={14} />} label="Website">
+                {website ? (
+                  <a href={website} target="_blank" rel="noreferrer noopener" className="hover:underline" style={{ color: 'var(--color-brand)' }}>
+                    {company.domainClean || company.webUrl}
+                  </a>
+                ) : '—'}
+              </Detail>
+              <Detail icon={<Mail size={14} />} label="Email">
+                {company.email ? (
+                  <a href={`mailto:${company.email}`} className="hover:underline" style={{ color: 'var(--color-brand)' }}>
+                    {company.email}
+                  </a>
+                ) : '—'}
+              </Detail>
+              <Detail icon={<Link2 size={14} />} label="LinkedIn">
+                {company.linkedin ? (
+                  <a href={fullUrl(company.linkedin)} target="_blank" rel="noreferrer noopener" className="hover:underline" style={{ color: 'var(--color-brand)' }}>
+                    View profile
+                  </a>
+                ) : '—'}
+              </Detail>
+              <Detail icon={<Hash size={14} />} label="CIN">
+                {company.cin || '—'}
+              </Detail>
+            </div>
+            {company.description && (
+              <div style={{ marginTop: 12, fontSize: 13, color: '#4B5563', lineHeight: 1.5 }}>
+                {company.description}
+              </div>
+            )}
+          </div>
+
+          {/* ACCOUNT PANEL (per-project status) — shown below the details */}
           {/* // TODO visibility: per-project status/notes are owner + admin only (security pass) */}
           <div style={{ marginTop: 16, paddingTop: 14, borderTop: '1px solid #f3f4f6' }}>
             <div style={{ fontSize: 11, fontWeight: 600, color: '#6B7280', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 8 }}>
@@ -1161,14 +1240,16 @@ export function CompanyDetailPage() {
                   <UserPlus size={13} />
                   Link existing contact
                 </button>
-                <button
-                  onClick={() => navigate(`/contacts/new?company=${company.id}`)}
-                  className="inline-flex items-center gap-1.5 text-blue-600 hover:text-blue-700 font-medium transition-colors"
-                  style={{ fontSize: 12 }}
-                >
-                  <Plus size={13} />
-                  Add new contact
-                </button>
+                {canCreateData && (
+                  <button
+                    onClick={() => navigate(`/contacts/new?company=${company.id}`)}
+                    className="inline-flex items-center gap-1.5 text-blue-600 hover:text-blue-700 font-medium transition-colors"
+                    style={{ fontSize: 12 }}
+                  >
+                    <Plus size={13} />
+                    Add new contact
+                  </button>
+                )}
               </div>
             )}
             {tab === 'leads' && canCreateData && (

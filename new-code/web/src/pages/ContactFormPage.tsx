@@ -1,8 +1,11 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useSearchParams, Link } from 'react-router-dom';
 import { ArrowLeft, Loader2, AlertCircle, CheckCircle2 } from 'lucide-react';
 import { AppShell } from '../components/layout/AppShell';
 import { useAuth } from '../contexts/AuthContext';
+import { useToast } from '../components/ui/Toast';
+import { useConfirm } from '../components/ui/ConfirmDialog';
+import { useUnsavedChanges } from '../components/ui/useUnsavedChanges';
 import {
   fetchCompanyOptions,
   fetchCityOptions,
@@ -49,6 +52,8 @@ export function ContactFormPage() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const { profile, user } = useAuth();
+  const toast = useToast();
+  const confirm = useConfirm();
 
   // Form state
   const [fullName, setFullName] = useState('');
@@ -90,6 +95,56 @@ export function ContactFormPage() {
       setLookupsLoading(false);
     });
   }, []);
+
+  // ── Unsaved-changes guard (cache + restore + warn) ──────────────────────────
+  const draft = { fullName, designation, email, mobileNo, altMobileNo, linkedinUrl, companyId, cityId, isDemo };
+  const baseline = useMemo(() => ({
+    fullName: '', designation: '', email: '', mobileNo: '', altMobileNo: '', linkedinUrl: '',
+    companyId: (prefillCompany ? Number(prefillCompany) : '') as number | '',
+    cityId: '' as number | '', isDemo: true,
+  }), [prefillCompany]);
+  const dirty = JSON.stringify(draft) !== JSON.stringify(baseline);
+  const { cachedDraft, clearCache, dismissCached } = useUnsavedChanges({
+    dirty, draft, cacheKey: 'contact:new',
+  });
+
+  // Offer to restore a draft cached from a previous session (once).
+  const promptedRef = useRef(false);
+  useEffect(() => {
+    if (!cachedDraft || promptedRef.current) return;
+    promptedRef.current = true;
+    (async () => {
+      const ok = await confirm({
+        title: 'Restore unsaved changes?',
+        message: 'You have an unsaved new contact from a previous session. Restore it?',
+        confirmLabel: 'Restore', cancelLabel: 'Discard',
+      });
+      if (ok) {
+        const c = cachedDraft;
+        setFullName(c.fullName); setDesignation(c.designation); setEmail(c.email);
+        setMobileNo(c.mobileNo); setAltMobileNo(c.altMobileNo); setLinkedinUrl(c.linkedinUrl);
+        setCompanyId(c.companyId); setCityId(c.cityId); setIsDemo(c.isDemo);
+        toast.info('Restored your unsaved changes');
+      } else {
+        clearCache();
+      }
+      dismissCached();
+    })();
+  }, [cachedDraft, confirm, toast, clearCache, dismissCached]);
+
+  // Cancel/Back — confirm before discarding unsaved edits.
+  const handleCancel = async () => {
+    if (dirty) {
+      const ok = await confirm({
+        title: 'Discard unsaved changes?',
+        message: 'Your changes to this contact will be lost.',
+        tone: 'danger', confirmLabel: 'Discard', cancelLabel: 'Keep editing',
+      });
+      if (!ok) return;
+      clearCache();
+    }
+    navigate('/contacts');
+  };
 
   // Validate
   function validate(): boolean {
@@ -155,9 +210,12 @@ export function ContactFormPage() {
 
     if (error) {
       setSubmitError(error);
+      toast.error(error);
       return;
     }
 
+    clearCache();
+    toast.success('Contact created');
     navigate(`/contacts/${contactId}`);
   };
 
@@ -168,7 +226,7 @@ export function ContactFormPage() {
       <div className="space-y-4" style={{ maxWidth: 640 }}>
         {/* Back nav */}
         <button
-          onClick={() => navigate('/contacts')}
+          onClick={handleCancel}
           className="flex items-center gap-1.5 text-zinc-500 hover:text-zinc-800 transition-colors"
           style={{ fontSize: 13 }}
         >
@@ -390,7 +448,7 @@ export function ContactFormPage() {
               </button>
               <button
                 type="button"
-                onClick={() => navigate('/contacts')}
+                onClick={handleCancel}
                 style={{
                   fontSize: 13, fontWeight: 500, color: '#6B7280',
                   background: 'transparent', border: '1px solid #E5E7EB',

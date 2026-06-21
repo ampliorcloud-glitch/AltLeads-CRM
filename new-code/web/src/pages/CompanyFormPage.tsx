@@ -10,12 +10,15 @@
  * Owner is always "Unassigned" for now. // TODO ownership
  */
 
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ArrowLeft, ChevronRight, AlertCircle, Check, Loader2, ExternalLink } from 'lucide-react';
 import { AppShell } from '../components/layout/AppShell';
 import { createCompany, type NewCompanyInput, type DuplicateMatch } from '../data/companies';
 import { useAuth } from '../contexts/AuthContext';
+import { useToast } from '../components/ui/Toast';
+import { useConfirm } from '../components/ui/ConfirmDialog';
+import { useUnsavedChanges } from '../components/ui/useUnsavedChanges';
 
 const inputBase: React.CSSProperties = {
   fontSize: 13,
@@ -95,6 +98,8 @@ type Errors = Partial<Record<keyof NewCompanyInput | 'submit', string>>;
 export function CompanyFormPage() {
   const navigate = useNavigate();
   const { profile } = useAuth();
+  const toast = useToast();
+  const confirm = useConfirm();
   const [form, setForm] = useState<NewCompanyInput>(emptyForm);
   const [errors, setErrors] = useState<Errors>({});
   const [submitting, setSubmitting] = useState(false);
@@ -103,6 +108,40 @@ export function CompanyFormPage() {
 
   // Audit created_by stores the numeric user_id as text (ownership/RLS key).
   const createdBy = profile?.user_id != null ? String(profile.user_id) : null;
+
+  // ── Unsaved-changes guard (cache + restore + warn) ──────────────────────────
+  const dirty = JSON.stringify(form) !== JSON.stringify(emptyForm);
+  const { cachedDraft, clearCache, dismissCached } = useUnsavedChanges({
+    dirty, draft: form, cacheKey: 'company:new',
+  });
+  const promptedRef = useRef(false);
+  useEffect(() => {
+    if (!cachedDraft || promptedRef.current) return;
+    promptedRef.current = true;
+    (async () => {
+      const ok = await confirm({
+        title: 'Restore unsaved changes?',
+        message: 'You have an unsaved new company from a previous session. Restore it?',
+        confirmLabel: 'Restore', cancelLabel: 'Discard',
+      });
+      if (ok) { setForm(cachedDraft); toast.info('Restored your unsaved changes'); }
+      else { clearCache(); }
+      dismissCached();
+    })();
+  }, [cachedDraft, confirm, toast, clearCache, dismissCached]);
+
+  const handleCancel = async () => {
+    if (dirty) {
+      const ok = await confirm({
+        title: 'Discard unsaved changes?',
+        message: 'Your changes to this company will be lost.',
+        tone: 'danger', confirmLabel: 'Discard', cancelLabel: 'Keep editing',
+      });
+      if (!ok) return;
+      clearCache();
+    }
+    navigate('/companies');
+  };
 
   const set = <K extends keyof NewCompanyInput>(key: K, value: NewCompanyInput[K]) => {
     setForm((prev) => ({ ...prev, [key]: value }));
@@ -140,10 +179,13 @@ export function CompanyFormPage() {
 
     if (result.kind === 'error') {
       setErrors({ submit: result.message });
+      toast.error(result.message);
     } else if (result.kind === 'duplicate') {
       setDuplicate(result.match);
     } else {
       setSuccess(true);
+      clearCache();
+      toast.success('Company created');
       setTimeout(() => navigate(`/companies/${result.id}`), 500);
     }
   };
@@ -153,7 +195,7 @@ export function CompanyFormPage() {
       <div className="max-w-2xl">
         {/* Breadcrumb */}
         <div className="flex items-center gap-2 text-zinc-400 mb-4" style={{ fontSize: 12 }}>
-          <button type="button" onClick={() => navigate('/companies')} className="flex items-center gap-1 hover:text-zinc-700 transition-colors">
+          <button type="button" onClick={handleCancel} className="flex items-center gap-1 hover:text-zinc-700 transition-colors">
             <ArrowLeft size={13} />
             Companies
           </button>
@@ -231,7 +273,7 @@ export function CompanyFormPage() {
           <div className="pt-2 flex items-center justify-between gap-4 border-t border-zinc-100">
             <button
               type="button"
-              onClick={() => navigate('/companies')}
+              onClick={handleCancel}
               className="border border-zinc-300 hover:border-zinc-400 bg-white hover:bg-zinc-50 text-zinc-600 font-medium rounded-lg transition-colors"
               style={{ fontSize: 13, padding: '7px 16px' }}
               disabled={submitting}
