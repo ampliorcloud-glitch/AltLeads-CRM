@@ -196,8 +196,13 @@ export function WishlistPage() {
   // project_id column on `wishlist`), surface it on WishlistItem and AND it into
   // the filteredData predicate below: `selectedProjectId == null ||
   // item.projectId === selectedProjectId`.
-  const { selectedProjectId } = useProjectScope();
-  void selectedProjectId; // intentionally unused: no project field on wishlist rows
+  const { selectedProjectId, projects: scopeProjects } = useProjectScope();
+  // Not used to filter rows (no project field) — only to show a note so the global
+  // switcher's reach is never ambiguous here (review ALT-273B nit).
+  const scopedProjectName =
+    selectedProjectId != null
+      ? scopeProjects.find((p) => p.project_id === selectedProjectId)?.project_name ?? null
+      : null;
 
   const [filters, setFilters] = useState<Filters>(defaultFilters);
   const [sorting, setSorting] = useState<SortingState>([]);
@@ -555,6 +560,11 @@ export function WishlistPage() {
               <>
                 <span className="font-medium text-zinc-700">{rowCount}</span> of{' '}
                 <span className="font-medium text-zinc-700">{allItems.length}</span> companies
+                {scopedProjectName && (
+                  <span className="text-zinc-400" title="Wishlist entries aren't tied to a project, so the selected project doesn't filter this list.">
+                    {' · '}not filtered by project
+                  </span>
+                )}
                 {sel.count > 0 && (
                   <span className="ml-2 text-zinc-500">
                     · <span className="font-medium text-zinc-700">{sel.count}</span> selected

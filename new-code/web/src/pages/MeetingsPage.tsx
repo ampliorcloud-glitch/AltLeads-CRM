@@ -318,6 +318,14 @@ export function MeetingsPage() {
     });
   }, [filters, allMeetings, selectedProjectId]);
 
+  // Meetings hidden ONLY because their lead carries no project_id while a project is
+  // scoped — surfaced as a note so the filter never looks like missing data
+  // (review ALT-273B: NULL project_id rows silently hidden).
+  const noProjectHidden = useMemo(
+    () => (selectedProjectId == null ? 0 : allMeetings.filter((m) => m.projectId == null).length),
+    [selectedProjectId, allMeetings],
+  );
+
   // Visible column keys in display order (driven by colPrefs).
   const visibleKeys = useMemo(
     () => colPrefs.filter((p) => p.visible).map((p) => p.key),
@@ -589,6 +597,11 @@ export function MeetingsPage() {
                 )}
                 <span className="font-medium text-zinc-700">{filteredData.length}</span> of{' '}
                 <span className="font-medium text-zinc-700">{allMeetings.length}</span> meetings
+                {noProjectHidden > 0 && (
+                  <span className="text-zinc-400" title="These meetings' leads have no project assigned, so they're hidden while a project is selected.">
+                    {' · '}{noProjectHidden} with no project hidden
+                  </span>
+                )}
                 {hasActiveFilters && (
                   <button
                     onClick={() => { setFilters(defaultFilters); setPageIndex(0); }}

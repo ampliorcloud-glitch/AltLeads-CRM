@@ -13,7 +13,7 @@
  * There is no `useUnsavedChanges` hook in this codebase yet, so we guard close
  * with a simple confirm when the form has unsaved edits.
  */
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   Modal,
   Field,
@@ -121,6 +121,16 @@ export function CreateTaskModal({
     setDueLocal('');
     setActivePreset(null);
   }
+
+  // Re-seed the form from the current props each time the modal OPENS. State is
+  // otherwise seeded once at mount and the modal stays mounted across opens, so
+  // without this a second open (e.g. 'Call back' then 'Schedule meeting' on the
+  // same record) would show the previous prefill and a wrong `dirty` baseline
+  // (review ALT-273B: stale prefill on reopen). reset() reads current props.
+  useEffect(() => {
+    if (open) reset();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
 
   async function handleClose() {
     if (saving) return;

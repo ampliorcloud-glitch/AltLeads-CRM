@@ -337,6 +337,14 @@ export function LeadsPage() {
     });
   }, [filters, allLeads, projectScopeId]);
 
+  // How many leads are hidden ONLY because they carry no project_id while a project
+  // is scoped — surfaced as a small note so a project filter never looks like missing
+  // data (review ALT-273B: NULL project_id rows silently hidden).
+  const noProjectHidden = useMemo(
+    () => (projectScopeId == null ? 0 : allLeads.filter((l) => l.projectId == null).length),
+    [projectScopeId, allLeads],
+  );
+
   // Derive the ordered, visibility-filtered set of column keys from prefs.
   const visibleKeys = useMemo(
     () => columnPrefs.filter((p) => p.visible).map((p) => p.key),
@@ -660,6 +668,11 @@ export function LeadsPage() {
               <>
                 <span className="font-medium text-zinc-700">{filteredData.length}</span> of{' '}
                 <span className="font-medium text-zinc-700">{allLeads.length}</span> leads
+                {noProjectHidden > 0 && (
+                  <span className="text-zinc-400" title="These leads have no project assigned, so they're hidden while a project is selected.">
+                    {' · '}{noProjectHidden} with no project hidden
+                  </span>
+                )}
                 {sel.count > 0 && (
                   <>
                     {' ·'}{' '}

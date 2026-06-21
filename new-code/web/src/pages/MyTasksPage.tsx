@@ -355,7 +355,13 @@ export function MyTasksPage() {
   // not filter tasks by project yet. Follow-up: add a project linkage to tasks
   // (e.g. denormalised project_id on `task`, or join via the linked record) and
   // then compose it here exactly like the other list pages.
-  const { selectedProjectId } = useProjectScope();
+  const { selectedProjectId, projects: scopeProjects } = useProjectScope();
+  // When a project is scoped elsewhere, tell the user it does NOT narrow tasks (yet),
+  // so the global switcher's reach is never ambiguous (review ALT-273B nit).
+  const scopedProjectName =
+    selectedProjectId != null
+      ? scopeProjects.find((p) => p.project_id === selectedProjectId)?.project_name ?? null
+      : null;
 
   const [groups, setGroups] = useState<GroupedTasks>(emptyGroups());
   const [loading, setLoading] = useState(true);
@@ -487,6 +493,14 @@ export function MyTasksPage() {
             <Plus size={15} /> New task
           </button>
         </div>
+
+        {/* Project-scope note: tasks aren't project-scoped yet (no project field). */}
+        {scopedProjectName && (
+          <p style={{ margin: '0 0 12px', fontSize: 12, color: '#9CA3AF' }}>
+            Showing all your tasks — tasks aren&rsquo;t filtered by the selected project
+            (<span style={{ color: '#6B7280' }}>{scopedProjectName}</span>) yet.
+          </p>
+        )}
 
         {/* Tabs */}
         <div
