@@ -96,30 +96,40 @@ export function ExportButton<Row extends Record<string, unknown>>({
   }, []);
 
   function exportExcel() {
-    const data = pickRows(rows, selectedIds, idKey);
-    const matrix = toMatrix(data, columns);
-    const ws = XLSX.utils.aoa_to_sheet(matrix);
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, 'Export');
-    XLSX.writeFile(wb, `${filename}.xlsx`);
-    setOpen(false);
+    try {
+      const data = pickRows(rows, selectedIds, idKey);
+      const matrix = toMatrix(data, columns);
+      const ws = XLSX.utils.aoa_to_sheet(matrix);
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, 'Export');
+      XLSX.writeFile(wb, `${filename}.xlsx`);
+    } catch {
+      window.alert('Export failed. Please try again.');
+    } finally {
+      setOpen(false);
+    }
   }
 
   function exportCsv() {
-    const data = pickRows(rows, selectedIds, idKey);
-    const matrix = toMatrix(data, columns);
-    const csv = matrix
-      .map((line) =>
-        line
-          .map((cell) => {
-            const s = String(cell ?? '');
-            return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
-          })
-          .join(','),
-      )
-      .join('\r\n');
-    downloadBlob(new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8;' }), `${filename}.csv`);
-    setOpen(false);
+    try {
+      const data = pickRows(rows, selectedIds, idKey);
+      const matrix = toMatrix(data, columns);
+      const csv = matrix
+        .map((line) =>
+          line
+            .map((cell) => {
+              const s = String(cell ?? '');
+              return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+            })
+            .join(','),
+        )
+        .join('\r\n');
+      downloadBlob(new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8;' }), `${filename}.csv`);
+    } catch {
+      window.alert('Export failed. Please try again.');
+    } finally {
+      setOpen(false);
+    }
   }
 
   const selectedCount = selectedIds?.size ?? 0;

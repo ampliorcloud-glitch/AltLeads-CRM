@@ -23,7 +23,6 @@ import type { ColumnPref } from '../data/views';
 import type { ColumnDef as UIColumnDef, ExportColumn } from '../components/ui/columns';
 import {
   Search,
-  X,
   ChevronUp,
   ChevronDown,
   ChevronsUpDown,
@@ -151,9 +150,6 @@ function StatusBadge({ status }: { status: string }) {
     </span>
   );
 }
-
-/* ── filters ────────────────────────────────────────────────────────────── */
-
 
 /* ── Column catalogue (for ColumnCustomizer + ExportButton) ─────────────── */
 

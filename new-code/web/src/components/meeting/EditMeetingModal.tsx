@@ -42,7 +42,7 @@ export function EditMeetingModal({
   onSaved: () => void;
 }) {
   const [date, setDate] = useState(meeting.meetingDate ?? '');
-  const [time, setTime] = useState(meeting.meetingTime ?? '');
+  const [time, setTime] = useState(/^\d{2}:\d{2}$/.test(meeting.meetingTime ?? '') ? meeting.meetingTime : '');
   const [mode, setMode] = useState(meeting.mode || MEETING_MODES[1]);
   const [agenda, setAgenda] = useState(meeting.description ?? '');
   const [url, setUrl] = useState(meeting.meetingUrl ?? '');
@@ -87,7 +87,7 @@ export function EditMeetingModal({
           <h3 className="font-semibold text-zinc-800" style={{ fontSize: 14 }}>
             Edit Meeting Details
           </h3>
-          <button onClick={onClose} className="text-zinc-400 hover:text-zinc-700 transition-colors">
+          <button onClick={onClose} aria-label="Close" className="text-zinc-400 hover:text-zinc-700 transition-colors">
             <X size={16} />
           </button>
         </div>

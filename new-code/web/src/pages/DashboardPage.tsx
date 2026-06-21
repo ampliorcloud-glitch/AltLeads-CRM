@@ -129,7 +129,7 @@ export function DashboardPage() {
         setStats(s);
         setLoading(false);
       }
-    });
+    }).catch(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
   }, []);
 

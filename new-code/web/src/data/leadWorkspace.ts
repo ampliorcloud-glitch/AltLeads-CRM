@@ -1050,15 +1050,15 @@ export async function fetchLeadMeetings(leadId: number): Promise<{
 
   const mRows = (meetings ?? []) as MeetingRow[];
 
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
+  const now = new Date();
+  const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
 
   const upcoming: MeetingListItem[] = [];
   const past: MeetingListItem[] = [];
   for (const m of mRows) {
     const item: MeetingListItem = { ...m, lead_id: leadId, lead_name: '' };
-    const d = m.meeting_date ? new Date(m.meeting_date) : null;
-    if (d && !isNaN(d.getTime()) && d >= today) upcoming.push(item);
+    const dateStr = (m.meeting_date ?? '').slice(0, 10);
+    if (dateStr && dateStr >= todayStr) upcoming.push(item);
     else past.push(item);
   }
   upcoming.sort((a, b) => (a.meeting_date ?? '').localeCompare(b.meeting_date ?? ''));

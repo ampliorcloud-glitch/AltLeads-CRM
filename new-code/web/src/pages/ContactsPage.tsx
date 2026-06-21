@@ -1,6 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import * as XLSX from 'xlsx';
 import { AppShell } from '../components/layout/AppShell';
 import { fetchAllContacts, type Contact } from '../data/contacts';
 import {
@@ -445,10 +444,6 @@ export function ContactsPage() {
         return col ? [col] : [];
       });
   }, [columnPrefs]);
-
-  // Handle legacy Excel export removed — ExportButton handles it
-  // (keeping XLSX import alive for backward compat with the import already in file)
-  void XLSX;
 
   /* -------------------------------------------------------- render -- */
 

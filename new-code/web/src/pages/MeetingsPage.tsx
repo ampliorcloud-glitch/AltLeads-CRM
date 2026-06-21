@@ -259,6 +259,10 @@ export function MeetingsPage() {
       setCities(result.cities);
       setLoadError(result.error);
       setLoading(false);
+    }).catch(() => {
+      if (cancelled) return;
+      setLoadError('Could not load meetings.');
+      setLoading(false);
     });
     return () => { cancelled = true; };
   }, [reloadKey]);

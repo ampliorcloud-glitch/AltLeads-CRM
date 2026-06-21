@@ -386,10 +386,13 @@ export async function approveReport(
   if (!isNaN(agentNumId) && agentNumId > 0) notifyUserIds.push(agentNumId);
   if (assignedSpId && !notifyUserIds.includes(assignedSpId)) notifyUserIds.push(assignedSpId);
 
+  const actorNum = Number(actor);
+  const recipients = Number.isNaN(actorNum) ? notifyUserIds : notifyUserIds.filter((id) => id !== actorNum);
+
   const route = `/leads/${leadId}`;
   const descr = `Your lead report for "${leadName}" was approved — meeting scheduled.`;
   await createNotifications(
-    notifyUserIds.map((uid) => ({
+    recipients.map((uid) => ({
       user_id: uid,
       lead_id: leadId,
       report_id: reportId,
@@ -411,7 +414,7 @@ export async function approveReport(
         leadNumber: leadNumber ?? '',
         approvedByName: approverInfo.name || actor,
       };
-      for (const uid of notifyUserIds) {
+      for (const uid of recipients) {
         const { email } = await resolveUserEmailAndName(supabase, uid);
         if (email) await notify('approval_approved', email, eventData);
       }

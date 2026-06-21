@@ -38,6 +38,7 @@ import {
   StatusToggle,
 } from './primitives';
 import { Modal, Field, TextInput, SelectInput, PrimaryButton, GhostButton } from './Modal';
+import { useConfirm } from '../ui/ConfirmDialog';
 
 /* ------------------------------------------------------------------ */
 /*  Types                                                              */
@@ -55,6 +56,7 @@ type ModalMode = 'add' | 'edit' | null;
 /* ------------------------------------------------------------------ */
 
 export function PreSalesQuestionsTab({ actorId }: { actorId: string }) {
+  const confirm = useConfirm();
   const [allQuestions, setAllQuestions] = useState<PreSalesQuestionAdmin[]>([]);
   const [domains, setDomains] = useState<DomainOption[]>([]);
   const [selectedDomainId, setSelectedDomainId] = useState<number | null>(null);
@@ -150,7 +152,8 @@ export function PreSalesQuestionsTab({ actorId }: { actorId: string }) {
       setActionError('The Discussion question cannot be deleted.');
       return;
     }
-    if (!window.confirm(`Delete "${q.short_question || q.question}"? This cannot be undone.`)) return;
+    const ok = await confirm({ title: 'Delete question?', message: `Delete "${q.short_question || q.question}"? This cannot be undone.`, tone: 'danger', confirmLabel: 'Delete' });
+    if (!ok) return;
     setDeletingId(q.pre_sa_que_id);
     setActionError(null);
     const err = await deletePreSalesQuestion(q.pre_sa_que_id, actorId);
@@ -420,6 +423,7 @@ export function PreSalesQuestionsTab({ actorId }: { actorId: string }) {
                           }}
                         >
                           <span
+                            title={q.question || undefined}
                             style={{
                               display: '-webkit-box',
                               WebkitLineClamp: 2,

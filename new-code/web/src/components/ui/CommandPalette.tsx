@@ -69,6 +69,11 @@ export function CommandPalette() {
         setItems(idx);
         setLoading(false);
       }
+    }).catch(() => {
+      if (!cancelled) {
+        setItems([]);
+        setLoading(false);
+      }
     });
     return () => { cancelled = true; };
   }, [open, items]);

@@ -121,7 +121,7 @@ function ReportPreviewModal({
             </h3>
             <p className="text-zinc-500 mt-0.5" style={{ fontSize: 12 }}>{leadName}</p>
           </div>
-          <button onClick={onClose} className="text-zinc-400 hover:text-zinc-700 transition-colors">
+          <button onClick={onClose} aria-label="Close" className="text-zinc-400 hover:text-zinc-700 transition-colors">
             <X size={16} />
           </button>
         </div>
@@ -320,7 +320,7 @@ function RejectModal({
           <h3 className="font-semibold text-zinc-800" style={{ fontSize: 14 }}>
             Reject Report — {row.lead_name}
           </h3>
-          <button onClick={onClose} className="text-zinc-400 hover:text-zinc-700 transition-colors">
+          <button onClick={onClose} aria-label="Close" className="text-zinc-400 hover:text-zinc-700 transition-colors">
             <X size={16} />
           </button>
         </div>

@@ -203,6 +203,7 @@ export function ColumnCustomizer({ entity, userId, allColumns, value, onChange }
                   type="button"
                   onClick={() => toggleVisible(col.key)}
                   title={col.visible ? 'Hide column' : 'Show column'}
+                  aria-label={col.visible ? 'Hide column' : 'Show column'}
                   style={{
                     width: 18,
                     height: 18,
@@ -237,6 +238,7 @@ export function ColumnCustomizer({ entity, userId, allColumns, value, onChange }
                   disabled={idx === 0}
                   onClick={() => move(idx, -1)}
                   title="Move up"
+                  aria-label="Move up"
                 >
                   <ChevronUp size={15} />
                 </button>
@@ -246,6 +248,7 @@ export function ColumnCustomizer({ entity, userId, allColumns, value, onChange }
                   disabled={idx === value.length - 1}
                   onClick={() => move(idx, 1)}
                   title="Move down"
+                  aria-label="Move down"
                 >
                   <ChevronDown size={15} />
                 </button>

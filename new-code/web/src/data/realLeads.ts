@@ -412,7 +412,8 @@ function getWeekStart(): string {
   const diff = now.getDate() - day + (day === 0 ? -6 : 1); // Monday
   const mon = new Date(now);
   mon.setDate(diff);
-  return mon.toISOString().substring(0, 10);
+  const p = (n: number) => String(n).padStart(2, '0');
+  return `${mon.getFullYear()}-${p(mon.getMonth() + 1)}-${p(mon.getDate())}`;
 }
 
 function getWeekEnd(): string {

@@ -19,7 +19,6 @@ interface Props {
   value: number | null;
   onChange: (projectId: number | null) => void;
   disabled?: boolean;
-  className?: string;
 }
 
 export function ProjectSelect({ value, onChange, disabled = false }: Props) {

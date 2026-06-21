@@ -140,6 +140,7 @@ export function SearchSelect({
             type="button"
             onClick={handleClear}
             title="Clear selection"
+            aria-label="Clear selection"
             style={{
               display: 'flex', alignItems: 'center', padding: 2,
               background: 'none', border: 'none', cursor: 'pointer',
@@ -172,7 +173,7 @@ export function SearchSelect({
                 }}
               />
               {query && (
-                <button type="button" onClick={() => setQuery('')}
+                <button type="button" onClick={() => setQuery('')} aria-label="Clear search"
                   style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0, color: '#9ca3af' }}>
                   <X size={12} />
                 </button>

@@ -173,7 +173,7 @@ function LinkContactModal({ companyId, companyName, onLinked, onClose }: LinkCon
           <h3 style={{ fontSize: 15, fontWeight: 700, color: '#111827', margin: 0 }}>
             Link existing contact
           </h3>
-          <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#9CA3AF' }}>
+          <button aria-label="Close" onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#9CA3AF' }}>
             <X size={16} />
           </button>
         </div>
@@ -1079,7 +1079,7 @@ export function CompanyDetailPage() {
             Companies
           </button>
           <ChevronRight size={11} />
-          <span className="text-zinc-600 truncate" style={{ maxWidth: 320 }}>{company.name}</span>
+          <span className="text-zinc-600 truncate" style={{ maxWidth: 320 }} title={company.name || undefined}>{company.name}</span>
         </div>
 
         {/* HubSpot-style header */}

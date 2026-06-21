@@ -2009,6 +2009,14 @@ const TICKETS = [
     owner:'Mohit',
     notes:'RESOLVED 2026-06-21: PER-TASK reminder email WITH a safety cap (per-user per-window) to protect Gmail deliverability, PLUS an optional DAILY SUMMARY digest that is OPT-IN, default OFF. So the scanner sends one email per due task (capped) + a separate daily digest job gated by a per-user pref (default false). Unblocks ALT-256.'
   },
+  {
+    id:'ALT-263', title:'Continuous code-health / UX hardening — find-and-fix loop',
+    type:'Chore', module:'Web core', wave:'UX audit',
+    priority:'P2', status:'In Progress',
+    created: d(2026,6,21), updated: d(2026,6,21), finished: null,
+    owner:'Claude',
+    notes:'Owner directive 2026-06-21: keep finding + fixing small things continuously. Each round = a read-only multi-dimension audit (adversarially verified) -> per-file fixes -> build -> commit. ROUND 1 DONE (24 files, build passes): icon-only close/clear buttons given aria-labels (EditMeeting/UpdateMeeting/MeetingTab/Approvals x2/SearchSelect/CompanyDetail/ColumnCustomizer); dead code removed (WishlistPage X import + stale marker, ContactsPage XLSX, ProjectSelect unused prop); PreSalesQuestionsTab last window.confirm -> ConfirmDialog; clipboard copy .catch (UsersTab); truncation title tooltips (CompanyDetail/ContactDetail/PreSales); REAL BUGS: IST/UTC week-bucket (realLeads.getWeekStart) + lead-meeting upcoming/past bucket (leadWorkspace) fixed to local date-string compare; stuck-spinner unhandled rejections caught (Dashboard/CommandPalette/LeadDetail/ContactDetail/ContactForm/Meetings + globalSearch inflight self-clear); ExportButton try/catch; approveReport no longer self-notifies the actor; EditMeeting time-field no longer blanks a non-HH:MM saved time. More rounds to follow.'
+  },
   ...uxAuditTickets(),
 ];
 

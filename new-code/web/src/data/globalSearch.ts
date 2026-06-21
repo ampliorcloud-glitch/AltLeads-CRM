@@ -35,6 +35,7 @@ export async function loadSearchIndex(force = false): Promise<SearchItem[]> {
   if (!force && inflight) return inflight;
 
   inflight = (async () => {
+    try {
     const [leadsRes, compRes, contactsRes] = await Promise.all([
       fetchLeadsFallback(),
       fetchCompanies(),
@@ -84,8 +85,13 @@ export async function loadSearchIndex(force = false): Promise<SearchItem[]> {
     }
 
     cache = items;
-    inflight = null;
     return items;
+    } catch (e) {
+      console.error('loadSearchIndex failed', e);
+      return [];
+    } finally {
+      inflight = null;
+    }
   })();
 
   return inflight;

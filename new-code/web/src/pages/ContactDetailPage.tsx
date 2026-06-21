@@ -116,11 +116,11 @@ function InfoRow({ icon, label, value, href, copyValue }: {
         <span style={{ fontSize: 11, color: '#9CA3AF', fontWeight: 500 }}>{label}</span>
         <span className="flex items-center gap-1.5 min-w-0">
           {href ? (
-            <a href={href} target="_blank" rel="noopener noreferrer" style={{ fontSize: 13, color: '#1A7EE8', textDecoration: 'none', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            <a href={href} target="_blank" rel="noopener noreferrer" title={copyValue ?? (typeof value === 'string' ? value : undefined)} style={{ fontSize: 13, color: '#1A7EE8', textDecoration: 'none', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
               {value}
             </a>
           ) : (
-            <span style={{ fontSize: 13, color: '#111827', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{value || <span style={{ color: '#D1D5DB' }}>—</span>}</span>
+            <span title={copyValue ?? (typeof value === 'string' ? value : undefined)} style={{ fontSize: 13, color: '#111827', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{value || <span style={{ color: '#D1D5DB' }}>—</span>}</span>
           )}
           {copyValue ? <CopyButton value={copyValue} label={label} /> : null}
         </span>
@@ -193,20 +193,25 @@ export function ContactDetailPage() {
     if (!contactId) return;
     setLoading(true);
     setError(null);
-    const [c, companies, cities] = await Promise.all([
-      fetchContactById(contactId),
-      fetchCompanyOptions(),
-      fetchCityOptions(),
-    ]);
-    if (!c) {
-      setError('Contact not found.');
+    try {
+      const [c, companies, cities] = await Promise.all([
+        fetchContactById(contactId),
+        fetchCompanyOptions(),
+        fetchCityOptions(),
+      ]);
+      if (!c) {
+        setError('Contact not found.');
+        setLoading(false);
+        return;
+      }
+      setContact(c);
+      setCompanyOptions(companies);
+      setCityOptions(cities);
       setLoading(false);
-      return;
+    } catch {
+      setError('Could not load this contact.');
+      setLoading(false);
     }
-    setContact(c);
-    setCompanyOptions(companies);
-    setCityOptions(cities);
-    setLoading(false);
   }, [contactId]);
 
   useEffect(() => { loadContact(); }, [loadContact]);

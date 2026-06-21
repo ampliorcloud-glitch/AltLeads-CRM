@@ -198,7 +198,7 @@ export function UsersTab({ lookups, actorId }: { lookups: AdminLookups; actorId:
     navigator.clipboard.writeText(pw).then(() => {
       setPwCopied(true);
       setTimeout(() => setPwCopied(false), 2000);
-    });
+    }).catch(() => toast.error('Could not copy to clipboard'));
   };
 
   const openResetModal = (u: AdminUser) => {
@@ -226,7 +226,7 @@ export function UsersTab({ lookups, actorId }: { lookups: AdminLookups; actorId:
     navigator.clipboard.writeText(pw).then(() => {
       setResetPwCopied(true);
       setTimeout(() => setResetPwCopied(false), 2000);
-    });
+    }).catch(() => toast.error('Could not copy to clipboard'));
   };
 
   const columns = [

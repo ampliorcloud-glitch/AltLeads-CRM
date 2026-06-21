@@ -309,7 +309,7 @@ export async function fetchLeadActivity(leadId: number): Promise<ActivityItem[]>
     activity_id: r.activity_id,
     lead_comments: r.lead_comments ?? '',
     created_date: fmt(r.created_date),
-    created_by_name: userMap.get(r.created_by) || r.created_by || 'System',
+    created_by_name: userMap.get(r.created_by) || 'System',
   }));
 }
 

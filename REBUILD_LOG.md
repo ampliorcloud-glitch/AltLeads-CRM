@@ -706,3 +706,12 @@ Owner: "lets start building" + answered A/B/D + C go. Built via a multi-agent wo
 **Parallel:** a read-only audit workflow (find-small-fixes-r1) returned 29 vetted small fixes (a11y aria-labels, dead imports, stuck-spinner unhandled rejections, IST/UTC week-bucket bug, approve-self-notify, time-field clobber). Applying next in a batch.
 
 STATE: ~25 commits unpushed on clean-main. NEXT GATE for the owner: (a) review + approve applying the staged DB migrations (then I run them + the throwaway-login validation), (b) continue Increment 2 (reminders, one-click, portal app/screens). Continuous find-and-fix loop running per owner's "keep working" directive.
+
+---
+## 2026-06-21 (cont. 13) — Continuous find-and-fix loop, round 1 (24 files)
+Per owner "keep finding small things & keep fixing them". Read-only multi-dimension audit (5 finder dims, adversarially verified -> 29 confirmed) then per-file fixes applied by parallel agents, integrated + build-verified (tsc -b && vite build pass). Tracked as ALT-263 (ongoing).
+- a11y: aria-labels on icon-only close/clear/column buttons (EditMeeting, UpdateMeeting, MeetingTab, Approvals x2, SearchSelect, CompanyDetail link-contact, ColumnCustomizer toggle/up/down).
+- consistency: the last `window.confirm` in the app (PreSalesQuestionsTab delete) -> app ConfirmDialog; clipboard copy now has .catch+toast (UsersTab); truncation title tooltips (CompanyDetail breadcrumb, ContactDetail InfoRow, PreSales full-question).
+- code health: removed dead code (WishlistPage unused X + stale marker; ContactsPage dead XLSX import + void; ProjectSelect unused className prop).
+- REAL BUGS fixed: getWeekStart used toISOString -> shifted the dashboard "this week" window a day under IST (now local date string); fetchLeadMeetings bucketed upcoming/past with mixed Date clocks (now YYYY-MM-DD string compare); six "stuck spinner forever" unhandled-rejection paths now catch + show empty/error (Dashboard, CommandPalette, LeadDetail, ContactDetail, ContactForm, Meetings) + globalSearch inflight promise self-clears on failure (was poisoning the Cmd-K palette until reload); ExportButton wraps SheetJS in try/catch; approveReport no longer emails the approver about their own click; EditMeeting time field no longer silently blanks a saved non-HH:MM time on save.
+Loop continues (round 2 next). Nothing pushed.

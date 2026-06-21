@@ -197,21 +197,28 @@ export function LeadDetailPage() {
   const loadLead = useCallback(async () => {
     if (!leadId) return;
     setLoadingLead(true);
-    const [leadData, lookupData] = await Promise.all([fetchLeadDetail(leadId), fetchLookups()]);
-    if (!leadData) {
-      setLeadError('Lead not found.');
+    setLeadError('');
+    try {
+      const [leadData, lookupData] = await Promise.all([fetchLeadDetail(leadId), fetchLookups()]);
+      if (!leadData) {
+        setLeadError('Lead not found.');
+        setLoadingLead(false);
+        return;
+      }
+      setLead(leadData);
+      setStages(lookupData.stages);
       setLoadingLead(false);
-      return;
-    }
-    setLead(leadData);
-    setStages(lookupData.stages);
-    setLoadingLead(false);
 
-    // company (drives the domain for pre-sales questions too)
-    setLoadingCompany(true);
-    const co = await fetchCompanyInfo(leadData.client_assoc_id);
-    setCompany(co);
-    setLoadingCompany(false);
+      // company (drives the domain for pre-sales questions too)
+      setLoadingCompany(true);
+      const co = await fetchCompanyInfo(leadData.client_assoc_id);
+      setCompany(co);
+      setLoadingCompany(false);
+    } catch {
+      setLeadError('Could not load this lead. Please retry.');
+      setLoadingLead(false);
+      setLoadingCompany(false);
+    }
   }, [leadId]);
 
   useEffect(() => {

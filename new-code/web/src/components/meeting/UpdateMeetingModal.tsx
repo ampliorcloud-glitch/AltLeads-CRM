@@ -171,7 +171,7 @@ export function UpdateMeetingModal({
           <h3 className="font-semibold text-zinc-800" style={{ fontSize: 14 }}>
             Update Meeting
           </h3>
-          <button onClick={onClose} className="text-zinc-400 hover:text-zinc-700 transition-colors">
+          <button type="button" aria-label="Close" onClick={onClose} className="text-zinc-400 hover:text-zinc-700 transition-colors">
             <X size={16} />
           </button>
         </div>

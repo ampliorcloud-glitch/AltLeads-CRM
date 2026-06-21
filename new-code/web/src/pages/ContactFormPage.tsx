@@ -93,7 +93,7 @@ export function ContactFormPage() {
       setCompanies(c);
       setCities(ci);
       setLookupsLoading(false);
-    });
+    }).catch(() => setLookupsLoading(false));
   }, []);
 
   // ── Unsaved-changes guard (cache + restore + warn) ──────────────────────────
