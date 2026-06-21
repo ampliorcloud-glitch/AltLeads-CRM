@@ -13,6 +13,7 @@ import {
 import { AppShell } from '../components/layout/AppShell';
 import { fetchCompanies, type Company } from '../data/companies';
 import { useAuth } from '../contexts/AuthContext';
+import { useProjectScope } from '../contexts/ProjectContext';
 import { supabase } from '../lib/supabase';
 import { useRowSelection } from '../components/ui/useRowSelection';
 import { ExportButton } from '../components/ui/ExportButton';
@@ -223,8 +224,14 @@ export function CompaniesPage() {
   // Bump to re-run the load effect (Retry on error). ALT-215 #12.
   const [reloadKey, setReloadKey] = useState(0);
 
-  // Project selection (defaults to first project via ProjectSelect).
-  const [projectId, setProjectId] = useState<number | null>(null);
+  // Project selection drives the per-project Account Status column. Companies are
+  // cross-project entities (no project_id on the row), so we don't row-filter by
+  // project — but this local picker is SEEDED + KEPT IN SYNC with the global project
+  // switcher so a multi-project user sees one consistent project rather than two
+  // competing controls (review ALT-273B M9). May still be overridden locally.
+  const { selectedProjectId } = useProjectScope();
+  const [projectId, setProjectId] = useState<number | null>(selectedProjectId);
+  useEffect(() => { setProjectId(selectedProjectId); }, [selectedProjectId]);
 
   // Per-project statuses keyed by numeric company_id.
   const [statusMap, setStatusMap] = useState<Record<number, CompanyStatusLite>>({});

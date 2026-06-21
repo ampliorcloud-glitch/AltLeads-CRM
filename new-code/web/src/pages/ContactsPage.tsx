@@ -9,6 +9,7 @@ import {
 } from '../data/projectStatus';
 import { fetchOptions, type DropdownOption } from '../data/dropdowns';
 import { useAuth } from '../contexts/AuthContext';
+import { useProjectScope } from '../contexts/ProjectContext';
 import { ProjectSelect } from '../components/ui/ProjectSelect';
 import { useRowSelection } from '../components/ui/useRowSelection';
 import { ExportButton } from '../components/ui/ExportButton';
@@ -268,8 +269,15 @@ export function ContactsPage() {
   const [pageIndex, setPageIndex] = useState(0);
   const [pageSize, setPageSize] = useState(25);
 
-  // Per-project status map: contact_id -> ContactStatusLite
-  const [projectId, setProjectId] = useState<number | null>(null);
+  // Per-project status map: contact_id -> ContactStatusLite.
+  // The project here drives the per-project STATUS column. Contacts are cross-project
+  // entities (no project_id on the row), so we don't row-filter by project — but the
+  // local picker is SEEDED + KEPT IN SYNC with the global project switcher so a
+  // multi-project user sees one consistent project, not two competing controls
+  // (review ALT-273B M8). The user may still override it locally for the status view.
+  const { selectedProjectId } = useProjectScope();
+  const [projectId, setProjectId] = useState<number | null>(selectedProjectId);
+  useEffect(() => { setProjectId(selectedProjectId); }, [selectedProjectId]);
   const [statusMap, setStatusMap] = useState<Record<number, ContactStatusLite>>({});
   const [statusLoading, setStatusLoading] = useState(false);
   // contact_status dropdown options

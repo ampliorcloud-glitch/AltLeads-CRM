@@ -443,8 +443,10 @@ export interface MyProject {
  *   - ADMIN sees every ENABLED project.
  *   - everyone else sees the ENABLED projects they're assigned to via project_user.
  * Returns enabled projects only, sorted by name. Soft-deleted rows are excluded.
- * Never throws — on any error it returns an empty list so the switcher degrades
- * gracefully to just "All projects".
+ * THROWS on a query error so the caller can tell a real failure (network/RLS)
+ * apart from a genuine empty result — the ProjectProvider must NOT treat a
+ * transient error as "this user has no projects" and wipe their saved scope
+ * (review ALT-273B M4). A genuine no-access still returns [].
  */
 export async function fetchMyProjects(
   userId: number | null,
@@ -456,7 +458,8 @@ export async function fetchMyProjects(
     .eq('enabled', true)
     .is('deleted_date', null)
     .order('project_name', { ascending: true });
-  if (error || !projRaw) return [];
+  if (error) throw new Error(error.message);
+  if (!projRaw) return [];
 
   const allEnabled = (projRaw as unknown as { project_id: number; project_name: string }[]).map(
     (p) => ({ project_id: p.project_id, project_name: p.project_name }),
@@ -470,7 +473,8 @@ export async function fetchMyProjects(
     .select('project_id')
     .eq('user_id', userId)
     .is('deleted_date', null);
-  if (puErr || !puRaw) return [];
+  if (puErr) throw new Error(puErr.message);
+  if (!puRaw) return [];
 
   const myIds = new Set(
     (puRaw as unknown as { project_id: number }[]).map((r) => r.project_id),

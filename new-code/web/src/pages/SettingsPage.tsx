@@ -12,7 +12,7 @@ import { getDigestPref, setDigestPref } from '../data/tasks';
 import { useToast } from '../components/ui/Toast';
 import {
   useProjectScope,
-  DEFAULT_PROJECT_KEY,
+  defaultProjectKey,
 } from '../contexts/ProjectContext';
 import { Loader2, Check, Lock, User as UserIcon, Bell, Layers } from 'lucide-react';
 
@@ -85,12 +85,14 @@ export function SettingsPage() {
 
   // Default-project preference (owner #8). The user's chosen default scope is what
   // the global Project Switcher seeds to on a fresh session. Stored device-local in
-  // localStorage (DEFAULT_PROJECT_KEY); "All projects" = null. We also push the new
-  // default straight into the live scope so the change takes effect immediately.
+  // localStorage, keyed PER USER (defaultProjectKey) so shared devices don't bleed;
+  // "All projects" = null. We also push the new default straight into the live scope
+  // so the change takes effect immediately.
+  const defaultKey = defaultProjectKey(profile?.user_id ?? null);
   const { projects, selectedProjectId, setSelectedProjectId } = useProjectScope();
   const [defaultProjectId, setDefaultProjectId] = useState<number | null>(() => {
     try {
-      const raw = localStorage.getItem(DEFAULT_PROJECT_KEY);
+      const raw = localStorage.getItem(defaultKey);
       if (raw == null || raw === '' || raw === 'all' || raw === 'null') return null;
       const n = Number(raw);
       return Number.isFinite(n) && n > 0 ? n : null;
@@ -102,7 +104,7 @@ export function SettingsPage() {
   const handleChangeDefaultProject = (next: number | null) => {
     setDefaultProjectId(next);
     try {
-      localStorage.setItem(DEFAULT_PROJECT_KEY, next == null ? 'all' : String(next));
+      localStorage.setItem(defaultKey, next == null ? 'all' : String(next));
     } catch {
       /* storage unavailable — ignore */
     }

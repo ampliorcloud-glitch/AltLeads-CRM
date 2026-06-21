@@ -5,27 +5,44 @@
  * pre-filters records across the app. `selectedProjectId === null` means
  * "All projects" (no project filter).
  *
- * Persistence model (localStorage, per-user is implicit — these are device-local
- * preferences keyed only by their localStorage key, matching the app's other
- * device-local prefs):
- *   - 'altleads:selected-project'  → the live selection (sticky across reloads).
- *   - 'altleads:default-project'   → the user's preferred default, set in Settings.
+ * Persistence model (localStorage, keyed PER USER so two people sharing a device
+ * never inherit each other's scope — review ALT-273B M1/M5):
+ *   - 'altleads:selected-project:<userId>'  → the live selection (sticky across reloads).
+ *   - 'altleads:default-project:<userId>'   → the user's preferred default (set in Settings).
  *
- * Seeding rule on first mount: use the last live selection if present, otherwise
- * the user's default, otherwise "All projects" (null). Once a project list is
- * loaded, a stored id that the user can no longer access is dropped back to "All".
+ * Hydration: selection starts null and is loaded for the authenticated user only
+ * AFTER auth resolves (so a shared device can't flash the prior user's scope before
+ * we know who is logged in). On a successful project-list load, a stored id the user
+ * can no longer access is dropped to "All"; on a FAILED load we keep the stored
+ * selection rather than wiping it (a transient fetch error must not destroy the pref).
  *
  * This module is additive and read-only against the DB (it only reads the user's
  * accessible projects); it performs no writes.
  */
 
-import React, { createContext, useContext, useEffect, useMemo, useState } from 'react';
+import React, {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useState,
+} from 'react';
 import type { ReactNode } from 'react';
 import { useAuth } from './AuthContext';
 import { fetchMyProjects } from '../data/admin';
 
-export const SELECTED_PROJECT_KEY = 'altleads:selected-project';
-export const DEFAULT_PROJECT_KEY = 'altleads:default-project';
+const SELECTED_PREFIX = 'altleads:selected-project';
+const DEFAULT_PREFIX = 'altleads:default-project';
+
+/** Per-user localStorage key for the live selection. */
+export function selectedProjectKey(userId: number | null): string {
+  return userId == null ? SELECTED_PREFIX : `${SELECTED_PREFIX}:${userId}`;
+}
+/** Per-user localStorage key for the user's default scope (set in Settings). */
+export function defaultProjectKey(userId: number | null): string {
+  return userId == null ? DEFAULT_PREFIX : `${DEFAULT_PREFIX}:${userId}`;
+}
 
 export interface ScopedProject {
   project_id: number;
@@ -67,24 +84,18 @@ function writeStoredProjectId(key: string, id: number | null): void {
   }
 }
 
-/** The initial scope before the project list resolves: last selection, else default, else null. */
-function seedInitialSelection(): number | null {
-  const last = readStoredProjectId(SELECTED_PROJECT_KEY);
-  if (last != null) return last;
-  return readStoredProjectId(DEFAULT_PROJECT_KEY);
-}
-
 export function ProjectProvider({ children }: { children: ReactNode }) {
   const { profile, isAdmin, loading: authLoading } = useAuth();
   const userId = profile?.user_id ?? null;
 
   const [projects, setProjects] = useState<ScopedProject[]>([]);
   const [loading, setLoading] = useState(true);
-  const [selectedProjectId, setSelectedProjectIdState] = useState<number | null>(() =>
-    seedInitialSelection(),
-  );
+  // Starts null; hydrated per-user once auth resolves (see effect). Never seeded
+  // synchronously from localStorage — that would flash the prior user's scope on a
+  // shared device before we know who is logged in.
+  const [selectedProjectId, setSelectedProjectIdState] = useState<number | null>(null);
 
-  // Load the user's accessible projects once auth has resolved.
+  // Load the user's accessible projects + hydrate their stored scope, once auth resolves.
   useEffect(() => {
     let cancelled = false;
 
@@ -96,9 +107,11 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
       };
     }
 
-    // Signed out (no profile): no scope, clear list, fall back to "All".
+    // Signed out: clear scope + list immediately (in-memory). Because the keys are
+    // per-user, the next login reads only that user's own stored value.
     if (userId == null && !isAdmin) {
       setProjects([]);
+      setSelectedProjectIdState(null);
       setLoading(false);
       return () => {
         cancelled = true;
@@ -106,18 +119,30 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
     }
 
     setLoading(true);
+    // This user's stored scope: last live selection, else their configured default.
+    const stored =
+      readStoredProjectId(selectedProjectKey(userId)) ??
+      readStoredProjectId(defaultProjectKey(userId));
+
     fetchMyProjects(userId, isAdmin)
       .then((list) => {
         if (cancelled) return;
         setProjects(list);
-        // Drop a stored selection the user can no longer access → "All projects".
-        setSelectedProjectIdState((prev) => {
-          if (prev != null && !list.some((p) => p.project_id === prev)) {
-            writeStoredProjectId(SELECTED_PROJECT_KEY, null);
-            return null;
-          }
-          return prev;
-        });
+        // Apply the stored selection ONLY if the user can actually access it now;
+        // otherwise fall back to "All". This branch runs only on a SUCCESSFUL load.
+        if (stored != null && list.some((p) => p.project_id === stored)) {
+          setSelectedProjectIdState(stored);
+        } else {
+          setSelectedProjectIdState(null);
+          if (stored != null) writeStoredProjectId(selectedProjectKey(userId), null);
+        }
+      })
+      .catch(() => {
+        // Fetch failed (network/RLS hiccup) — do NOT wipe the stored selection.
+        // Keep the user's last choice; the switcher simply won't refresh options
+        // this cycle. (review ALT-273B M4: error must not be treated as "no access".)
+        if (cancelled) return;
+        if (stored != null) setSelectedProjectIdState(stored);
       })
       .finally(() => {
         if (!cancelled) setLoading(false);
@@ -128,15 +153,18 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
     };
   }, [userId, isAdmin, authLoading]);
 
-  // Selecting a project persists immediately.
-  const setSelectedProjectId = (id: number | null) => {
-    setSelectedProjectIdState(id);
-    writeStoredProjectId(SELECTED_PROJECT_KEY, id);
-  };
+  // Selecting a project persists immediately, under the current user's key.
+  const setSelectedProjectId = useCallback(
+    (id: number | null) => {
+      setSelectedProjectIdState(id);
+      writeStoredProjectId(selectedProjectKey(userId), id);
+    },
+    [userId],
+  );
 
   const value = useMemo<ProjectContextType>(
     () => ({ projects, selectedProjectId, setSelectedProjectId, loading }),
-    [projects, selectedProjectId, loading],
+    [projects, selectedProjectId, setSelectedProjectId, loading],
   );
 
   return <ProjectContext.Provider value={value}>{children}</ProjectContext.Provider>;

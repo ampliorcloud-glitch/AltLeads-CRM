@@ -243,7 +243,13 @@ export function LeadsPage() {
   // returns — NOT the display name, so duplicate/blank project names and any drift
   // between the two `project` queries can never hide or mismatch records.
   // selectedProjectId === null = "All projects" → no project filter (unchanged).
+  //
+  // IGNORED in the Sales Portal (isSalesShell): the project switcher is an internal
+  // control that sales users can't see (it's hidden for non-internal roles), so
+  // applying its scope there would silently narrow their leads with no way to clear
+  // it (review ALT-273B M2). The sales portal scopes by assignment, not by project.
   const { selectedProjectId } = useProjectScope();
+  const projectScopeId = isSalesShell ? null : selectedProjectId;
 
   const [filters, setFilters] = useState<Filters>(defaultFilters);
   const [sorting, setSorting] = useState<SortingState>([]);
@@ -302,7 +308,7 @@ export function LeadsPage() {
     return allLeads.filter((lead) => {
       // Global project scope (AND with every page filter). null = "All projects"
       // → no project filter. Otherwise match the lead's numeric project id.
-      if (selectedProjectId != null && lead.projectId !== selectedProjectId) return false;
+      if (projectScopeId != null && lead.projectId !== projectScopeId) return false;
       if (filters.search) {
         const q = filters.search.toLowerCase();
         const searchable = [
@@ -329,7 +335,7 @@ export function LeadsPage() {
       if (filters.stage.length && !filters.stage.includes(lead.stage)) return false;
       return true;
     });
-  }, [filters, allLeads, selectedProjectId]);
+  }, [filters, allLeads, projectScopeId]);
 
   // Derive the ordered, visibility-filtered set of column keys from prefs.
   const visibleKeys = useMemo(

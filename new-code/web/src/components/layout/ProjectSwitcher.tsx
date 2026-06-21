@@ -29,8 +29,11 @@ export function ProjectSwitcher() {
     return () => document.removeEventListener('mousedown', onDocMouseDown);
   }, []);
 
-  // Nothing to switch between (0 or 1 project) → don't render the control at all.
-  if (loading || projects.length < 2) return null;
+  // Hide for the common single-project user (nothing to switch between) — BUT keep
+  // it visible whenever a project is actively scoped, so they always have a way back
+  // to "All projects" even if they later lost access to other projects (review M3).
+  if (loading) return null;
+  if (projects.length < 2 && selectedProjectId == null) return null;
 
   const selected =
     selectedProjectId != null
