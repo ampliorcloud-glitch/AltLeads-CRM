@@ -12,6 +12,7 @@ import { ForgotPasswordPage } from './pages/ForgotPasswordPage';
 import { ResetPasswordPage } from './pages/ResetPasswordPage';
 import { SalesLoginPage } from './pages/sales/SalesLoginPage';
 import { SalesPlaceholderPage } from './pages/sales/SalesPlaceholderPage';
+import { SalesMeetingDetailPage } from './pages/sales/SalesMeetingDetailPage';
 import { DashboardPage } from './pages/DashboardPage';
 import { LeadsPage } from './pages/LeadsPage';
 import { LeadDetailPage } from './pages/LeadDetailPage';
@@ -136,11 +137,22 @@ function AppRoutes() {
           </SalesProtectedRoute>
         }
       />
+      {/* Sales Meetings list — reuses the internal MeetingsPage under the sales
+         shell (it self-detects the shell and links rows to /sales/meetings/:id). */}
       <Route
         path="/sales/meetings"
         element={
           <SalesProtectedRoute>
-            <SalesPlaceholderPage title="Meetings" />
+            <MeetingsPage />
+          </SalesProtectedRoute>
+        }
+      />
+      {/* Sales Meeting record — the "mobile-ditto" screen (ALT-275). */}
+      <Route
+        path="/sales/meetings/:id"
+        element={
+          <SalesProtectedRoute>
+            <SalesMeetingDetailPage />
           </SalesProtectedRoute>
         }
       />

@@ -204,6 +204,28 @@ export interface MeetingDetail {
   agent: string;
   salesperson: string;
   salespersonUserId: number | null;  // numeric user_id for the assigned SP (for notifications)
+  // ── ALT-275: extra fields for the "mobile-ditto" sales/portal meeting record ──
+  // Lead/contact extras (lead_master)
+  leadAltMobile: string;
+  leadLinkedin: string;
+  leadRoleAndResp: string;
+  leadAreaOfInterest: string;
+  // Opportunity (lead_master)
+  oppTitle: string;
+  oppValue: string;        // raw value as text, '' when unset
+  oppDescription: string;
+  // Sales intelligence + who scheduled (lead_report)
+  salesIntelligence: string;
+  scheduledByName: string; // lead_report.created_by -> user_master.full_name
+  // Company extras (company_master, present only when company_id is set)
+  companyTurnover: string; // turnover_master.turnover (band label), '' when unset
+  companySector: string;   // company_sector.sector, '' when unset
+  companySize: string;     // company_master.company_size as text, '' when unset
+  companyWebsite: string;  // company_master.company_web_url
+  companyLinkedin: string; // company_master.linkedin_url
+  // Address (address_master)
+  addressLine1: string;
+  addressLine2: string;
   // related collections
   participants: MeetingParticipant[];
   feedback: FeedbackItem[];
@@ -239,7 +261,15 @@ interface MeetingMasterRow {
   created_date: string | null;
 }
 interface ScheduleRow { meeting_id: number; report_id: number; }
-interface ReportRow { report_id: number; lead_id: number; user_id: number | null; stage_id: number | null; }
+interface ReportRow {
+  report_id: number;
+  lead_id: number;
+  user_id: number | null;
+  stage_id: number | null;
+  // ALT-275 extras
+  sales_intelligence?: string | null;
+  created_by?: string | number | null; // user_id of who scheduled (stored as text/number)
+}
 interface LeadRow {
   lead_id: number;
   lead_name: string | null;
@@ -253,12 +283,37 @@ interface LeadRow {
   mobile_no: string | null;
   designation: string | null;
   created_date: string | null;
+  // ALT-275 extras
+  alt_mobile_no?: string | null;
+  linkedin_url?: string | null;
+  role_and_resp?: string | null;
+  area_of_interest?: string | null;
+  title?: string | null;
+  value?: string | number | null;
+  description?: string | null;
 }
-interface CompanyRow { company_id: number; company_name: string | null; }
+interface CompanyRow {
+  company_id: number;
+  company_name: string | null;
+  // ALT-275 extras
+  company_size?: number | null;
+  company_web_url?: string | null;
+  linkedin_url?: string | null;
+  turnover_id?: number | null;
+  sector_id?: number | null;
+}
 interface ClientRow { client_assoc_id: number; client_name: string | null; industry_id: number | null; }
 interface IndustryRow { industry_id: number; industry_name: string | null; }
-interface AddressRow { address_id: number; city_id: number | null; }
+interface AddressRow {
+  address_id: number;
+  city_id: number | null;
+  // ALT-275 extras
+  address_line1?: string | null;
+  address_line2?: string | null;
+}
 interface CityRow { city_id: number; city_name: string | null; }
+interface TurnoverRow { turnover_id: number; turnover: string | null; }
+interface SectorRow { sector_id: number; sector: string | null; }
 interface StageRow { stage_id: number; stage: string | null; }
 interface UserRow { user_id: number; full_name: string | null; }
 interface UserRoleRow { user_id: number; role_id: number; }
@@ -560,15 +615,41 @@ export async function fetchMeetingDetail(meetingId: string): Promise<MeetingDeta
   let salesperson = '';
   let salespersonUserId: number | null = null;
   let leadStage = '';
+  // ALT-275 accumulators
+  let salesIntelligence = '';
+  let scheduledByName = '';
+  let companyTurnover = '';
+  let companySector = '';
+  let companySize = '';
+  let companyWebsite = '';
+  let companyLinkedin = '';
+  let addressLine1 = '';
+  let addressLine2 = '';
 
   if (reportId != null) {
     const { data: repRaw } = await supabase
       .from('lead_report')
-      .select('report_id, lead_id, user_id, stage_id')
+      .select('report_id, lead_id, user_id, stage_id, sales_intelligence, created_by')
       .eq('report_id', reportId)
       .is('deleted_date', null)
       .maybeSingle();
     const report = (repRaw as unknown as ReportRow) ?? null;
+
+    salesIntelligence = ((report?.sales_intelligence ?? '') as string).trim();
+
+    // "Meeting scheduled by" — lead_report.created_by holds the scheduler's user_id
+    // (stored as text/number across the schema). Resolve to a full name.
+    if (report?.created_by != null && String(report.created_by).trim() !== '') {
+      const createdById = Number(report.created_by);
+      if (Number.isFinite(createdById)) {
+        const { data: cbRaw } = await supabase
+          .from('user_master')
+          .select('user_id, full_name')
+          .eq('user_id', createdById)
+          .maybeSingle();
+        scheduledByName = ((cbRaw as unknown as UserRow | null)?.full_name ?? '').trim();
+      }
+    }
 
     if (report?.stage_id != null) {
       const { data: stageRaw } = await supabase
@@ -592,7 +673,7 @@ export async function fetchMeetingDetail(meetingId: string): Promise<MeetingDeta
     if (report?.lead_id != null) {
       const { data: leadRaw } = await supabase
         .from('lead_master')
-        .select('lead_id, lead_name, lead_number, company_id, client_assoc_id, address_id, agent_id, email, mobile_no, designation, created_date')
+        .select('lead_id, lead_name, lead_number, company_id, client_assoc_id, address_id, agent_id, email, mobile_no, designation, created_date, alt_mobile_no, linkedin_url, role_and_resp, area_of_interest, title, value, description')
         .eq('lead_id', report.lead_id)
         .maybeSingle();
       lead = (leadRaw as unknown as LeadRow) ?? null;
@@ -602,10 +683,32 @@ export async function fetchMeetingDetail(meetingId: string): Promise<MeetingDeta
       if (lead?.company_id != null) {
         const { data: compRaw } = await supabase
           .from('company_master')
-          .select('company_id, company_name')
+          .select('company_id, company_name, company_size, company_web_url, linkedin_url, turnover_id, sector_id')
           .eq('company_id', lead.company_id)
           .maybeSingle();
-        companyName = ((compRaw as unknown as CompanyRow | null)?.company_name ?? '').trim();
+        const comp = (compRaw as unknown as CompanyRow | null) ?? null;
+        companyName = (comp?.company_name ?? '').trim();
+        companySize = comp?.company_size != null ? String(comp.company_size).trim() : '';
+        companyWebsite = (comp?.company_web_url ?? '').trim();
+        companyLinkedin = (comp?.linkedin_url ?? '').trim();
+        // Turnover band label (same pattern as companies.ts).
+        if (comp?.turnover_id != null) {
+          const { data: tovRaw } = await supabase
+            .from('turnover_master')
+            .select('turnover_id, turnover')
+            .eq('turnover_id', comp.turnover_id)
+            .maybeSingle();
+          companyTurnover = ((tovRaw as unknown as TurnoverRow | null)?.turnover ?? '').trim();
+        }
+        // Sector label (NEW lookup: company_sector(sector_id, sector)).
+        if (comp?.sector_id != null) {
+          const { data: secRaw } = await supabase
+            .from('company_sector')
+            .select('sector_id, sector')
+            .eq('sector_id', comp.sector_id)
+            .maybeSingle();
+          companySector = ((secRaw as unknown as SectorRow | null)?.sector ?? '').trim();
+        }
       }
       // Client + Industry from client_association (industry source = Leads-module parity).
       if (lead?.client_assoc_id != null) {
@@ -631,10 +734,13 @@ export async function fetchMeetingDetail(meetingId: string): Promise<MeetingDeta
       if (lead?.address_id != null) {
         const { data: addrRaw } = await supabase
           .from('address_master')
-          .select('address_id, city_id')
+          .select('address_id, city_id, address_line1, address_line2')
           .eq('address_id', lead.address_id)
           .maybeSingle();
-        const cityId = (addrRaw as unknown as AddressRow | null)?.city_id ?? null;
+        const addr = (addrRaw as unknown as AddressRow | null) ?? null;
+        addressLine1 = (addr?.address_line1 ?? '').trim();
+        addressLine2 = (addr?.address_line2 ?? '').trim();
+        const cityId = addr?.city_id ?? null;
         if (cityId != null) {
           const { data: cityRaw } = await supabase
             .from('city_master')
@@ -767,6 +873,23 @@ export async function fetchMeetingDetail(meetingId: string): Promise<MeetingDeta
     agent,
     salesperson,
     salespersonUserId,
+    // ALT-275 extras
+    leadAltMobile: (lead?.alt_mobile_no ?? '').trim(),
+    leadLinkedin: (lead?.linkedin_url ?? '').trim(),
+    leadRoleAndResp: (lead?.role_and_resp ?? '').trim(),
+    leadAreaOfInterest: (lead?.area_of_interest ?? '').trim(),
+    oppTitle: (lead?.title ?? '').trim(),
+    oppValue: lead?.value != null ? String(lead.value).trim() : '',
+    oppDescription: (lead?.description ?? '').trim(),
+    salesIntelligence,
+    scheduledByName,
+    companyTurnover,
+    companySector,
+    companySize,
+    companyWebsite,
+    companyLinkedin,
+    addressLine1,
+    addressLine2,
     participants,
     feedback,
     preSales,

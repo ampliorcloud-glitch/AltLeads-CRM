@@ -370,10 +370,16 @@ export function MyTasksPage() {
   const [createOpen, setCreateOpen] = useState(false);
   const [busyId, setBusyId] = useState<number | null>(null);
 
+  // Reload-token guard (review ALT-273B): rapid actions each call load(); without
+  // this, an earlier listMyTasks() could resolve AFTER a later one and clobber the
+  // fresher result. Only the newest in-flight load applies its result.
+  const reloadTokenRef = useRef(0);
   const load = useCallback(async () => {
+    const token = ++reloadTokenRef.current;
     setLoading(true);
     setError(null);
     const { groups: g, error: e } = await listMyTasks(userId);
+    if (token !== reloadTokenRef.current) return; // superseded by a newer load()
     setGroups(g);
     setError(e);
     setLoading(false);

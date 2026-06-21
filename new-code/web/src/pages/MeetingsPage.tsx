@@ -18,6 +18,7 @@ import {
   type MeetingRow,
 } from '../data/meetings';
 import { useAuth } from '../contexts/AuthContext';
+import { useIsSalesShell } from '../contexts/SalesShellContext';
 import { useProjectScope } from '../contexts/ProjectContext';
 import { useRowSelection } from '../components/ui/useRowSelection';
 import { ExportButton } from '../components/ui/ExportButton';
@@ -225,6 +226,12 @@ export function MeetingsPage() {
   const navigate = useNavigate();
   const { profile } = useAuth();
   const userId = profile?.user_id ?? null;
+
+  // In the Sales Portal shell, open the "mobile-ditto" sales meeting record
+  // (/sales/meetings/:id) — never the internal /meetings/:id screen (ALT-275).
+  // Mirrors LeadsPage's isSalesShell/leadBase pattern.
+  const isSalesShell = useIsSalesShell();
+  const meetingBase = isSalesShell ? '/sales/meetings' : '/meetings';
 
   // Global project scope (owner ask #8). When a project is selected (not "All"),
   // pre-filter to that project — composed (AND) with every page filter/search,
@@ -744,11 +751,11 @@ export function MeetingsPage() {
                         role="link"
                         tabIndex={0}
                         aria-label={`Open meeting for ${row.original.company || row.original.leadName || row.original.name || 'meeting'}`}
-                        onClick={() => navigate(`/meetings/${row.original.id}`)}
+                        onClick={() => navigate(`${meetingBase}/${row.original.id}`)}
                         onKeyDown={(e) => {
                           if ((e.key === 'Enter' || e.key === ' ') && e.target === e.currentTarget) {
                             e.preventDefault();
-                            navigate(`/meetings/${row.original.id}`);
+                            navigate(`${meetingBase}/${row.original.id}`);
                           }
                         }}
                         className="border-b border-zinc-100 hover:bg-zinc-50 transition-colors last:border-0 cursor-pointer"
