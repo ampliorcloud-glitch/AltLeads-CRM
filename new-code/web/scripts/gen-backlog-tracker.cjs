@@ -2117,10 +2117,10 @@ const TICKETS = [
   {
     id:'ALT-275', title:'Sales/Portal record view = EXACT ditto copy of mobile MeetingDetails (single consolidated screen)',
     type:'Feature', module:'Sales/Client Portal', wave:'Wave 2',
-    priority:'P1', status:'Planned',
-    created: d(2026,6,21), updated: d(2026,6,21), finished: null,
+    priority:'P1', status:'Done',
+    created: d(2026,6,21), updated: d(2026,6,21), finished: d(2026,6,21),
     owner:'Mohit',
-    notes:'OWNER 2026-06-21: sales + client-portal users must NOT see the internal CRM record screens (activity/lead-report/meeting tabs). Show ONE scrollable record view = ditto copy of mobile src/screens/meetings/MeetingDetails.jsx. Section order (mobile-authoritative): (1) meeting summary card [status badge w/ Confirmed→Scheduled, Cancelled→Dropped; company, meeting name, participant avatars, SP, date, time+duration, mode], (2) Pre-Sales Questions (excl. Discussion), (3) Company details, (4) Lead/Contact details + Email/Call/Join action buttons, (5) Agenda & Notes (+Discussion answer; Call Recording/Image for SALES_HEAD), (6) Opportunity Details, (7) Sales Intelligence. Data: meetings.ts fetchMeetingDetail already resolves most; AUDIT gaps (turnover/sector/size/website/linkedin/address, altMobile/roleAndResp/areaOfInterest, opportunity title/value/desc, salesIntelligence) — show N/A where absent (mobile does). Full spec in SALES-PORTAL.md #2.'
+    notes:'OWNER 2026-06-21: sales + client-portal users must NOT see the internal CRM record screens. SHIPPED (commit 8bf9aff): MobileMeetingRecord.tsx (7 sections, mobile order, Confirmed→Scheduled/Cancelled→Dropped relabel) at /sales/meetings/:id (SalesMeetingDetailPage); MeetingsPage navigates to /sales/meetings/:id under the sales shell so sales users never hit the internal screen. fetchMeetingDetail extended with ~15 mobile-parity cols (lead alt_mobile/linkedin/role_and_resp/area_of_interest/title/value/description; lead_report sales_intelligence+created_by→scheduledBy; company size/web_url/linkedin + turnover_master + company_sector.sector [col verified]; address lines). Adversarial review PASSED (no blocker/high). Review fixes applied: Call Recording/Image gated to SALES_HEAD+internal (canSeeRecordings) so a Sales Person / client never sees recordings. Sparse records (~79% NULL company_id) render N/A like mobile. REMAINING: client-portal REUSE of this view = ALT-274 (needs portal DB).'
   },
   {
     id:'ALT-276', title:'Sales/Portal Wishlist add (prospect capture) — company + lead + location, mobile-style',
