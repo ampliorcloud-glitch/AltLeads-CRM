@@ -826,3 +826,12 @@ Next wave: #8 global project selector (cross-cutting ProjectContext).
 - **Parity:** City made required (drives the address row + displayed State/City). Country/State are UI-only (no wishlist column); geo-photo/GPS skipped for web v1.
 - **Tracker:** ALT-275 + ALT-276 Done. The mobile-app Sales experience (record view + wishlist) is built on web.
 - **NEXT FORK:** ALT-274 (client portal = apply + validate the portal DB so the portal reuses the record view) is GATED — it's a production-facing RLS change and needs owner go-ahead + throwaway-login validation + Supabase schema-expose before prod. Meanwhile launching ALT-269 (Call module) as the next safe build.
+
+---
+## 2026-06-21 (cont. 26) — ALT-269 #6 Call module BUILT (commit 57bcd92; migrations STAGED)
+- Single-builder + adversarial-review workflow. Build green, both migrations node --check OK, review found NO blocker/high (2 LOW, acceptable).
+- **call_log** ledger of calls that HAPPENED (scheduling stays in Task task_type=CALL — not duplicated): direction, disposition (OWNER-DEFAULT B2B set), notes, duration_seconds, called_at, lead/company/contact/meeting assoc, owner_user_id, + NULLABLE recording_url/transcript as the future calling-tool seam. RLS mirrors apply-task-rls (owner OR is_admin OR manages_user [fail-closed]; reuses shared helpers, doesn't redefine; anon/PUBLIC revoked).
+- data/calls.ts (logCall/listCallsForRecord/listMyCalls/callStatsToday); LogCallModal (shared Modal, focus-safe) + CallHistoryCard; "Log call" wired on all 4 detail pages; Lead detail shows call history; Dashboard "Calls Today" card (project-scope aware, returns 0 safely until the table is applied).
+- **STAGED/not applied** (launch posture). To go live: apply apply-create-call-log.cjs + apply-call-log-rls.cjs in prod (gated). Follow-ups: a My-Calls list page (so the dashboard card drills down); wire real telephony into the recording_url/transcript seam.
+- **Session so far (15 commits, nothing pushed):** project selector + full hostile-review fix set + notify-service hardening + ALT-275 mobile record view + ALT-276 wishlist + ALT-269 Call module. Tracker: 148 Done.
+- Next: ALT-268 (#5 admin all-projects activity timeline). Portal DB apply (ALT-274) still awaits owner go-ahead.

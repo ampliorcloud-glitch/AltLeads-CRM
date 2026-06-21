@@ -2061,10 +2061,10 @@ const TICKETS = [
   {
     id:'ALT-269', title:'EPIC: Call module — schedule + log calls per record, dashboard, future call-tool integration',
     type:'Feature', module:'Calls', wave:'Roadmap',
-    priority:'P1', status:'Planned',
+    priority:'P1', status:'In Progress',
     created: d(2026,6,21), updated: d(2026,6,21), finished: null,
     owner:'Mohit',
-    notes:'OWNER (#6) 2026-06-21: a CALL module like the Task Manager but call-specific — schedule + LOG calls for a particular lead/company/contact/meeting. All calls logged + visible on the dashboard. Designed to integrate a calling tool LATER (so every call is captured), with optional transcript or audio attached. Build: call table (assoc to lead/company/contact/meeting, direction, status scheduled/logged, outcome, duration, scheduled_at/logged_at, transcript_text, audio_url) + RLS (mirror task pattern); UI to schedule + log from a record + a My Calls view; dashboard call metrics; a clean seam for a future telephony/transcription integration. Reuse Task Manager scaffolding.'
+    notes:'OWNER (#6) 2026-06-21: a CALL module like the Task Manager but call-specific. BUILT (commit 57bcd92, migrations STAGED not applied): public.call_log ledger of calls that HAPPENED (direction OUT/IN, disposition [OWNER-DEFAULT B2B set: CONNECTED/INTERESTED/FOLLOW_UP/CALLBACK_REQUESTED/LEFT_VOICEMAIL/NO_ANSWER/BUSY/NOT_INTERESTED/WRONG_NUMBER], notes, duration_seconds, called_at, lead/company/contact/meeting assoc, owner_user_id, NULLABLE recording_url + transcript = future calling-tool SEAM) + RLS mirroring task (owner OR is_admin OR manages_user, fail-closed; anon revoked). data/calls.ts (logCall/listCallsForRecord/listMyCalls/callStatsToday); LogCallModal + CallHistoryCard; "Log call" on all 4 detail pages; "Calls Today" dashboard card (project-scoped). SCHEDULING reuses Task task_type=CALL (not duplicated). Review: no blocker/high. REMAINING: apply the 2 migrations in prod (gated); a My-Calls list page (so the dashboard card can drill down); wire the future telephony/transcription integration into the recording_url/transcript seam.'
   },
   {
     id:'ALT-270', title:'Advanced per-field filters with multi-select (each column)',
