@@ -13,6 +13,7 @@ import { ResetPasswordPage } from './pages/ResetPasswordPage';
 import { SalesLoginPage } from './pages/sales/SalesLoginPage';
 import { SalesPlaceholderPage } from './pages/sales/SalesPlaceholderPage';
 import { SalesMeetingDetailPage } from './pages/sales/SalesMeetingDetailPage';
+import { SalesWishlistPage } from './pages/sales/SalesWishlistPage';
 import { DashboardPage } from './pages/DashboardPage';
 import { LeadsPage } from './pages/LeadsPage';
 import { LeadDetailPage } from './pages/LeadDetailPage';
@@ -153,6 +154,16 @@ function AppRoutes() {
         element={
           <SalesProtectedRoute>
             <SalesMeetingDetailPage />
+          </SalesProtectedRoute>
+        }
+      />
+      {/* Sales Wishlist — prospect capture (ALT-276). Sales/portal users add a
+         wishlist entry (Company + Prospect + Location) via WishlistCreateModal. */}
+      <Route
+        path="/sales/wishlist"
+        element={
+          <SalesProtectedRoute>
+            <SalesWishlistPage />
           </SalesProtectedRoute>
         }
       />

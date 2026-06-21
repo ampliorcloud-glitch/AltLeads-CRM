@@ -1,6 +1,6 @@
 import React from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
-import { Users, CalendarDays, MessageSquare, LogOut } from 'lucide-react';
+import { Users, CalendarDays, MessageSquare, Star, LogOut } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { Logo } from '../ui/Logo';
 
@@ -15,6 +15,7 @@ type SalesNavItem = { to: string; icon: typeof Users; label: string; end?: boole
 const navItems: SalesNavItem[] = [
   { to: '/sales', icon: Users, label: 'Leads', end: true },
   { to: '/sales/meetings', icon: CalendarDays, label: 'Meetings' },
+  { to: '/sales/wishlist', icon: Star, label: 'Wishlist' },
   { to: '/sales/feedback', icon: MessageSquare, label: 'Feedback' },
 ];
 

@@ -690,3 +690,220 @@ export function fmtLongDate(iso: string): string {
   if (isNaN(d.getTime())) return iso;
   return d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
 }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   ADD A WISHLIST ENTRY (ALT-276) — sales / client-portal prospect capture.
+
+   Mirrors the legacy mobile app (old-code/.../screens/wishlist/Wishlist.jsx).
+   On mobile, the submit body (`newBody`) maps the form to these wishlist columns:
+     companyName, leadName, leadNumber (=mobile), designation, description,
+     addressLine1, addressLine2, status='WishList', pincode, latitude/longitude,
+     image_url, assign_tl = assign_agent = current user, company.companyId,
+     city.cityId.
+
+   Web v1 differences (intentional):
+     - SKIP the geo-tagged photo + GPS (camera/location are mobile-only). So
+       image_url / latitude / longitude / map_address are left null.
+     - The mobile form collects Country (default "India") and State, but the
+       `wishlist` table has NEITHER a country column NOR a state_id column — only
+       `city_id`. State is DERIVED from city_master.state_id. So Country/State are
+       UI-only here and are NOT persisted (omitted — no backing column).
+     - assign_tl / assign_agent are set to the current user's numeric user_id
+       (mobile parity) ONLY when that resolves to a number; otherwise left null
+       (a client-portal user has no user_master id and must not poison the FK).
+══════════════════════════════════════════════════════════════════════════ */
+
+export interface AddWishlistInput {
+  /** Free-text company name (always sent — required). */
+  companyName: string;
+  /** Canonical company id if the user picked a match from the autocomplete. */
+  companyId: number | null;
+  /** Prospect / lead contact name (optional). */
+  leadName: string;
+  /** Captured contact phone — stored in lead_number (mobile parity). */
+  mobile: string;
+  designation: string;
+  addressLine1: string;
+  addressLine2: string;
+  /** Resolved city id from the City dropdown (carries the state via city_master). */
+  cityId: number | null;
+  pincode: string;
+  description: string;
+  /**
+   * Current user's numeric user_id (as string) for created_by + assign_*.
+   * Pass profile.user_id; may be null for portal users without a user_master row.
+   */
+  actor: string | null;
+}
+
+/**
+ * Insert ONE wishlist row from the Add-to-wishlist form. Defensive about which
+ * columns exist: builds the payload from the REAL `wishlist` columns only
+ * (verified against WishlistRow / DATA-DICTIONARY). status is forced to
+ * "WishList" (the only "sent" status). Returns the new wishlist_id (if the DB
+ * returns it) and an error string when the insert fails.
+ */
+export async function addWishlist(
+  input: AddWishlistInput
+): Promise<{ id?: number; error: string | null }> {
+  const companyName = input.companyName.trim();
+  if (!companyName) return { error: 'Company name is required.' };
+
+  const now = new Date().toISOString();
+
+  // Audit / assignment actor MUST resolve to a numeric user_id: wishlist.created_by
+  // is NOT NULL and is the ownership/RLS key, so we cannot insert without it. The
+  // Sales Wishlist page is gated to logged-in sales/internal users who have a
+  // user_master id; reject a non-resolvable actor with a friendly retry message
+  // (mirrors assignWishlist / convertWishlistToLead). True no-user client-portal
+  // accounts are out of scope until ALT-274 (they'd need a system sentinel id).
+  if (!input.actor) {
+    return { error: 'Your user profile is still loading. Please try again in a moment.' };
+  }
+  const actorErr = assertNumericActor(input.actor);
+  if (actorErr) return actorErr;
+  const numericActor = Number(input.actor);
+  const actorStr = String(numericActor);
+
+  // wishlist.address_id is NOT NULL — create an address row for the chosen city
+  // (mirrors the lead path) and fall back to placeholder id 1 when there's no city,
+  // exactly like convertWishlistToLead / leadsApi.
+  const addressId = await ensureAddress(input.cityId, actorStr);
+
+  const row: Record<string, unknown> = {
+    company_name: companyName,
+    lead_name: input.leadName.trim() || null,
+    lead_number: input.mobile.trim() || null, // captured contact phone
+    designation: input.designation.trim() || null,
+    description: input.description.trim() || null,
+    address_line1: input.addressLine1.trim() || null,
+    address_line2: input.addressLine2.trim() || null,
+    pincode: input.pincode.trim() || null,
+    status: STATUS_WISHLIST,
+    city_id: input.cityId ?? null,
+    company_id: input.companyId ?? null,
+    address_id: addressId ?? 1, // NOT NULL column — placeholder when no city
+    // created_by is held as varchar across the app — write the numeric id as text.
+    created_by: actorStr,
+    // Mobile parity: a self-captured wishlist is assigned to the capturer as both
+    // the agent and the team lead. Both columns are numeric FKs to user_master.
+    assign_agent: numericActor,
+    assign_tl: numericActor,
+    created_date: now,
+  };
+
+  const { data, error } = await supabase
+    .from('wishlist')
+    .insert(row)
+    .select('wishlist_id')
+    .maybeSingle();
+
+  if (error) return { error: error.message };
+  return { id: (data as { wishlist_id: number } | null)?.wishlist_id, error: null };
+}
+
+/* ── Company autocomplete (ALT-276) ──────────────────────────────────────── */
+
+export interface CompanySearchOption {
+  companyId: number;
+  companyName: string;
+  /** Best-effort address fields if present on company_master (else ''). */
+  cityId: number | null;
+}
+
+/**
+ * Autocomplete companies from company_master by name. Only runs at >= 2 chars
+ * (mobile parity), case-insensitive, capped at 10. Returns the canonical company
+ * id so a picked match carries company_id onto the wishlist row.
+ */
+export async function searchCompanies(term: string): Promise<CompanySearchOption[]> {
+  const q = term.trim();
+  if (q.length < 2) return [];
+  const { data, error } = await supabase
+    .from('company_master')
+    .select('company_id, company_name, city_id')
+    .ilike('company_name', `%${q}%`)
+    .is('deleted_date', null)
+    .order('company_name', { ascending: true, nullsFirst: false })
+    .limit(10);
+  if (error || !data) return [];
+  return (data as { company_id: number; company_name: string | null; city_id: number | null }[]).map(
+    (c) => ({ companyId: c.company_id, companyName: (c.company_name ?? '').trim(), cityId: c.city_id ?? null })
+  );
+}
+
+/* ── Cascading State → City location dropdowns (ALT-276) ──────────────────── */
+
+export interface StateOption { stateId: number; stateName: string; }
+export interface CityOption { cityId: number; cityName: string; }
+
+/**
+ * All states (state_master), sorted by name. Used by the State dropdown that
+ * drives the dependent City dropdown. city_master.state_id links a city to its
+ * state, so this is a REAL cascade (no flat-search fallback needed).
+ */
+export async function listStates(): Promise<StateOption[]> {
+  const { data, error } = await supabase
+    .from('state_master')
+    .select('state_id, state_name')
+    .order('state_name', { ascending: true, nullsFirst: false })
+    .limit(1000);
+  if (error || !data) return [];
+  return (data as { state_id: number; state_name: string | null }[]).map((s) => ({
+    stateId: s.state_id,
+    stateName: (s.state_name ?? '').trim(),
+  }));
+}
+
+/**
+ * Cities for a state (city_master.state_id = stateId), sorted by name. Powers
+ * the City dropdown once a State is chosen. Returns city_id so the wishlist row
+ * persists city_id (and the state is recoverable via city_master.state_id).
+ */
+export async function listCitiesByState(stateId: number): Promise<CityOption[]> {
+  const { data, error } = await supabase
+    .from('city_master')
+    .select('city_id, city_name')
+    .eq('state_id', stateId)
+    .order('city_name', { ascending: true, nullsFirst: false })
+    .limit(2000);
+  if (error || !data) return [];
+  return (data as { city_id: number; city_name: string | null }[]).map((c) => ({
+    cityId: c.city_id,
+    cityName: (c.city_name ?? '').trim(),
+  }));
+}
+
+/* ── Leads-by-company (ALT-276, optional designation auto-fill) ───────────── */
+
+export interface CompanyLeadOption {
+  leadId: number;
+  leadName: string;
+  designation: string;
+  mobileNo: string;
+}
+
+/**
+ * Leads already on file for a company — used (best-effort) to offer a prospect
+ * name + auto-fill the designation, mirroring the mobile getLeadList(). If the
+ * query fails or the schema lacks the join, returns [] and the caller degrades
+ * to free-text entry. lead_master links to a company via company_id.
+ */
+export async function leadsByCompany(companyId: number): Promise<CompanyLeadOption[]> {
+  const { data, error } = await supabase
+    .from('lead_master')
+    .select('lead_id, lead_name, designation, mobile_no')
+    .eq('company_id', companyId)
+    .is('deleted_date', null)
+    .order('lead_name', { ascending: true, nullsFirst: false })
+    .limit(50);
+  if (error || !data) return [];
+  return (data as { lead_id: number; lead_name: string | null; designation: string | null; mobile_no: string | null }[])
+    .map((l) => ({
+      leadId: l.lead_id,
+      leadName: (l.lead_name ?? '').trim(),
+      designation: (l.designation ?? '').trim(),
+      mobileNo: (l.mobile_no ?? '').trim(),
+    }))
+    .filter((l) => l.leadName);
+}
