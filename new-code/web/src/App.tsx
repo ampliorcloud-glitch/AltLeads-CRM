@@ -4,7 +4,10 @@ import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { SalesShellProvider } from './contexts/SalesShellContext';
 import { ToastProvider } from './components/ui/Toast';
 import { ConfirmProvider } from './components/ui/ConfirmDialog';
+import { ErrorBoundary } from './components/ui/ErrorBoundary';
 import { LoginPage } from './pages/LoginPage';
+import { ForgotPasswordPage } from './pages/ForgotPasswordPage';
+import { ResetPasswordPage } from './pages/ResetPasswordPage';
 import { SalesLoginPage } from './pages/sales/SalesLoginPage';
 import { SalesPlaceholderPage } from './pages/sales/SalesPlaceholderPage';
 import { DashboardPage } from './pages/DashboardPage';
@@ -97,6 +100,14 @@ function AppRoutes() {
         path="/login"
         element={session ? <Navigate to="/dashboard" replace /> : <LoginPage />}
       />
+      {/* Self-service password recovery (ALT-197). Forgot = request a link; Reset =
+         the recovery landing page. Reset is NOT session-gated: users arrive there in
+         a temporary Supabase recovery session and must be able to set a new password. */}
+      <Route
+        path="/forgot-password"
+        element={session ? <Navigate to="/dashboard" replace /> : <ForgotPasswordPage />}
+      />
+      <Route path="/reset-password" element={<ResetPasswordPage />} />
 
       {/* ───────────────────────── Sales Portal (/sales/*) ─────────────────────────
          Additive shell behind its own route tree. Sales users land here; internal
@@ -302,7 +313,11 @@ function App() {
       <ToastProvider>
         <ConfirmProvider>
           <BrowserRouter>
-            <AppRoutes />
+            {/* Top-level boundary (ALT-196): an uncaught render error in any route
+               shows a calm fallback instead of white-screening the whole SPA. */}
+            <ErrorBoundary>
+              <AppRoutes />
+            </ErrorBoundary>
           </BrowserRouter>
         </ConfirmProvider>
       </ToastProvider>
