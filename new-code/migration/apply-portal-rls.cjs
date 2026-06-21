@@ -188,18 +188,30 @@ GRANT EXECUTE ON FUNCTION
   TO authenticated, service_role;
 
 -- ============================================================
--- 1. Enable + FORCE RLS on the three portal base tables.
---    FORCE on all three (incl. client_portal_user) so the table owner is also subject to
---    policy; the SECURITY DEFINER resolvers read it as owner but that is acceptable because
---    they only ever return the caller's own row keyed on auth.uid(). The snapshot writer +
---    service_role bypass RLS as expected (service_role has BYPASSRLS).
+-- 1. Enable RLS on the three portal base tables.
+--    client_portal_user + notification are FORCE: the table owner is also subject to policy.
+--    Their writers are service-role only (service_role has BYPASSRLS, so provisioning +
+--    notification inserts still work), and the SECURITY DEFINER resolvers only ever read
+--    the caller's own row keyed on auth.uid(), so FORCE is safe + defense-in-depth there.
+--
+--    meeting_snapshot is ENABLE-only (NOT FORCE) — DELIBERATELY. The snapshot is written by
+--    write_meeting_snapshot(), a SECURITY DEFINER trigger on public.meeting_master that runs
+--    as the table OWNER (the migration postgres role, which on Supabase does NOT have
+--    BYPASSRLS — only the JWT-backed service_role does, and the trigger never runs as
+--    service_role). Under FORCE the owner would be subject to RLS, and since there is no
+--    INSERT/UPDATE policy here, the snapshot INSERT inside the trigger would be denied and
+--    roll back EVERY meeting create/edit in the CRM. ENABLE lets the owner/definer bypass for
+--    the write while STILL gating reads: portal sessions connect as the authenticated role
+--    (not the owner), so the SELECT policies below still fully isolate them. This mirrors the
+--    project baseline (new-code/migration/rls-policies.sql: NOT FORCE so table owners still
+--    bypass RLS, which the onboarding flow needs) for exactly this SECURITY DEFINER pattern.
 -- ============================================================
 ALTER TABLE portal.client_portal_user ENABLE ROW LEVEL SECURITY;
 ALTER TABLE portal.meeting_snapshot   ENABLE ROW LEVEL SECURITY;
 ALTER TABLE portal.notification       ENABLE ROW LEVEL SECURITY;
 ALTER TABLE portal.client_portal_user FORCE ROW LEVEL SECURITY;
-ALTER TABLE portal.meeting_snapshot   FORCE ROW LEVEL SECURITY;
 ALTER TABLE portal.notification       FORCE ROW LEVEL SECURITY;
+-- NOTE: meeting_snapshot intentionally NOT forced (see block comment above).
 
 -- ============================================================
 -- 2. client_portal_user — a portal user may read ONLY their own row. No client writes.
