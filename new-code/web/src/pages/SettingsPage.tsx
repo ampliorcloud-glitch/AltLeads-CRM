@@ -10,7 +10,11 @@ import {
 } from '../data/account';
 import { getDigestPref, setDigestPref } from '../data/tasks';
 import { useToast } from '../components/ui/Toast';
-import { Loader2, Check, Lock, User as UserIcon, Bell } from 'lucide-react';
+import {
+  useProjectScope,
+  DEFAULT_PROJECT_KEY,
+} from '../contexts/ProjectContext';
+import { Loader2, Check, Lock, User as UserIcon, Bell, Layers } from 'lucide-react';
 
 const inputBase: React.CSSProperties = {
   fontSize: 13,
@@ -78,6 +82,40 @@ export function SettingsPage() {
   const toast = useToast();
   const userId = profile?.user_id ?? null;
   const actor = userEmail || profile?.full_name || 'system';
+
+  // Default-project preference (owner #8). The user's chosen default scope is what
+  // the global Project Switcher seeds to on a fresh session. Stored device-local in
+  // localStorage (DEFAULT_PROJECT_KEY); "All projects" = null. We also push the new
+  // default straight into the live scope so the change takes effect immediately.
+  const { projects, selectedProjectId, setSelectedProjectId } = useProjectScope();
+  const [defaultProjectId, setDefaultProjectId] = useState<number | null>(() => {
+    try {
+      const raw = localStorage.getItem(DEFAULT_PROJECT_KEY);
+      if (raw == null || raw === '' || raw === 'all' || raw === 'null') return null;
+      const n = Number(raw);
+      return Number.isFinite(n) && n > 0 ? n : null;
+    } catch {
+      return null;
+    }
+  });
+
+  const handleChangeDefaultProject = (next: number | null) => {
+    setDefaultProjectId(next);
+    try {
+      localStorage.setItem(DEFAULT_PROJECT_KEY, next == null ? 'all' : String(next));
+    } catch {
+      /* storage unavailable — ignore */
+    }
+    // Apply immediately to the live scope so the rest of the app reflects it now.
+    setSelectedProjectId(next);
+    toast.success(
+      next == null
+        ? 'Default scope set to All projects.'
+        : `Default project set to ${
+            projects.find((p) => p.project_id === next)?.project_name ?? 'project'
+          }.`,
+    );
+  };
 
   // Daily-digest opt-in (task reminders). Per-task reminders are always on; this is the extra.
   const [digestOptIn, setDigestOptIn] = useState(false);
@@ -530,6 +568,74 @@ export function SettingsPage() {
                 </div>
               </div>
             </div>
+
+            {/* Default project (owner #8) — only meaningful when the user can access ≥2 projects. */}
+            {projects.length >= 2 && (
+              <div style={{ background: '#FFFFFF', border: '1px solid #E5E7EB', borderRadius: 8, overflow: 'hidden' }}>
+                <div
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 10,
+                    padding: '14px 20px',
+                    borderBottom: '1px solid #F3F4F6',
+                  }}
+                >
+                  <span style={{ display: 'block', width: 4, height: 20, background: '#1A7EE8', borderRadius: 2, flexShrink: 0 }} />
+                  <Layers size={15} strokeWidth={1.75} style={{ color: '#6B7280' }} />
+                  <h2 style={{ fontSize: 14, fontWeight: 600, color: '#111827', margin: 0 }}>
+                    Default project
+                  </h2>
+                </div>
+                <div className="p-5">
+                  <div className="flex items-center justify-between gap-4">
+                    <div className="min-w-0">
+                      <p className="font-medium text-zinc-900" style={{ fontSize: 13 }}>
+                        Pre-filter records by this project
+                      </p>
+                      <p className="text-zinc-400" style={{ fontSize: 12, marginTop: 2 }}>
+                        Sets which project the global project selector starts on each session.
+                        Choose “All projects” to see everything. You can still switch any time
+                        from the top bar.
+                        {selectedProjectId != null && defaultProjectId !== selectedProjectId && (
+                          <>
+                            {' '}Currently viewing:{' '}
+                            <span className="text-zinc-600 font-medium">
+                              {projects.find((p) => p.project_id === selectedProjectId)?.project_name ?? 'a project'}
+                            </span>
+                            .
+                          </>
+                        )}
+                      </p>
+                    </div>
+                    <select
+                      value={defaultProjectId == null ? 'all' : String(defaultProjectId)}
+                      onChange={(e) =>
+                        handleChangeDefaultProject(
+                          e.target.value === 'all' ? null : Number(e.target.value),
+                        )
+                      }
+                      aria-label="Default project"
+                      style={{
+                        ...inputBase,
+                        width: 'auto',
+                        minWidth: 180,
+                        maxWidth: 240,
+                        flexShrink: 0,
+                        cursor: 'pointer',
+                      }}
+                    >
+                      <option value="all">All projects</option>
+                      {projects.map((p) => (
+                        <option key={p.project_id} value={String(p.project_id)}>
+                          {p.project_name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+              </div>
+            )}
           </>
         )}
       </div>

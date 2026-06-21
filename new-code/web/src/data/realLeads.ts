@@ -43,6 +43,8 @@ export interface RealLead {
   city: string;
   agent: string;
   project: string;
+  /** Numeric project id (lead_master.project_id) — the stable key for project scoping. */
+  projectId: number | null;
   source: string;
   stage: string;
   meetingDate: string | null;
@@ -282,6 +284,7 @@ export async function fetchLeadsFallback(): Promise<LeadsResult> {
       city: cityName,
       agent: agentName,
       project: projectName,
+      projectId: l.project_id ?? null,
       source: sourceName,
       stage: stageName,
       meetingDate,

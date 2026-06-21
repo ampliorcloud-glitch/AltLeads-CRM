@@ -116,6 +116,8 @@ export interface MeetingRow {
   leadId: string | null; // lead_id (for navigation)
   leadNumber: string;    // ALT123456
   leadName: string;
+  /** Numeric project id of the meeting's lead (lead_master.project_id) — for project scoping. */
+  projectId: number | null;
   company: string;       // prospect company (company_master)
   client: string;        // Amplior client (client_association)
   industry: string;      // prospect company industry
@@ -246,6 +248,7 @@ interface LeadRow {
   client_assoc_id: number | null;
   address_id: number | null;
   agent_id: number | null;
+  project_id: number | null;
   email: string | null;
   mobile_no: string | null;
   designation: string | null;
@@ -356,7 +359,7 @@ export async function fetchMeetings(): Promise<MeetingsResult> {
   const { data: leadsRaw } = leadIds.length
     ? await supabase
         .from('lead_master')
-        .select('lead_id, lead_name, lead_number, company_id, client_assoc_id, address_id, agent_id, mobile_no, created_date')
+        .select('lead_id, lead_name, lead_number, company_id, client_assoc_id, address_id, agent_id, project_id, mobile_no, created_date')
         .in('lead_id', leadIds)
     : { data: [] };
   const leads = (leadsRaw ?? []) as unknown as LeadRow[];
@@ -483,6 +486,7 @@ export async function fetchMeetings(): Promise<MeetingsResult> {
       leadId: lead ? String(lead.lead_id) : null,
       leadNumber: (lead?.lead_number ?? '').trim(),
       leadName: (lead?.lead_name ?? '').trim(),
+      projectId: lead?.project_id ?? null,
       company,
       client,
       industry,

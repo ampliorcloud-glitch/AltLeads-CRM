@@ -15,6 +15,7 @@ import { StageBadge } from '../components/ui/Badge';
 import { fetchLeadsFallback, type RealLead } from '../data/realLeads';
 import { useAuth } from '../contexts/AuthContext';
 import { useIsSalesShell } from '../contexts/SalesShellContext';
+import { useProjectScope } from '../contexts/ProjectContext';
 import { useRowSelection } from '../components/ui/useRowSelection';
 import { ExportButton } from '../components/ui/ExportButton';
 import { MultiSelectFilter } from '../components/ui/MultiSelectFilter';
@@ -236,6 +237,14 @@ export function LeadsPage() {
   const isSalesShell = useIsSalesShell();
   const leadBase = isSalesShell ? '/sales/leads' : '/leads';
 
+  // Global project scope (owner ask #8). When a project is selected (not "All"),
+  // the list additionally pre-filters to that project. We match on the NUMERIC
+  // lead.projectId (lead_master.project_id) — the same stable id useProjectScope
+  // returns — NOT the display name, so duplicate/blank project names and any drift
+  // between the two `project` queries can never hide or mismatch records.
+  // selectedProjectId === null = "All projects" → no project filter (unchanged).
+  const { selectedProjectId } = useProjectScope();
+
   const [filters, setFilters] = useState<Filters>(defaultFilters);
   const [sorting, setSorting] = useState<SortingState>([]);
   const [pagination, setPagination] = useState<PaginationState>({ pageIndex: 0, pageSize: 25 });
@@ -291,6 +300,9 @@ export function LeadsPage() {
 
   const filteredData = useMemo(() => {
     return allLeads.filter((lead) => {
+      // Global project scope (AND with every page filter). null = "All projects"
+      // → no project filter. Otherwise match the lead's numeric project id.
+      if (selectedProjectId != null && lead.projectId !== selectedProjectId) return false;
       if (filters.search) {
         const q = filters.search.toLowerCase();
         const searchable = [
@@ -317,7 +329,7 @@ export function LeadsPage() {
       if (filters.stage.length && !filters.stage.includes(lead.stage)) return false;
       return true;
     });
-  }, [filters, allLeads]);
+  }, [filters, allLeads, selectedProjectId]);
 
   // Derive the ordered, visibility-filtered set of column keys from prefs.
   const visibleKeys = useMemo(

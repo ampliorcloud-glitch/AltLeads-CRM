@@ -14,6 +14,7 @@ import {
 import { AppShell } from '../components/layout/AppShell';
 import { fetchWishlist, fmtLongDate, type WishlistItem } from '../data/wishlist';
 import { useAuth } from '../contexts/AuthContext';
+import { useProjectScope } from '../contexts/ProjectContext';
 import { useRowSelection } from '../components/ui/useRowSelection';
 import { ExportButton } from '../components/ui/ExportButton';
 import { MultiSelectFilter } from '../components/ui/MultiSelectFilter';
@@ -183,6 +184,20 @@ export function WishlistPage() {
   const navigate = useNavigate();
   const { profile } = useAuth();
   const userId = profile?.user_id ?? null;
+
+  // Global project scope (owner ask #8). null = "All projects" (no extra filter).
+  // NOTE: Wishlist rows are NOT project-scoped at the data layer — the `wishlist`
+  // table has no project_id, and WishlistItem carries no project field (see
+  // data/wishlist.ts header: "There is NO project_id on a wishlist; the Team Lead
+  // IS assign_tl"). So there is no reliable project field to filter by here.
+  // Per the contract, a wrong filter that hides records is worse than none, so we
+  // leave the list UNFILTERED by project regardless of selectedProjectId.
+  // TODO(owner #8): if/when wishlist rows gain a project association (e.g. a
+  // project_id column on `wishlist`), surface it on WishlistItem and AND it into
+  // the filteredData predicate below: `selectedProjectId == null ||
+  // item.projectId === selectedProjectId`.
+  const { selectedProjectId } = useProjectScope();
+  void selectedProjectId; // intentionally unused: no project field on wishlist rows
 
   const [filters, setFilters] = useState<Filters>(defaultFilters);
   const [sorting, setSorting] = useState<SortingState>([]);

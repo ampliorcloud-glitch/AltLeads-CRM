@@ -30,6 +30,7 @@ import { SkeletonTable } from '../components/ui/Skeleton';
 import { useToast } from '../components/ui/Toast';
 import { useConfirm } from '../components/ui/ConfirmDialog';
 import { useAuth } from '../contexts/AuthContext';
+import { useProjectScope } from '../contexts/ProjectContext';
 import { CreateTaskModal } from '../components/tasks/CreateTaskModal';
 import {
   listMyTasks,
@@ -343,6 +344,19 @@ export function MyTasksPage() {
   const confirm = useConfirm();
   const userId = profile?.user_id ?? null;
 
+  // Global project scope (owner ask #8). When a project is selected we AND it
+  // onto the displayed rows so My Tasks pre-filters by project.
+  //
+  // TODO(project-linkage): tasks have lead_id/company_id/contact_id/meeting_id
+  // but NO direct project field — neither the `public.task` table nor the
+  // data-layer projection (data/tasks.ts → TASK_COLUMNS / Task) carries a
+  // project_id, and there is no reliable client-side join to derive one. Rather
+  // than guess (a wrong filter would silently HIDE tasks), we intentionally do
+  // not filter tasks by project yet. Follow-up: add a project linkage to tasks
+  // (e.g. denormalised project_id on `task`, or join via the linked record) and
+  // then compose it here exactly like the other list pages.
+  const { selectedProjectId } = useProjectScope();
+
   const [groups, setGroups] = useState<GroupedTasks>(emptyGroups());
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -373,7 +387,23 @@ export function MyTasksPage() {
     [groups],
   );
 
-  const rows = groups[activeTab];
+  // Displayed rows for the active bucket. This is the single composition point
+  // for the global project scope: the project predicate is AND-ed on here, so it
+  // stacks with the active-tab selection (and any future search/filter) instead
+  // of replacing it, and is a pure no-op when "All projects" (selectedProjectId
+  // === null) is selected — behaviour is then identical to before.
+  const rows = useMemo(() => {
+    const bucketRows = groups[activeTab];
+    if (selectedProjectId == null) return bucketRows; // "All projects" → unchanged
+
+    // NOTE: tasks carry no reliable project field (see TODO above), so we cannot
+    // correctly narrow them by project without risking hiding valid rows. Until a
+    // project linkage exists on `task`, leave the list unfiltered even when a
+    // project is selected. Replace this pass-through with a real predicate once a
+    // task→project field is available, e.g.:
+    //   return bucketRows.filter((t) => t.project_id === selectedProjectId);
+    return bucketRows;
+  }, [groups, activeTab, selectedProjectId]);
 
   function openRecord(task: Task) {
     if (task.lead_id != null) navigate(`/leads/${task.lead_id}`);

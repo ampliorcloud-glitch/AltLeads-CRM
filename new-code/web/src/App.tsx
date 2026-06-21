@@ -1,6 +1,7 @@
 ﻿import React from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
+import { ProjectProvider } from './contexts/ProjectContext';
 import { SalesShellProvider } from './contexts/SalesShellContext';
 import { ToastProvider } from './components/ui/Toast';
 import { ConfirmProvider } from './components/ui/ConfirmDialog';
@@ -327,19 +328,25 @@ function AppRoutes() {
 function App() {
   return (
     <AuthProvider>
-      <ToastProvider>
-        <ConfirmProvider>
-          <BrowserRouter>
-            {/* Top-level boundary (ALT-196): an uncaught render error in any route
-               shows a calm fallback instead of white-screening the whole SPA. */}
-            <ErrorBoundary>
-              <AppRoutes />
-              {/* Global Cmd-K search (ALT-188); self-gates to logged-in internal users. */}
-              <CommandPalette />
-            </ErrorBoundary>
-          </BrowserRouter>
-        </ConfirmProvider>
-      </ToastProvider>
+      {/* Global project scope (ALT-273 / owner #8): reads the signed-in user's
+         accessible projects and exposes the selected scope app-wide. Inside
+         AuthProvider (needs profile/isAdmin); above the router so every page +
+         the TopBar switcher share one scope. Inert "All projects" outside it. */}
+      <ProjectProvider>
+        <ToastProvider>
+          <ConfirmProvider>
+            <BrowserRouter>
+              {/* Top-level boundary (ALT-196): an uncaught render error in any route
+                 shows a calm fallback instead of white-screening the whole SPA. */}
+              <ErrorBoundary>
+                <AppRoutes />
+                {/* Global Cmd-K search (ALT-188); self-gates to logged-in internal users. */}
+                <CommandPalette />
+              </ErrorBoundary>
+            </BrowserRouter>
+          </ConfirmProvider>
+        </ToastProvider>
+      </ProjectProvider>
     </AuthProvider>
   );
 }

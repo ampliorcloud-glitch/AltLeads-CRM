@@ -3,6 +3,7 @@ import { Bell, Search } from 'lucide-react';
 import { useLocation, useParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import { fetchUnreadNotifCount } from '../../data/account';
+import { ProjectSwitcher } from './ProjectSwitcher';
 
 interface TopBarProps {
   title: string;
@@ -142,8 +143,12 @@ export function TopBar({ title }: TopBarProps) {
         })}
       </nav>
 
-      {/* Right: search + bell + user */}
+      {/* Right: project scope + search + bell + user */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+        {/* Global project scope selector (ALT-273 / owner #8). Self-hides for users
+           with <2 accessible projects. Internal users only — sits left of search. */}
+        {isInternalUser && <ProjectSwitcher />}
+
         {/* Global search affordance (opens the Cmd-K palette). Internal users only. */}
         {isInternalUser && (
           <button

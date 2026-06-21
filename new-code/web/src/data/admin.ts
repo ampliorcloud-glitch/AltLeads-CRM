@@ -432,6 +432,52 @@ export async function unassignProjectUser(projectUserId: number, actorId: string
   return error?.message ?? null;
 }
 
+/** Minimal project shape used by the global Project Switcher / project-scope context. */
+export interface MyProject {
+  project_id: number;
+  project_name: string;
+}
+
+/**
+ * Projects the given user may scope the app to, for the global Project Switcher.
+ *   - ADMIN sees every ENABLED project.
+ *   - everyone else sees the ENABLED projects they're assigned to via project_user.
+ * Returns enabled projects only, sorted by name. Soft-deleted rows are excluded.
+ * Never throws — on any error it returns an empty list so the switcher degrades
+ * gracefully to just "All projects".
+ */
+export async function fetchMyProjects(
+  userId: number | null,
+  isAdmin: boolean,
+): Promise<MyProject[]> {
+  const { data: projRaw, error } = await supabase
+    .from('project')
+    .select('project_id, project_name, enabled')
+    .eq('enabled', true)
+    .is('deleted_date', null)
+    .order('project_name', { ascending: true });
+  if (error || !projRaw) return [];
+
+  const allEnabled = (projRaw as unknown as { project_id: number; project_name: string }[]).map(
+    (p) => ({ project_id: p.project_id, project_name: p.project_name }),
+  );
+
+  if (isAdmin) return allEnabled;
+  if (userId == null) return [];
+
+  const { data: puRaw, error: puErr } = await supabase
+    .from('project_user')
+    .select('project_id')
+    .eq('user_id', userId)
+    .is('deleted_date', null);
+  if (puErr || !puRaw) return [];
+
+  const myIds = new Set(
+    (puRaw as unknown as { project_id: number }[]).map((r) => r.project_id),
+  );
+  return allEnabled.filter((p) => myIds.has(p.project_id));
+}
+
 /* ------------------------------------------------------------------ */
 /*  Clients                                                            */
 /* ------------------------------------------------------------------ */

@@ -18,6 +18,7 @@ import {
   type MeetingRow,
 } from '../data/meetings';
 import { useAuth } from '../contexts/AuthContext';
+import { useProjectScope } from '../contexts/ProjectContext';
 import { useRowSelection } from '../components/ui/useRowSelection';
 import { ExportButton } from '../components/ui/ExportButton';
 import { MultiSelectFilter } from '../components/ui/MultiSelectFilter';
@@ -225,6 +226,13 @@ export function MeetingsPage() {
   const { profile } = useAuth();
   const userId = profile?.user_id ?? null;
 
+  // Global project scope (owner ask #8). When a project is selected (not "All"),
+  // pre-filter to that project — composed (AND) with every page filter/search,
+  // and a no-op when selectedProjectId is null. A meeting's project comes from its
+  // lead (lead_master.project_id), now surfaced as MeetingRow.projectId in
+  // src/data/meetings.ts, matched on the same numeric id useProjectScope returns.
+  const { selectedProjectId } = useProjectScope();
+
   const [filters, setFilters] = useState<Filters>(defaultFilters);
   const [sorting, setSorting] = useState<SortingState>([]);
   const [pageIndex, setPageIndex] = useState(0);
@@ -278,6 +286,8 @@ export function MeetingsPage() {
 
   const filteredData = useMemo(() => {
     return allMeetings.filter((m) => {
+      // Global project scope (AND with every page filter). null = "All projects".
+      if (selectedProjectId != null && m.projectId !== selectedProjectId) return false;
       if (filters.search) {
         const q = filters.search.toLowerCase();
         const searchable = [
@@ -306,7 +316,7 @@ export function MeetingsPage() {
       if (filters.status.length && !filters.status.includes(m.status)) return false;
       return true;
     });
-  }, [filters, allMeetings]);
+  }, [filters, allMeetings, selectedProjectId]);
 
   // Visible column keys in display order (driven by colPrefs).
   const visibleKeys = useMemo(
