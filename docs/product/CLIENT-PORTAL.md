@@ -101,3 +101,48 @@ The Client Portal is a **distinct, new app** — not the internal Sales Portal r
 
 ## 11. Backlog (epic + Phase-1 tickets)
 Epic **ALT-221 Client Portal (Amplior-branded, external)**. Phase-1 children to be created on owner sign-off: Supabase Pro upgrade + portal schema/role; per-client access + `client_portal_user`; curated read-only CRM views (lead reports/meetings/dashboard); Storage + doc upload backend; Overview/Onboarding/Lead-Reports/Meetings-Dashboard/Governance/Updates/Invoices pages; weekly-summary selector; security + multi-tenant RLS validation. (Supersedes the old placeholder **ALT-161**.)
+
+---
+## 12. v2 — CORRECTED model (owner interview, 2026-06-21) — supersedes conflicting v1 bits
+
+### 12.1 Roles (final)
+- **Amplior internal (AltLeads CRM):** ADMIN, TEAM_LEAD, AGENT (caller), QC. These NEVER touched the vendor mobile app.
+- **Client-side (the Portal):** **Company Admin** (the client's top admin / "client head") › **Sales Head** › **Sales Person**.
+- role_master SALES_HEAD/SALES_PERSON = these CLIENT roles (they were is_web=false because mobile-only; the mobile app was always client-facing).
+
+### 12.2 Client structure (real examples)
+- 1 client (company) → many **projects**; each project → 1+ **sales heads** + their **sales people**.
+- **AP Securitas** → "AP Securitas North & West", "AP Securitas South". **HungerBox** → "HungerBox India", "Market Mapping".
+- **Companies are SHARED** across all clients/brands in the CRM (callers reuse the same company across clients); each client only ever sees their own projects' records.
+
+### 12.3 Access & permission matrix (Portal)
+| Capability | Company Admin | Sales Head | Sales Person |
+|---|---|---|---|
+| See data | ALL their company's projects | Their project(s) + downline's records (+ other projects only if explicitly added) | Only their own assigned records |
+| Manage portal users | Yes (their portal only) | — | — |
+| Assign / reassign leads (for meetings) | Yes | Yes (within their project) | — |
+| Meeting **feedback** | Edit | Edit (in scope) | Provide (own) — feedback only |
+| Create **Wishlist** request | Yes | Yes | Yes |
+| Edit ICP/criteria/docs/notes/review-notes/decks | Yes* | Yes* | View only |
+| Create/reschedule/delete meetings | No (Amplior schedules) | No | No |
+| Create company | No — only a Wishlist *request* | same | same |
+
+\* On Save → a confirmation popup; saving **notifies Amplior ADMIN + TL + that project's users** it was updated. (Doc-edit limited to Company Admin + Sales Head.)
+
+### 12.4 Client-side WRITE actions (the only ones)
+1. **Wishlist request** — pick an **existing company** to request targeting; OR type a new company name as free text → **Amplior agent/TL reconciles it to the nearest existing company** before it enters the DB (protects shared company data). Request routes to Amplior's agent/TL to generate a meeting.
+2. **Meeting feedback** — sales person provides; sales head can edit. (No meeting create/reschedule/delete.)
+3. **Docs/governance edits** — company admin + sales head only, with the notify-on-save popup.
+4. **User management** — company admin (their portal); **Amplior ADMIN can also create client/sales users**.
+
+### 12.5 Provisioning + the add/edit-user bug
+Amplior ADMIN onboards the client + creates the first **Company Admin** login; the company admin then adds their own sales heads/people. Amplior ADMIN can ALSO create sales users directly. → **FIX:** the CRM **Edit User** must show the sales roles like **Add User** does (keep the sales roles — they're valid, just assigned to client users).
+
+### 12.6 Apps & WHITE-LABEL (key architecture requirement)
+- **Mobile app retired**; its client-sales-team function moves to this **web portal**.
+- The existing **/sales shell IS the seed** of this portal (client sales-team screens) — **do NOT delete**; it grows into the branded portal.
+- **One portal codebase, white-labeled per brand** (logo/name/colours/domain). Brands today: **Amplior** + **AltLeads**. **Brand isolation is absolute** — an Amplior-brand client never sees AltLeads and vice-versa; neither knows the other (or the shared backend) exists. So Amplior can sell under either brand without revealing the other.
+- **Separate frontend app from the internal CRM** (external users + white-label + far more sensitive security surface) — but **SHARES the same Supabase backend** (must read the same shared companies/leads/meetings, scoped per client). This re-confirms **same-Supabase-project**; a separate project would break the shared-company live data.
+
+### 12.7 Open for round 2
+Is the AltLeads-branded portal the SAME full product or a LIGHTER sales-only version? · brand list + domains · dashboard scope per role · invoices visibility · "How the week went" weekly summary phase · confirm portal data = scoped live view of CRM.
