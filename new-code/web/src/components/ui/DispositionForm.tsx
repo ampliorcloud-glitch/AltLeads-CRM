@@ -108,6 +108,8 @@ export function DispositionForm({
       <select
         value={disposition}
         onChange={(e) => setDisposition(e.target.value)}
+        aria-label="Call disposition"
+        aria-required={true}
         style={{ ...fieldStyle, height: 34, appearance: 'none' }}
       >
         <option value="">Select disposition…</option>
@@ -126,6 +128,7 @@ export function DispositionForm({
         value={noteText}
         onChange={(e) => setNoteText(e.target.value)}
         placeholder="Add a note (optional)…"
+        aria-label="Call note"
         rows={3}
         style={{ ...fieldStyle, resize: 'vertical', fontFamily: 'inherit' }}
       />

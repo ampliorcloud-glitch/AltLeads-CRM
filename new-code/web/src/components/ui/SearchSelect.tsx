@@ -121,8 +121,17 @@ export function SearchSelect({
   return (
     <div ref={containerRef} style={{ position: 'relative', width: '100%' }}>
       {/* Trigger */}
-      <div style={triggerStyle} onClick={handleOpen} tabIndex={disabled ? -1 : 0}
-        onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') handleOpen(); }}>
+      <div
+        style={triggerStyle}
+        onClick={handleOpen}
+        tabIndex={disabled ? -1 : 0}
+        role="combobox"
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        aria-disabled={disabled || undefined}
+        aria-label={selected ? selected.label : placeholder}
+        onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') handleOpen(); }}
+      >
         <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
           {selected ? (
             <span>
@@ -182,7 +191,7 @@ export function SearchSelect({
           </div>
 
           {/* Options list */}
-          <div style={{ overflowY: 'auto', flex: 1 }}>
+          <div role="listbox" style={{ overflowY: 'auto', flex: 1 }}>
             {filtered.length === 0 ? (
               <div style={{ padding: '12px 14px', fontSize: 13, color: '#9ca3af', textAlign: 'center' }}>
                 No results found

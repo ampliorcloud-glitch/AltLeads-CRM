@@ -99,48 +99,6 @@ export async function notifyInApp(
 /* ── Resolve user email from user_master ─────────────────────────── */
 
 /**
- * Look up a user's email from user_master by numeric user_id.
- * Returns empty string if not found or on error.
- */
-export async function resolveUserEmail(
-  supabase: unknown,
-  userId: number | null | undefined
-): Promise<string> {
-  if (!userId) return '';
-  try {
-    const { data } = await (supabase as any)
-      .from('user_master')
-      .select('email')
-      .eq('user_id', userId)
-      .maybeSingle();
-    return (data as { email: string } | null)?.email ?? '';
-  } catch {
-    return '';
-  }
-}
-
-/**
- * Look up a user's full_name from user_master by numeric user_id.
- * Returns empty string if not found or on error.
- */
-export async function resolveUserName(
-  supabase: unknown,
-  userId: number | null | undefined
-): Promise<string> {
-  if (!userId) return '';
-  try {
-    const { data } = await (supabase as any)
-      .from('user_master')
-      .select('full_name')
-      .eq('user_id', userId)
-      .maybeSingle();
-    return (data as { full_name: string } | null)?.full_name ?? '';
-  } catch {
-    return '';
-  }
-}
-
-/**
  * Look up both email and full_name for a user in one query.
  */
 export async function resolveUserEmailAndName(

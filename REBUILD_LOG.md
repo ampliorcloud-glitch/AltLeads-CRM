@@ -739,3 +739,13 @@ Owner: "yes apply migration - task manager not working, make it work." Applied t
 - => My Tasks (/tasks) now functional on the live app: create Call/Meeting/To-do, Overdue/Today/Upcoming buckets (IST), done/skip/snooze. ALT-250..255 DONE.
 - NOT yet built (Increment 2): email reminder scanner (ALT-256), server-side bell insert (257), ~60s live web timer (258), one-click-from-record (260), TL reassign (261), digest opt-in toggle.
 - PORTAL migrations NOT applied yet: higher blast radius (CRM-wide RESTRICTIVE deny_portal_session policy on every RLS table) -> must validate with a throwaway portal login that CRM staff are NOT locked out + isolation holds (ALT-229) BEFORE applying to the live CRM; also needs a one-time Supabase dashboard step (expose the `portal` schema). Handling that as a separate careful step.
+
+---
+## 2026-06-21 (cont. 17) — find-and-fix loop round 3 (21 files)
+Build pass (after a 1-line typing fix in admin/Modal.tsx Field cloneElement). ALT-263.
+- Form a11y: admin `Field` now links <label htmlFor> to its child control id (useId + cloneElement; TextInput/SelectInput accept id); aria-required/aria-invalid/aria-describedby on Login/Reset/Convert/Disposition forms; SearchSelect trigger role=combobox + options role=listbox; AssignModal focus-trap + initial focus.
+- Robustness: LeadDetail/WishlistDetail/ContactDetail now guard a non-numeric/0 route :id -> show an error state instead of a stuck spinner.
+- Formatting consistency: meeting/updated/generated dates via formatDate (LeadsPage, leadWorkspace, ContactDetail); Dashboard Total-Leads count uses toLocaleString('en-IN').
+- Copy: SettingsPage password-change error mapped to friendly text; WishlistDetail status error surfaced; CompanyDetail misleading "has data" placeholder -> gated "Status saved".
+- Dead code removed (zero importers verified): src/lib/useUrlState.ts (ALT-186 URL-persistence foundation — will be recreated when that feature is built), data/views.listViews, admin primitives TableHead, Badge TypeBadge, leadsApi.fetchStageHistory, notify.resolveUserEmail/resolveUserName.
+Loop continues. Nothing pushed.

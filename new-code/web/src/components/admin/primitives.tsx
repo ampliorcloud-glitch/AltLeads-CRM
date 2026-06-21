@@ -198,31 +198,6 @@ export function FigmaTableHead({
   );
 }
 
-/** Legacy table head kept for backwards compat in ReferenceDataTab. */
-export function TableHead({ columns }: { columns: { key: string; label: string; align?: 'left' | 'right' }[] }) {
-  return (
-    <thead>
-      <tr style={{ borderBottom: '1px solid #E5E7EB', background: '#FFFFFF' }}>
-        {columns.map((c) => (
-          <th
-            key={c.key}
-            style={{
-              padding: '10px 16px',
-              fontSize: 12,
-              fontWeight: 500,
-              color: '#6B7280',
-              whiteSpace: 'nowrap',
-              textAlign: c.align === 'right' ? 'right' : 'left',
-            }}
-          >
-            {c.label}
-          </th>
-        ))}
-      </tr>
-    </thead>
-  );
-}
-
 export function LoadingRow({ colSpan, label = 'Loading...' }: { colSpan: number; label?: string }) {
   return (
     <tr>

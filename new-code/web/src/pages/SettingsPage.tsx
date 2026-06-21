@@ -168,7 +168,12 @@ export function SettingsPage() {
     const { error } = await supabase.auth.updateUser({ password: pw });
     setPwSaving(false);
     if (error) {
-      setPwError(error.message);
+      const msg = error.message.toLowerCase();
+      if (msg.includes('should be different') || msg.includes('same as')) {
+        setPwError('Please choose a password different from your current one.');
+      } else {
+        setPwError('We could not update your password. Please try again.');
+      }
       return;
     }
     setPwOk(true);

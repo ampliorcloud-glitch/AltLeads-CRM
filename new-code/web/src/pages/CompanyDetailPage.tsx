@@ -467,10 +467,8 @@ function AccountPanel({ companyId, projectId, actorId }: AccountPanelProps) {
           {saving ? 'Saving…' : 'Save'}
         </button>
         {saveOk && <span style={{ fontSize: 11, color: '#16a34a' }}>Saved</span>}
-        {status && (
-          <span style={{ fontSize: 11, color: '#9ca3af' }}>
-            Last updated: {status.account_status || status.description || status.comments ? 'has data' : '—'}
-          </span>
+        {status && (status.account_status || status.description || status.comments) && (
+          <span style={{ fontSize: 11, color: '#9ca3af' }}>Status saved</span>
         )}
       </div>
     </div>

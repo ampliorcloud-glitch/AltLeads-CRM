@@ -195,7 +195,12 @@ export function LeadDetailPage() {
   const hasActor = actor !== '';
 
   const loadLead = useCallback(async () => {
-    if (!leadId) return;
+    if (!leadId) {
+      setLeadError('Lead not found.');
+      setLoadingLead(false);
+      setLoadingCompany(false);
+      return;
+    }
     setLoadingLead(true);
     setLeadError('');
     try {

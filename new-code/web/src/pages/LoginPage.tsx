@@ -146,6 +146,8 @@ export function LoginPage() {
                 autoComplete="email"
                 className="input-brand-focus"
                 style={inputStyle}
+                aria-invalid={!!error}
+                aria-describedby={error ? 'login-error' : undefined}
               />
             </div>
 
@@ -171,6 +173,8 @@ export function LoginPage() {
                   autoComplete="current-password"
                   className="input-brand-focus"
                   style={{ ...inputStyle, paddingRight: 40 }}
+                  aria-invalid={!!error}
+                  aria-describedby={error ? 'login-error' : undefined}
                 />
                 <button
                   type="button"
@@ -198,6 +202,8 @@ export function LoginPage() {
 
             {error && (
               <p
+                id="login-error"
+                role="alert"
                 style={{
                   margin: 0,
                   fontSize: 12,

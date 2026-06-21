@@ -18,6 +18,7 @@ import { useIsSalesShell } from '../contexts/SalesShellContext';
 import { useRowSelection } from '../components/ui/useRowSelection';
 import { ExportButton } from '../components/ui/ExportButton';
 import { MultiSelectFilter } from '../components/ui/MultiSelectFilter';
+import { formatDate } from '../data/meetings';
 import { Skeleton } from '../components/ui/Skeleton';
 import {
   ColumnCustomizer,
@@ -445,7 +446,7 @@ export function LeadsPage() {
               id: 'meetingDate',
               header: 'Meeting Date',
               cell: (info) => (
-                <span className="text-zinc-500" style={{ fontSize: 13 }}>{info.getValue() ?? '—'}</span>
+                <span className="text-zinc-500" style={{ fontSize: 13 }}>{info.getValue() ? formatDate(info.getValue()) : <span className="text-zinc-300">—</span>}</span>
               ),
             });
           case 'lastUpdated':
@@ -453,7 +454,7 @@ export function LeadsPage() {
               id: 'lastUpdated',
               header: 'Last Updated',
               cell: (info) => (
-                <span className="text-zinc-400" style={{ fontSize: 13 }}>{info.getValue()}</span>
+                <span className="text-zinc-400" style={{ fontSize: 13 }}>{info.getValue() ? formatDate(info.getValue()) : <span className="text-zinc-300">—</span>}</span>
               ),
             });
           case 'leadNumber':
@@ -493,7 +494,7 @@ export function LeadsPage() {
               id: 'leadGeneratedDate',
               header: 'Lead Generated',
               cell: (info) => (
-                <span className="text-zinc-500" style={{ fontSize: 13 }}>{info.getValue() || '—'}</span>
+                <span className="text-zinc-500" style={{ fontSize: 13 }}>{info.getValue() ? formatDate(info.getValue()) : <span className="text-zinc-300">—</span>}</span>
               ),
             });
           default:

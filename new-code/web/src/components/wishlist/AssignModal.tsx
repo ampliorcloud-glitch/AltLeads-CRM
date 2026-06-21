@@ -1,6 +1,7 @@
-﻿import React, { useState } from 'react';
+﻿import React, { useEffect, useRef, useState } from 'react';
 import { Loader2, X, UserCheck } from 'lucide-react';
 import type { UserOption } from '../../data/wishlist';
+import { useFocusTrap } from '../../lib/useFocusTrap';
 
 /* ── shared modal shell ──────────────────────────────────────────────────── */
 
@@ -17,11 +18,22 @@ export function ModalShell({
   children: React.ReactNode;
   width?: number;
 }) {
+  const dialogRef = useRef<HTMLDivElement>(null);
+  useFocusTrap(dialogRef, true); // ModalShell only renders while open (ALT-203)
+  useEffect(() => {
+    const t = window.setTimeout(() => dialogRef.current?.focus(), 0);
+    return () => window.clearTimeout(t);
+  }, []);
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" aria-modal="true" role="dialog">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div className="absolute inset-0" style={{ background: 'rgba(24,24,27,0.30)' }} onClick={onClose} />
       <div
-        className="relative bg-white border border-zinc-200 rounded-xl flex flex-col"
+        ref={dialogRef}
+        role="dialog"
+        aria-modal="true"
+        aria-label={title}
+        tabIndex={-1}
+        className="relative bg-white border border-zinc-200 rounded-xl flex flex-col outline-none"
         style={{ width, maxWidth: '100%', maxHeight: '90vh', boxShadow: '0 12px 40px rgba(0,0,0,0.12)' }}
       >
         <div className="flex items-center justify-between gap-3 px-5 py-4 border-b border-zinc-200">
@@ -49,9 +61,9 @@ const selectCls =
   'w-full border border-zinc-300 rounded-md px-3 text-zinc-800 bg-white ' +
   'focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-colors';
 
-function Label({ children, required }: { children: React.ReactNode; required?: boolean }) {
+function Label({ children, required, htmlFor }: { children: React.ReactNode; required?: boolean; htmlFor?: string }) {
   return (
-    <label className="block mb-1 text-zinc-600 font-medium" style={{ fontSize: 12 }}>
+    <label htmlFor={htmlFor} className="block mb-1 text-zinc-600 font-medium" style={{ fontSize: 12 }}>
       {children}
       {required && <span className="text-red-500 ml-0.5">*</span>}
     </label>
@@ -96,8 +108,10 @@ export function AssignModal({
 
       <div className="space-y-4">
         <div>
-          <Label required>Agent</Label>
+          <Label htmlFor="assign-agent" required>Agent</Label>
           <select
+            id="assign-agent"
+            aria-required={true}
             value={agentId ?? ''}
             onChange={(e) => setAgentId(e.target.value ? Number(e.target.value) : null)}
             className={selectCls}
@@ -119,8 +133,9 @@ export function AssignModal({
         </div>
 
         <div>
-          <Label>Team Lead</Label>
+          <Label htmlFor="assign-team-lead">Team Lead</Label>
           <select
+            id="assign-team-lead"
             value={tlId ?? ''}
             onChange={(e) => setTlId(e.target.value ? Number(e.target.value) : null)}
             className={selectCls}

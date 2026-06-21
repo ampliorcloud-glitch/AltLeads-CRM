@@ -250,6 +250,8 @@ export function ResetPasswordPage() {
                     autoComplete="new-password"
                     className="input-brand-focus"
                     style={inputStyle}
+                    aria-invalid={!!error}
+                    aria-describedby={error ? 'reset-error' : undefined}
                   />
                   <button
                     type="button"
@@ -276,6 +278,8 @@ export function ResetPasswordPage() {
                     autoComplete="new-password"
                     className="input-brand-focus"
                     style={inputStyle}
+                    aria-invalid={!!error}
+                    aria-describedby={error ? 'reset-error' : undefined}
                   />
                   <button
                     type="button"
@@ -290,6 +294,7 @@ export function ResetPasswordPage() {
 
               {error && (
                 <p
+                  id="reset-error"
                   style={{
                     margin: 0,
                     fontSize: 12,

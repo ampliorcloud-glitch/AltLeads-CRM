@@ -7,9 +7,9 @@ const inputCls =
   'w-full border border-zinc-300 rounded-md px-3 text-zinc-800 placeholder-zinc-400 bg-white ' +
   'focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-colors';
 
-function Label({ children, required }: { children: React.ReactNode; required?: boolean }) {
+function Label({ children, required, htmlFor }: { children: React.ReactNode; required?: boolean; htmlFor?: string }) {
   return (
-    <label className="block mb-1 text-zinc-600 font-medium" style={{ fontSize: 12 }}>
+    <label htmlFor={htmlFor} className="block mb-1 text-zinc-600 font-medium" style={{ fontSize: 12 }}>
       {children}
       {required && <span className="text-red-500 ml-0.5">*</span>}
     </label>
@@ -126,8 +126,11 @@ export function ConvertModal({
           <div className="space-y-4">
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <Label required>Client Association</Label>
+                <Label required htmlFor="clientAssocId">Client Association</Label>
                 <select
+                  id="clientAssocId"
+                  aria-required
+                  aria-describedby="clientAssocId-err"
                   value={clientAssocId ?? ''}
                   onChange={(e) => {
                     setClientAssocId(e.target.value ? Number(e.target.value) : null);
@@ -145,15 +148,16 @@ export function ConvertModal({
                   ))}
                 </select>
                 {touched && clientAssocId == null && (
-                  <p className="text-red-600 mt-1" style={{ fontSize: 11 }}>
+                  <p id="clientAssocId-err" className="text-red-600 mt-1" style={{ fontSize: 11 }}>
                     Client is required.
                   </p>
                 )}
               </div>
 
               <div>
-                <Label>Project</Label>
+                <Label htmlFor="projectId">Project</Label>
                 <select
+                  id="projectId"
                   value={projectId ?? ''}
                   onChange={(e) => handleProjectChange(e.target.value)}
                   className={inputCls}
@@ -172,8 +176,11 @@ export function ConvertModal({
 
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <Label required>Contact Name</Label>
+                <Label required htmlFor="leadName">Contact Name</Label>
                 <input
+                  id="leadName"
+                  aria-required
+                  aria-describedby="leadName-err"
                   value={leadName}
                   onChange={(e) => setLeadName(e.target.value)}
                   className={inputCls}
@@ -182,14 +189,17 @@ export function ConvertModal({
                   disabled={saving}
                 />
                 {touched && leadName.trim() === '' && (
-                  <p className="text-red-600 mt-1" style={{ fontSize: 11 }}>
+                  <p id="leadName-err" className="text-red-600 mt-1" style={{ fontSize: 11 }}>
                     Contact name is required.
                   </p>
                 )}
               </div>
               <div>
-                <Label required>Designation</Label>
+                <Label required htmlFor="designation">Designation</Label>
                 <input
+                  id="designation"
+                  aria-required
+                  aria-describedby="designation-err"
                   value={designation}
                   onChange={(e) => setDesignation(e.target.value)}
                   className={inputCls}
@@ -198,7 +208,7 @@ export function ConvertModal({
                   disabled={saving}
                 />
                 {touched && designation.trim() === '' && (
-                  <p className="text-red-600 mt-1" style={{ fontSize: 11 }}>
+                  <p id="designation-err" className="text-red-600 mt-1" style={{ fontSize: 11 }}>
                     Designation is required.
                   </p>
                 )}
@@ -207,8 +217,11 @@ export function ConvertModal({
 
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <Label required>Phone</Label>
+                <Label required htmlFor="mobileNo">Phone</Label>
                 <input
+                  id="mobileNo"
+                  aria-required
+                  aria-describedby="mobileNo-err"
                   value={mobileNo}
                   onChange={(e) => setMobileNo(e.target.value)}
                   className={inputCls}
@@ -217,14 +230,15 @@ export function ConvertModal({
                   disabled={saving}
                 />
                 {touched && mobileNo.trim() === '' && (
-                  <p className="text-red-600 mt-1" style={{ fontSize: 11 }}>
+                  <p id="mobileNo-err" className="text-red-600 mt-1" style={{ fontSize: 11 }}>
                     Phone is required.
                   </p>
                 )}
               </div>
               <div>
-                <Label>Email</Label>
+                <Label htmlFor="email">Email</Label>
                 <input
+                  id="email"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   className={inputCls}

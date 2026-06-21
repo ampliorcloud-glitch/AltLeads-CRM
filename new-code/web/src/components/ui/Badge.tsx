@@ -64,28 +64,3 @@ export function StageBadge({ stage }: StageBadgeProps) {
     </span>
   );
 }
-
-/**
- * TypeBadge — solid color pill for Client / Lead type labels (top-right of cards).
- */
-export function TypeBadge({ type }: { type: 'Client' | 'Lead' | string }) {
-  const bg = type === 'Client' ? '#16A34A' : type === 'Lead' ? '#EF4444' : '#6B7280';
-  return (
-    <span
-      style={{
-        background: bg,
-        color: '#FFFFFF',
-        fontSize: 11,
-        fontWeight: 500,
-        borderRadius: 'var(--radius-badge, 4px)',
-        padding: '2px 8px',
-        display: 'inline-flex',
-        alignItems: 'center',
-        whiteSpace: 'nowrap',
-        lineHeight: '18px',
-      }}
-    >
-      {type}
-    </span>
-  );
-}

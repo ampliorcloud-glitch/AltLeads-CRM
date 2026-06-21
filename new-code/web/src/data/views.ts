@@ -96,25 +96,6 @@ export async function getActiveView(
   return row ? mapRow(row) : null;
 }
 
-/** List all saved views for the user + entity, newest first (includes inactive). */
-export async function listViews(
-  entity: string,
-  userId: number | null,
-): Promise<SavedView[]> {
-  if (userId == null) return [];
-  const { data, error } = await supabase
-    .from('user_view_pref')
-    .select('id, user_id, entity, name, columns, is_active, created_date')
-    .eq('user_id', userId)
-    .eq('entity', entity)
-    .order('created_date', { ascending: false });
-  if (error) {
-    console.error('[views] listViews error', error);
-    return [];
-  }
-  return ((data ?? []) as ViewRow[]).map(mapRow);
-}
-
 /* ------------------------------------------------------------------ */
 /*  Writes                                                             */
 /* ------------------------------------------------------------------ */

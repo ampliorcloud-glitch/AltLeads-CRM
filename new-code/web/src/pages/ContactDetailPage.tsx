@@ -48,6 +48,7 @@ import { DispositionForm } from '../components/ui/DispositionForm';
 import { ActivityTimeline } from '../components/ui/ActivityTimeline';
 import { StatusBadge } from '../components/ui/StatusBadge';
 import type { Interaction } from '../data/contacts';
+import { formatDate } from '../data/account';
 
 /* ------------------------------------------------------------------ */
 /*  Helpers                                                             */
@@ -190,7 +191,7 @@ export function ContactDetailPage() {
   /* ---------------------------------------------------------------- */
 
   const loadContact = useCallback(async () => {
-    if (!contactId) return;
+    if (!contactId) { setError('Contact not found.'); setLoading(false); return; }
     setLoading(true);
     setError(null);
     try {
@@ -884,7 +885,7 @@ export function ContactDetailPage() {
                     </div>
                     <div className="flex items-center gap-3 shrink-0">
                       {l.stage && <StageBadge stage={l.stage} />}
-                      <span style={{ fontSize: 11, color: '#9CA3AF' }}>{l.createdDate || '—'}</span>
+                      <span style={{ fontSize: 11, color: '#9CA3AF' }}>{formatDate(l.createdDate || null)}</span>
                     </div>
                   </a>
                 ))}

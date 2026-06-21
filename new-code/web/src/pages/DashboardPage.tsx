@@ -179,7 +179,7 @@ export function DashboardPage() {
           <StatCard
             icon={Users}
             label="Total Leads"
-            value={String(stats?.totalLeads ?? 0)}
+            value={(stats?.totalLeads ?? 0).toLocaleString('en-IN')}
             sub="All time"
             loading={loading}
             onClick={() => navigate('/leads')}

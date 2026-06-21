@@ -69,13 +69,6 @@ export interface MeetingItem {
   description: string;
 }
 
-export interface StageHistoryItem {
-  report_id: number;
-  stage_name: string;
-  created_date: string;
-  updated_date: string | null;
-}
-
 export interface LookupOption {
   id: number;
   label: string;
@@ -362,38 +355,6 @@ export async function fetchLeadMeetings(leadId: number): Promise<MeetingItem[]> 
     meeting_mode: m.meeting_mode ?? null,
     meeting_status: m.meeting_status ?? null,
     description: m.description ?? '',
-  }));
-}
-
-/* ── Fetch stage history ─────────────────────────────────────────────────── */
-
-export async function fetchStageHistory(leadId: number): Promise<StageHistoryItem[]> {
-  const { data: reports } = await supabase
-    .from('lead_report')
-    .select('report_id, stage_id, created_date, updated_date')
-    .eq('lead_id', leadId)
-    .is('deleted_date', null)
-    .order('created_date', { ascending: false });
-
-  if (!reports || reports.length === 0) return [];
-
-  const rows = reports as { report_id: number; stage_id: number; created_date: string; updated_date: string | null }[];
-  const stageIds = [...new Set(rows.map((r) => r.stage_id).filter(Boolean))];
-
-  const stageMap = new Map<number, string>();
-  if (stageIds.length > 0) {
-    const { data: stages } = await supabase
-      .from('stage_master')
-      .select('stage_id, stage')
-      .in('stage_id', stageIds);
-    ((stages ?? []) as { stage_id: number; stage: string }[]).forEach((s) => stageMap.set(s.stage_id, s.stage));
-  }
-
-  return rows.map((r) => ({
-    report_id: r.report_id,
-    stage_name: r.stage_id ? (stageMap.get(r.stage_id) ?? 'Unknown') : 'Unknown',
-    created_date: fmt(r.created_date),
-    updated_date: r.updated_date ? fmt(r.updated_date) : '',
   }));
 }
 

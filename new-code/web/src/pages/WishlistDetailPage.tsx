@@ -162,7 +162,7 @@ export function WishlistDetailPage() {
   const appToast = useToast();
 
   const load = useCallback(async () => {
-    if (!wishlistId) return;
+    if (!wishlistId) { setLoadError('not-found'); setLoading(false); return; }
     setLoading(true);
     // Fetch the detail first so the assignee ids are known, then build the
     // assign-dropdown options WITH the current agent/TL guaranteed present (so a
@@ -235,6 +235,8 @@ export function WishlistDetailPage() {
     if (!res?.error) {
       setToast('Status updated.');
       await refresh();
+    } else {
+      setToast(res.error);
     }
   };
 

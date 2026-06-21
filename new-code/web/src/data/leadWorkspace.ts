@@ -673,8 +673,8 @@ export async function saveReport(input: SaveReportInput): Promise<{ report_id: n
     // Recipient = input.assignedUserId (the SP/SH from lead_report.user_id).
     if (input.assignedUserId) {
       const spId = input.assignedUserId;
-      const meetingDate = m.date || '';
-      const meetingTime = m.time || '';
+      const meetingDate = m.date ? fmtDate(m.date) : '';   // "25 Jun 2026" instead of raw "2026-06-25"
+      const meetingTime = m.time || '';                    // leave 24h HH:mm as-is (kept minimal)
       const mode = m.mode || '';
       const capturedMeetingId = meetingId; // capture for closure
       // Fetch lead name (and lead_number) for the notification text

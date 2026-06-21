@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useId, isValidElement, cloneElement } from 'react';
 import type { ReactNode } from 'react';
 import { X } from 'lucide-react';
 import { useFocusTrap } from '../../lib/useFocusTrap';
@@ -130,10 +130,18 @@ const fieldInput: React.CSSProperties = {
 };
 
 export function Field({ label, children }: { label: string; children: ReactNode }) {
+  const autoId = useId();
+  const controlId = isValidElement(children) ? `${autoId}-control` : undefined;
+  const labeled =
+    controlId && isValidElement(children)
+      ? cloneElement(children as React.ReactElement<{ id?: string }>, {
+          id: (children as React.ReactElement<{ id?: string }>).props.id ?? controlId,
+        })
+      : children;
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-      <label style={{ fontSize: 12, fontWeight: 500, color: '#6B7280' }}>{label}</label>
-      {children}
+      <label htmlFor={controlId} style={{ fontSize: 12, fontWeight: 500, color: '#6B7280' }}>{label}</label>
+      {labeled}
     </div>
   );
 }
@@ -143,14 +151,17 @@ export function TextInput({
   onChange,
   placeholder,
   type = 'text',
+  id,
 }: {
   value: string;
   onChange: (v: string) => void;
   placeholder?: string;
   type?: string;
+  id?: string;
 }) {
   return (
     <input
+      id={id}
       type={type}
       value={value}
       onChange={(e) => onChange(e.target.value)}
@@ -172,13 +183,16 @@ export function SelectInput({
   value,
   onChange,
   children,
+  id,
 }: {
   value: string;
   onChange: (v: string) => void;
   children: ReactNode;
+  id?: string;
 }) {
   return (
     <select
+      id={id}
       value={value}
       onChange={(e) => onChange(e.target.value)}
       style={{ ...fieldInput, cursor: 'pointer' }}
