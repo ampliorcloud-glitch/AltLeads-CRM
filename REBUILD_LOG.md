@@ -666,3 +666,24 @@ Owner requirement (from a CEO meeting transcript, captured in full): build a **p
 - **DATA ISOLATION (critical):** client owns only MEETING records, NOT the company/contact; sees company info as a SNAPSHOT captured up to their meeting; NEVER sees another project's/client's meeting on the same shared company (breach); snapshot refreshes only if Amplior generates a new meeting. -> snapshot company/contact onto the meeting at generation; portal views read snapshot, scoped per project. ONE DB, many isolated views (no separate copy).
 - **Task Manager** re-confirmed as a separate CRM module (ALT-160/209): 1-click Call/Meeting/Task per user, record-associated, email + browser reminders (HubSpot/Zoho-style).
 - Detail in docs/product/CLIENT-PORTAL.md §13. Plan only.
+
+---
+## 2026-06-21 (cont. 11) — Phase-1 Client Portal plan + Task Manager plan (multi-agent, PLAN ONLY)
+Owner: "i want both via different sub agents that you control as ultracode." Ran one Workflow (`portal-and-taskmgr-plans`, 10 agents, ~20 min): 4 parallel grounding scouts (vendor mobile app / current CRM code+email+theming / locked CLIENT-PORTAL model / **HubSpot live task schema via MCP** + Zoho) -> 2 SEPARATE design agents (portal, task-manager) -> adversarial completeness critique per plan -> each design agent revised its own doc. Two planning docs written; 37 tickets added to the tracker (now 258; Planned 80->117). Nothing built, nothing pushed.
+
+**docs/product/CLIENT-PORTAL-PHASE1.md** (ALT-222..ALT-245, 24 tickets). Critique caught + fixed 4 real issues:
+1. **Day-one empty portal** -> added a one-time **snapshot BACKFILL** applier (ALT-225) since most meetings already exist.
+2. **Architecture contradiction** -> the portal is a **BRAND-NEW separate app** (ALT-230), NOT a re-skin of the CRM; reusing internal pages that read LIVE shared company data would leak across clients. Banned reusing the /sales shell or any live-data page.
+3. **Isolation mechanism made concrete** -> per-meeting denormalised **portal.meeting_snapshot** (ALT-223) + SECURITY-INVOKER **portal_* views** (ALT-226) + RLS (ALT-227) + a portal-owned **notifications** table (ALT-228), proven by a **throwaway-login RLS test that is a HARD release gate** (ALT-229).
+4. **Add/Edit-User bug corrected** -> Add already assigns sales roles; the real fix is Edit not letting you ADD a sales role a user lacks (ALT-244).
+   Plus: safe **name-only** company suggest in wishlist (ALT-238, reveals nothing about who else targets a company) + **full email re-brand** (header+footer+subject+body, ALT-232).
+   **OWNER DECISIONS PENDING:** client-visible **column whitelist** (ALT-243, blocks snapshot schema+backfill) and **snapshot-writer trigger** mechanism (ALT-224, endpoint vs DB trigger). Also OPEN: portal auth OTP-vs-link; downline source; full dashboard chart spec.
+
+**docs/product/TASK-MANAGER.md** (ALT-250..ALT-262, 13 tickets). Internal CRM module. Critique caught + fixed 3 honesty gaps:
+1. The TopBar **bell does NOT poll today** (only refetches on route change) — so the live badge-bump + toast is genuinely NEW front-end work: a ~60s timer (ALT-258).
+2. The reminder job **cannot reuse POST /notify** (that needs a user JWT) — the scanner must **send email in-process** (buildEmail+getTransporter().sendMail) and **insert the bell row server-side** with the service-role client (ALT-256/257).
+3. TL-sees-team needs a **new manages_user() RLS helper** (the existing one is project-keyed, not person-keyed) (ALT-251).
+   Pinned to **IST** so Today/Overdue is correct near midnight; reminder timing maintained by a **DB trigger** (snooze/edit re-fires); web push deferred to backlog.
+   **OWNER DECISION PENDING:** **per-task vs digest** reminder email (ALT-262, Gmail throttling) — blocks the email slice (ALT-256). Default-offset (fire-at-due vs 10-min-before) also open.
+
+STATE: still 22 CRM commits unpushed on clean-main (portal/task-manager are PLAN docs, not code). Next: owner answers the 4 blocking decisions (ALT-243, ALT-224, ALT-262, + Add/Edit bug go-ahead), then we build Phase-1 sales screens first.

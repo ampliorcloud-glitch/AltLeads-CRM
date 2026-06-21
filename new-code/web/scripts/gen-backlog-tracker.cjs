@@ -1511,7 +1511,7 @@ const TICKETS = [
     priority:'P1', status:'Planned',
     created: d(2026,6,18), updated: d(2026,6,21), finished: null,
     owner:'Claude',
-    notes:'OWNER RE-CONFIRMED 2026-06-21: a per-CRM-user Task Manager as a SEPARATE module. Each user can schedule or 1-CLICK create a Call task / Meeting / general task, associated to a record (lead/company/contact/meeting), with EMAIL + BROWSER reminders so a "call this customer" ask is not forgotten. HubSpot/Zoho-style (check their task/engagement model). Build: task + task_association tables; reminders -> notifications + email + web push; per-record Tasks tab + global "My Tasks"/Today queue (overlaps ALT-209/210). See VISION.md.'
+    notes:'OWNER RE-CONFIRMED 2026-06-21: a per-CRM-user Task Manager as a SEPARATE module. Each user can schedule or 1-CLICK create a Call task / Meeting / general task, associated to a record (lead/company/contact/meeting), with EMAIL + BROWSER reminders so a "call this customer" ask is not forgotten. HubSpot/Zoho-style (check their task/engagement model). EPIC now broken into the PHASE-1 plan ALT-250..ALT-262 (full detail docs/product/TASK-MANAGER.md, grounded in HubSpot live task model + Zoho + adversarial review). Build: task table + reminder-timing trigger + manages_user RLS helper; reminders -> in-process email scanner + bell insert + ~60s web timer (web push deferred); My Tasks Today/Overdue/Upcoming + per-record one-click. OPEN: per-task vs digest email (ALT-262). See VISION.md.'
   },
   {
     id:'ALT-161', title:'Client portal — clients see scheduled/success post-scheduling + dashboard',
@@ -1527,7 +1527,7 @@ const TICKETS = [
     priority:'P2', status:'Planned',
     created: d(2026,6,21), updated: d(2026,6,21), finished: null,
     owner:'Mohit',
-    notes:'PLANNED 2026-06-21 (CEO transcript + 2 owner interviews; see CLIENT-PORTAL.md v1-v3). ONE white-label product, TWO brands (Amplior + AltLeads), absolute brand isolation, 2 domains. Client roles = Company Admin > Sales Head > Sales Person (these were the vendor MOBILE app users = CLIENT, never Amplior staff). Replaces the mobile app; the /sales shell is the seed. APPROVED: same Supabase project + Pro ($25) + curated client-scoped read-only views + CLIENT role + adversarial multi-tenant RLS validation. PHASE-1 ORDER: (1) sales screens = view + assign/reassign meetings (port old-code/amplior-mobile-app-main); (2) ICP/docs/decks (edit by Company Admin+Sales Head w/ notify-on-save); (3) governance scheduling = review-meeting reminders + calendar view. Feedback available once meeting STARTED; recorded in CRM. DATA ISOLATION: client owns only MEETING records (not company/contact); sees company info as a SNAPSHOT captured up to their meeting; never another project/client meeting on the same shared company. Dashboard spec TBD. Build after Phase-1 spec finalised.'
+    notes:'PLANNED 2026-06-21 (CEO transcript + 2 owner interviews; see CLIENT-PORTAL.md v1-v3). ONE white-label product, TWO brands (Amplior + AltLeads), absolute brand isolation, 2 domains. Client roles = Company Admin > Sales Head > Sales Person (these were the vendor MOBILE app users = CLIENT, never Amplior staff). Replaces the mobile app; the /sales shell is the seed. APPROVED: same Supabase project + Pro ($25) + curated client-scoped read-only views + CLIENT role + adversarial multi-tenant RLS validation. PHASE-1 ORDER: (1) sales screens = view + assign/reassign meetings (port old-code/amplior-mobile-app-main); (2) ICP/docs/decks (edit by Company Admin+Sales Head w/ notify-on-save); (3) governance scheduling = review-meeting reminders + calendar view. Feedback available once meeting STARTED; recorded in CRM. DATA ISOLATION: client owns only MEETING records (not company/contact); sees company info as a SNAPSHOT captured up to their meeting; never another project/client meeting on the same shared company. Dashboard spec TBD. PHASE-1 PLAN NOW DETAILED in docs/product/CLIENT-PORTAL-PHASE1.md + child tickets ALT-222..ALT-245 (grounded in old-code mobile app + adversarial review). KEY DECISIONS from review: portal is a BRAND-NEW separate app (NOT a re-skin of the CRM — reuse would leak live shared data); isolation = a per-meeting denormalised SNAPSHOT table + SECURITY-INVOKER portal_* views + RLS, validated by throwaway-login test (ALT-229, HARD GATE); a one-time BACKFILL (ALT-225) seeds existing meetings so day-one is not empty; full email re-branding (ALT-232). OWNER DECISIONS PENDING: client-visible column whitelist (ALT-243) + snapshot-writer trigger mechanism (ALT-224). Build after those.'
   },
   {
     id:'ALT-162', title:'Chrome extension — LinkedIn contact details + inline CRM edit (writes back live)',
@@ -1700,6 +1700,314 @@ const TICKETS = [
     created: d(2026,6,21), updated: d(2026,6,21), finished: d(2026,6,21),
     owner:'Claude',
     notes:'DONE 2026-06-21 (found in post-milestone security review). The Cmd-K search index is cached at module scope; the SPA does not full-page reload on logout, so on a shared machine the next user could see the previous user\'s cached leads/companies/contacts. signOut() now calls clearSearchIndex() alongside the existing draft-cache purge.'
+  },
+
+  // ══════════════════════════════════════════════════════════════════════
+  // EPIC ALT-221 children: Client Portal PHASE-1 build plan (2026-06-21)
+  // Plan-only, grounded in old-code/amplior-mobile-app-main + adversarially
+  // critiqued. Full detail: docs/product/CLIENT-PORTAL-PHASE1.md
+  // ══════════════════════════════════════════════════════════════════════
+  {
+    id:'ALT-222', title:'Portal schema + CLIENT role + client_portal_user table',
+    type:'Task', module:'Client Portal', wave:'Client portal P1',
+    priority:'P0', status:'Planned',
+    created: d(2026,6,21), updated: d(2026,6,21), finished: null,
+    owner:'Claude',
+    notes:'Foundation. Ties one Supabase Auth user to one client_assoc_id + one portal role (COMPANY_ADMIN/SALES_HEAD/SALES_PERSON) + enabled flag. See CLIENT-PORTAL-PHASE1.md.'
+  },
+  {
+    id:'ALT-223', title:'portal.meeting_snapshot table (denormalised, per-meeting frozen copy)',
+    type:'Task', module:'Client Portal', wave:'Client portal P1',
+    priority:'P0', status:'Planned',
+    created: d(2026,6,21), updated: d(2026,6,21), finished: null,
+    owner:'Claude',
+    notes:'Denormalised project_id+client_assoc_id+assigned_user_id on every row + snapshot_source flag. The core data-isolation mechanism. GATED on column-whitelist sign-off ALT-243 — do NOT guess columns. dependsOn ALT-222, ALT-243.'
+  },
+  {
+    id:'ALT-224', title:'Snapshot writer (live path) on CRM meeting generation',
+    type:'Task', module:'Client Portal', wave:'Client portal P1',
+    priority:'P0', status:'Planned',
+    created: d(2026,6,21), updated: d(2026,6,21), finished: null,
+    owner:'Claude',
+    notes:'Service-role upsert when the CRM generates/regenerates a meeting; the browser never writes snapshots. OPEN DECISION: notify-service endpoint vs DB trigger. Until wired, no NEW meeting produces a snapshot. dependsOn ALT-223.'
+  },
+  {
+    id:'ALT-225', title:'One-time snapshot BACKFILL applier (seed every existing meeting)',
+    type:'Task', module:'Client Portal', wave:'Client portal P1',
+    priority:'P0', status:'Planned',
+    created: d(2026,6,21), updated: d(2026,6,21), finished: null,
+    owner:'Claude',
+    notes:'Idempotent migration applier snapshotting every PRE-EXISTING meeting (snapshot_source=backfill) so the portal is not empty on day one. Run AFTER RLS validation, BEFORE go-live; re-validate isolation on real volume after. dependsOn ALT-223, ALT-227, ALT-229, ALT-243.'
+  },
+  {
+    id:'ALT-226', title:'Curated portal_* views (incl. portal_notifications)',
+    type:'Task', module:'Client Portal', wave:'Client portal P1',
+    priority:'P0', status:'Planned',
+    created: d(2026,6,21), updated: d(2026,6,21), finished: null,
+    owner:'Claude',
+    notes:'SECURITY INVOKER views over snapshot/notification tables; clients get ZERO grants on base tables. dependsOn ALT-223, ALT-228.'
+  },
+  {
+    id:'ALT-227', title:'Portal RLS policies (snapshot/wishlist/feedback/docs/governance)',
+    type:'Security', module:'Client Portal', wave:'Client portal P1',
+    priority:'P0', status:'Planned',
+    created: d(2026,6,21), updated: d(2026,6,21), finished: null,
+    owner:'Claude',
+    notes:'Company Admin = client scope; Sales Head = project + downline; Sales Person = own assigned. NO meeting create/reschedule/delete policy for clients. Validate before prod. dependsOn ALT-223.'
+  },
+  {
+    id:'ALT-228', title:'Portal notifications table + RLS (portal.notification)',
+    type:'Task', module:'Client Portal', wave:'Client portal P1',
+    priority:'P0', status:'Planned',
+    created: d(2026,6,21), updated: d(2026,6,21), finished: null,
+    owner:'Claude',
+    notes:'Closes a review gap. Portal-OWNED table (NOT the CRM in_app_notification). RLS scopes SELECT/UPDATE to recipient_auth_uid AND client_assoc_id; INSERT service-role only. dependsOn ALT-222.'
+  },
+  {
+    id:'ALT-229', title:'Adversarial throwaway-login RLS validation (HARD RELEASE GATE)',
+    type:'Security', module:'Client Portal', wave:'Client portal P1',
+    priority:'P0', status:'Planned',
+    created: d(2026,6,21), updated: d(2026,6,21), finished: null,
+    owner:'Claude',
+    notes:'One login per portal role on a test client; PROVE no cross-client snapshot read, no peer-meeting read, no cross-client notification read. Run pre-prod AND after backfill on real volume. Multi-tenant leak is existential. dependsOn ALT-227, ALT-228.'
+  },
+  {
+    id:'ALT-230', title:'New Amplior portal Vite app skeleton (separate build/deploy/domain)',
+    type:'Task', module:'Client Portal', wave:'Client portal P1',
+    priority:'P0', status:'Planned',
+    created: d(2026,6,21), updated: d(2026,6,21), finished: null,
+    owner:'Claude',
+    notes:'Resolves the architecture contradiction: a BRAND-NEW app sharing only data-free primitives + brand seam + data layer. Explicitly NOT the /sales shell (that flag only lets reused live-data CRM pages render a sales nav). dependsOn ALT-222.'
+  },
+  {
+    id:'ALT-231', title:'Brand seam — web (BrandContext + per-brand CSS vars)',
+    type:'Task', module:'Client Portal', wave:'Client portal P1',
+    priority:'P1', status:'Planned',
+    created: d(2026,6,21), updated: d(2026,6,21), finished: null,
+    owner:'Claude',
+    notes:'useBrand() resolves from VITE_BRAND/hostname; data-brand tokens; Logo/login/error/help read it. Amplior vs AltLeads brand isolation by separate origins. dependsOn ALT-230.'
+  },
+  {
+    id:'ALT-232', title:'Brand seam — email FULL parameterization (email-templates.js)',
+    type:'Task', module:'Notifications', wave:'Client portal P1',
+    priority:'P1', status:'Planned',
+    created: d(2026,6,21), updated: d(2026,6,21), finished: null,
+    owner:'Claude',
+    notes:'Parameterize ALL hardcoded AltLeads strings: header wordmark, footer line, every [AltLeads] subject prefix, per-event body copy, accent colour + APP_URL. Defaults to AltLeads so CRM emails are unchanged. Prevents brand bleed to Amplior clients.'
+  },
+  {
+    id:'ALT-233', title:'Portal auth (own guard: login/forgot/set-password)',
+    type:'Feature', module:'Client Portal', wave:'Client portal P1',
+    priority:'P0', status:'Planned',
+    created: d(2026,6,21), updated: d(2026,6,21), finished: null,
+    owner:'Claude',
+    notes:"Portal's OWN guard accepting only enabled client_portal_user rows (not the CRM SalesProtectedRoute). OPEN: OTP vs email-link. dependsOn ALT-230, ALT-222."
+  },
+  {
+    id:'ALT-234', title:'Meetings list / status / detail (NET-NEW pages, snapshot-only)',
+    type:'Feature', module:'Client Portal', wave:'Client portal P1',
+    priority:'P0', status:'Planned',
+    created: d(2026,6,21), updated: d(2026,6,21), finished: null,
+    owner:'Claude',
+    notes:'Reads ONLY portal_meetings snapshot. FORBIDDEN to reuse CRM LeadsPage/LeadDetailPage (they query live company_master/lead_report). No reschedule/drop/cancel buttons. dependsOn ALT-226, ALT-233.'
+  },
+  {
+    id:'ALT-235', title:'Assign / reassign salesperson (port SalesPersonModal)',
+    type:'Feature', module:'Client Portal', wave:'Client portal P1',
+    priority:'P1', status:'Planned',
+    created: d(2026,6,21), updated: d(2026,6,21), finished: null,
+    owner:'Claude',
+    notes:'Company Admin + Sales Head only; updates lead_report.user_id for the Amplior-generated meeting via an RLS-checked write; fires lead_reassigned email (brand=Amplior). dependsOn ALT-234.'
+  },
+  {
+    id:'ALT-236', title:'Lead / Lead-details (NET-NEW read-only, snapshot-only)',
+    type:'Feature', module:'Client Portal', wave:'Client portal P1',
+    priority:'P1', status:'Planned',
+    created: d(2026,6,21), updated: d(2026,6,21), finished: null,
+    owner:'Claude',
+    notes:'Snapshot lead profile from portal views only. Explicitly NOT the CRM LeadDetailPage. dependsOn ALT-234.'
+  },
+  {
+    id:'ALT-237', title:'Feedback (started-gated) + MeetingReview',
+    type:'Feature', module:'Client Portal', wave:'Client portal P1',
+    priority:'P0', status:'Planned',
+    created: d(2026,6,21), updated: d(2026,6,21), finished: null,
+    owner:'Claude',
+    notes:'Enabled only when meeting_snapshot.started_at <= now(). Sales Person own; Sales Head edit in-scope. Writes portal_feedback; records back into the CRM + notifies Amplior (portal.notification + email). dependsOn ALT-234.'
+  },
+  {
+    id:'ALT-238', title:'Wishlist + SAFE name-only company suggest',
+    type:'Feature', module:'Client Portal', wave:'Client portal P1',
+    priority:'P1', status:'Planned',
+    created: d(2026,6,21), updated: d(2026,6,21), finished: null,
+    owner:'Claude',
+    notes:'company_name_suggest returns ONLY {company_name} — no id/industry/website/owner/count, nothing revealing another client targets it. Reconcile to a real company_id server-side, Amplior-side. Optional file upload + free-text address replace camera/GPS. dependsOn ALT-233.'
+  },
+  {
+    id:'ALT-239', title:'Notifications feed (portal-scoped)',
+    type:'Feature', module:'Client Portal', wave:'Client portal P1',
+    priority:'P1', status:'Planned',
+    created: d(2026,6,21), updated: d(2026,6,21), finished: null,
+    owner:'Claude',
+    notes:'Reads portal_notifications (RLS-scoped per recipient + client_assoc_id). Reuses the bell PATTERN, not CRM in_app_notification data. dependsOn ALT-228, ALT-233.'
+  },
+  {
+    id:'ALT-240', title:'Home + dashboard shell + Profile',
+    type:'Feature', module:'Client Portal', wave:'Client portal P1',
+    priority:'P2', status:'Planned',
+    created: d(2026,6,21), updated: d(2026,6,21), finished: null,
+    owner:'Mohit',
+    notes:'Status cards + date-range from portal_dashboard_metrics; role-gated extras. Full chart spec DEFERRED until owner provides it. dependsOn ALT-233.'
+  },
+  {
+    id:'ALT-241', title:'Docs / ICP / criteria / decks + save-popup notify flow',
+    type:'Feature', module:'Client Portal', wave:'Client portal P1',
+    priority:'P1', status:'Planned',
+    created: d(2026,6,21), updated: d(2026,6,21), finished: null,
+    owner:'Claude',
+    notes:'Read all roles; edit by Company Admin + Sales Head with a confirm popup that notifies Amplior ADMIN+TL+project users. Per-client/project Storage bucket scoping. dependsOn ALT-227, ALT-233.'
+  },
+  {
+    id:'ALT-242', title:'Governance review-meeting reminders (email + .ics) + detail page',
+    type:'Feature', module:'Client Portal', wave:'Client portal P1',
+    priority:'P2', status:'Planned',
+    created: d(2026,6,21), updated: d(2026,6,21), finished: null,
+    owner:'Claude',
+    notes:'governance_meeting_reminder notify event + portal.governance_meeting table. Email + .ics only, NO web push (that lives in the Task Manager module). TL/Manager <-> Company Admin review meetings. dependsOn ALT-232, ALT-233.'
+  },
+  {
+    id:'ALT-243', title:'DECISION: client-visible column whitelist sign-off',
+    type:'Task', module:'Client Portal', wave:'Client portal P1',
+    priority:'P0', status:'Planned',
+    created: d(2026,6,21), updated: d(2026,6,21), finished: null,
+    owner:'Mohit',
+    notes:'OWNER DECISION. The exact company/contact columns clients may see. BLOCKS the snapshot table schema (ALT-223) and backfill column set (ALT-225) — engineers must not guess.'
+  },
+  {
+    id:'ALT-244', title:'CRM Edit-User sales-role bug fix (UsersTab.tsx)',
+    type:'Bug', module:'Admin', wave:'Client portal P1',
+    priority:'P1', status:'Planned',
+    created: d(2026,6,21), updated: d(2026,6,21), finished: null,
+    owner:'Mohit',
+    notes:'CORRECTED SPEC: Add User already assigns Sales Head/Person; the real bug is Edit User only shows non-web sales roles the user ALREADY holds, so you cannot ADD a sales role to a user who lacks it. Fix = make SALES_HEAD/SALES_PERSON always-selectable in the Edit modal. Independent / ship early.'
+  },
+  {
+    id:'ALT-245', title:'Provisioning: Company-Admin login creation',
+    type:'Feature', module:'Client Portal', wave:'Client portal P1',
+    priority:'P1', status:'Planned',
+    created: d(2026,6,21), updated: d(2026,6,21), finished: null,
+    owner:'Claude',
+    notes:'Extend notify-service /api/users/create for portal users; also writes the client_portal_user row. Company Admin then adds their own Sales Heads/People. dependsOn ALT-222.'
+  },
+
+  // ══════════════════════════════════════════════════════════════════════
+  // EPIC ALT-160 children: Task Manager module (internal CRM) — 2026-06-21
+  // Plan-only, grounded in HubSpot's live task model + Zoho + adversarially
+  // critiqued. Full detail: docs/product/TASK-MANAGER.md
+  // ══════════════════════════════════════════════════════════════════════
+  {
+    id:'ALT-250', title:'Task table + reminder-timing trigger + indexes (migration applier)',
+    type:'Task', module:'Tasks', wave:'Task manager',
+    priority:'P0', status:'Planned',
+    created: d(2026,6,21), updated: d(2026,6,21), finished: null,
+    owner:'Claude',
+    notes:'create-task-table.sql + tracked apply-task-table.js (pattern of apply-access-rls.js). BEFORE INSERT/UPDATE trigger sets reminder_at = due_at - offset and clears reminder_sent_at on change; partial scanner index; soft-delete + updated_date conventions.'
+  },
+  {
+    id:'ALT-251', title:'manages_user() RLS helper + task RLS policies',
+    type:'Security', module:'Tasks', wave:'Task manager',
+    priority:'P0', status:'Planned',
+    created: d(2026,6,21), updated: d(2026,6,21), finished: null,
+    owner:'Claude',
+    notes:'NEW SECURITY DEFINER helper manages_user(target) — the existing manages_project is project-keyed and unusable for person-owned tasks. SELECT/UPDATE/DELETE: own OR is_admin OR manages_user(owner). Validate with agent/TL/admin throwaway logins before prod. dependsOn ALT-250.'
+  },
+  {
+    id:'ALT-252', title:'My Tasks screen — Overdue/Today/Upcoming/Completed (IST bucketing)',
+    type:'Feature', module:'Tasks', wave:'Task manager',
+    priority:'P0', status:'Planned',
+    created: d(2026,6,21), updated: d(2026,6,21), finished: null,
+    owner:'Claude',
+    notes:"Today/Overdue computed in SQL with AT TIME ZONE 'Asia/Kolkata' so buckets are correct near midnight. Reuse SkeletonTable/ErrorBoundary/empty-state. dependsOn ALT-251."
+  },
+  {
+    id:'ALT-253', title:'Per-row actions: Mark done / Skip / Snooze',
+    type:'Feature', module:'Tasks', wave:'Task manager',
+    priority:'P0', status:'Planned',
+    created: d(2026,6,21), updated: d(2026,6,21), finished: null,
+    owner:'Claude',
+    notes:'Snooze = UPDATE due_at; the trigger recomputes reminder_at and clears reminder_sent_at so it re-fires. Reuse useConfirm for Skip. dependsOn ALT-252.'
+  },
+  {
+    id:'ALT-254', title:'Create-task modal + Owner field (TL/Admin only changes owner)',
+    type:'Feature', module:'Tasks', wave:'Task manager',
+    priority:'P0', status:'Planned',
+    created: d(2026,6,21), updated: d(2026,6,21), finished: null,
+    owner:'Claude',
+    notes:'Reuse Modal.tsx + Toast + useUnsavedChanges. Owner change at create enforced by the INSERT policy. dependsOn ALT-251.'
+  },
+  {
+    id:'ALT-255', title:'IST quick-schedule presets + global "+ Task"',
+    type:'Feature', module:'Tasks', wave:'Task manager',
+    priority:'P1', status:'Planned',
+    created: d(2026,6,21), updated: d(2026,6,21), finished: null,
+    owner:'Claude',
+    notes:'Chips (Today 5pm / Tomorrow 9am / In 3 days / Next Monday / Custom) computed in Asia/Kolkata then stored as timestamptz. Global create with optional record association. dependsOn ALT-254.'
+  },
+  {
+    id:'ALT-256', title:'Email reminder scanner (in-process send) + task_reminder template + heartbeat',
+    type:'Feature', module:'Tasks', wave:'Task manager',
+    priority:'P0', status:'Planned',
+    created: d(2026,6,21), updated: d(2026,6,21), finished: null,
+    owner:'Claude',
+    notes:'Scanner in notify-service using the service-role client; calls buildEmail+getTransporter().sendMail DIRECTLY (cannot use POST /notify — needs a user JWT). last_scan_at heartbeat on /health. Test to ankit. BLOCKED until ALT-262 (volume decision). dependsOn ALT-250, ALT-262.'
+  },
+  {
+    id:'ALT-257', title:'Server-side in_app_notification insert from scanner (bell source)',
+    type:'Feature', module:'Tasks', wave:'Task manager',
+    priority:'P0', status:'Planned',
+    created: d(2026,6,21), updated: d(2026,6,21), finished: null,
+    owner:'Claude',
+    notes:'Scanner INSERTs directly into in_app_notification with the service-role client (notifyInApp is client-only and cannot run server-side). dependsOn ALT-256.'
+  },
+  {
+    id:'ALT-258', title:'NEW ~60s web timer for live badge-bump + due-task toast',
+    type:'Feature', module:'Tasks', wave:'Task manager',
+    priority:'P1', status:'Planned',
+    created: d(2026,6,21), updated: d(2026,6,21), finished: null,
+    owner:'Claude',
+    notes:'Corrects a false premise: the TopBar bell only refetches on route change, NO timer today. Add setInterval (~60s) re-running fetchUnreadNotifCount + a toast for newly-due tasks. In-tab only. dependsOn ALT-257.'
+  },
+  {
+    id:'ALT-259', title:'Optional OS toast via Web Notifications API',
+    type:'Task', module:'Tasks', wave:'Task manager',
+    priority:'P2', status:'Planned',
+    created: d(2026,6,21), updated: d(2026,6,21), finished: null,
+    owner:'Claude',
+    notes:'One-time Notification.requestPermission() then new Notification(...) from the ~60s timer; OS toast when the tab is backgrounded (tab still open). Trivial on top of ALT-258. dependsOn ALT-258.'
+  },
+  {
+    id:'ALT-260', title:'One-click task actions on Lead/Company/Contact + open-tasks mini-list + top-bar badge',
+    type:'Feature', module:'Tasks', wave:'Task manager',
+    priority:'P1', status:'Planned',
+    created: d(2026,6,21), updated: d(2026,6,21), finished: null,
+    owner:'Claude',
+    notes:'Action row (Call back / Schedule meeting / Add task) pre-fills the association + denormalised name/phone. Record-page open-activities mini-list; top-bar open+overdue count shares the ~60s timer. dependsOn ALT-254, ALT-258.'
+  },
+  {
+    id:'ALT-261', title:'TL/Admin reassign + assigned_by audit',
+    type:'Feature', module:'Tasks', wave:'Task manager',
+    priority:'P1', status:'Planned',
+    created: d(2026,6,21), updated: d(2026,6,21), finished: null,
+    owner:'Claude',
+    notes:'Reassign gated by manages_user (ALT-251); stamp assigned_by_user_id (HubSpot-style audit). dependsOn ALT-251, ALT-252.'
+  },
+  {
+    id:'ALT-262', title:'DECISION: per-task vs digest email volume (Gmail throttling)',
+    type:'Task', module:'Tasks', wave:'Task manager',
+    priority:'P0', status:'Planned',
+    created: d(2026,6,21), updated: d(2026,6,21), finished: null,
+    owner:'Mohit',
+    notes:'OWNER DECISION. Gmail SMTP is the only mail path and has daily limits. Per-task (Option A, optional per-window cap) vs digest (Option B). Changes scanner design — must resolve before ALT-256 ships.'
   },
   ...uxAuditTickets(),
 ];
