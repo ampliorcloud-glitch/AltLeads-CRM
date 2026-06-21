@@ -20,6 +20,7 @@ import {
 import { useAuth } from '../contexts/AuthContext';
 import { useRowSelection } from '../components/ui/useRowSelection';
 import { ExportButton } from '../components/ui/ExportButton';
+import { MultiSelectFilter } from '../components/ui/MultiSelectFilter';
 import {
   ColumnCustomizer,
   defaultColumnPrefs,
@@ -139,26 +140,26 @@ interface Filters {
   search: string;
   leadDateFrom: string;
   leadDateTo: string;
-  agent: string;
-  industry: string;
-  city: string;
+  agent: string[];
+  industry: string[];
+  city: string[];
   meetingDateFrom: string;
   meetingDateTo: string;
-  salesperson: string;
-  status: string;
+  salesperson: string[];
+  status: string[];
 }
 
 const defaultFilters: Filters = {
   search: '',
   leadDateFrom: '',
   leadDateTo: '',
-  agent: '',
-  industry: '',
-  city: '',
+  agent: [],
+  industry: [],
+  city: [],
   meetingDateFrom: '',
   meetingDateTo: '',
-  salesperson: '',
-  status: '',
+  salesperson: [],
+  status: [],
 };
 
 const inputBase: React.CSSProperties = {
@@ -172,36 +173,6 @@ const inputBase: React.CSSProperties = {
   height: 30,
   transition: 'border-color 0.15s',
 };
-
-function SelectFilter({
-  label,
-  value,
-  onChange,
-  options,
-}: {
-  label: string;
-  value: string;
-  onChange: (v: string) => void;
-  options: string[];
-}) {
-  return (
-    <div className="flex flex-col gap-1" style={{ minWidth: 130 }}>
-      <label className="font-medium text-zinc-500" style={{ fontSize: 11 }}>{label}</label>
-      <select
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        style={{ ...inputBase, paddingRight: 24, cursor: 'pointer' }}
-        onFocus={(e) => { e.currentTarget.style.borderColor = '#1A7EE8'; }}
-        onBlur={(e) => { e.currentTarget.style.borderColor = '#d4d4d8'; }}
-      >
-        <option value="">All</option>
-        {options.map((o) => (
-          <option key={o} value={o}>{o}</option>
-        ))}
-      </select>
-    </div>
-  );
-}
 
 function DateRangeFilter({
   label,
@@ -291,7 +262,9 @@ export function MeetingsPage() {
     setPageIndex(0);
   };
 
-  const hasActiveFilters = Object.values(filters).some((v) => v !== '');
+  const hasActiveFilters = Object.values(filters).some((v) =>
+    Array.isArray(v) ? v.length > 0 : v !== '',
+  );
 
   const filteredData = useMemo(() => {
     return allMeetings.filter((m) => {
@@ -316,11 +289,11 @@ export function MeetingsPage() {
       if (filters.meetingDateTo) {
         if (!m.meetingDate || m.meetingDate > filters.meetingDateTo) return false;
       }
-      if (filters.agent && m.agent !== filters.agent) return false;
-      if (filters.industry && m.industry !== filters.industry) return false;
-      if (filters.city && m.city !== filters.city) return false;
-      if (filters.salesperson && m.salesperson !== filters.salesperson) return false;
-      if (filters.status && m.status !== filters.status) return false;
+      if (filters.agent.length && !filters.agent.includes(m.agent)) return false;
+      if (filters.industry.length && !filters.industry.includes(m.industry)) return false;
+      if (filters.city.length && !filters.city.includes(m.city)) return false;
+      if (filters.salesperson.length && !filters.salesperson.includes(m.salesperson)) return false;
+      if (filters.status.length && !filters.status.includes(m.status)) return false;
       return true;
     });
   }, [filters, allMeetings]);
@@ -546,33 +519,33 @@ export function MeetingsPage() {
               onToChange={(v) => setFilter('meetingDateTo', v)}
             />
 
-            <SelectFilter
+            <MultiSelectFilter
               label="Agent"
-              value={filters.agent}
+              selected={filters.agent}
               onChange={(v) => setFilter('agent', v)}
               options={agents}
             />
-            <SelectFilter
+            <MultiSelectFilter
               label="Industry"
-              value={filters.industry}
+              selected={filters.industry}
               onChange={(v) => setFilter('industry', v)}
               options={industries}
             />
-            <SelectFilter
+            <MultiSelectFilter
               label="City"
-              value={filters.city}
+              selected={filters.city}
               onChange={(v) => setFilter('city', v)}
               options={cities}
             />
-            <SelectFilter
+            <MultiSelectFilter
               label="Sales Person / Head"
-              value={filters.salesperson}
+              selected={filters.salesperson}
               onChange={(v) => setFilter('salesperson', v)}
               options={salespeople}
             />
-            <SelectFilter
+            <MultiSelectFilter
               label="Meeting Status"
-              value={filters.status}
+              selected={filters.status}
               onChange={(v) => setFilter('status', v)}
               options={statuses}
             />

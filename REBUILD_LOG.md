@@ -605,3 +605,11 @@ TypeScript everywhere · Supabase (DB+Auth+Storage) · React + Vite · Tailwind 
 - Build passes (tsc + vite, 0.7s). Security/correctness: pure UI, renders option strings as text (no XSS), no new data exposure/endpoints; predicate semantics preserved (single-select still works as a 1-element multi-select).
 - REMAINING (tracked on ALT-183/184): Meetings + Wishlist lists; per-column/advanced operators (contains/is-empty/AND-OR) Top#7. Tracker ALT-183 → In Progress.
 - NOTE: I can't browser-test (no runner) — recommend the owner spot-check the filters on localhost before push. Not pushed.
+
+---
+## 2026-06-21 (cont. 6) — Multi-select on all lists + copy-to-clipboard + shared-modal a11y
+- MULTI-SELECT FILTERS now on ALL FIVE lists (finished ALT-183 → Done): added Meetings (Agent/Industry/City/Salesperson/Status) and Wishlist (Status/Agent/TeamLead/Industry/City) to the Leads/Contacts/Companies rollout. Same pattern: filters string→string[], predicate includes(), removed the old per-page SelectFilter helpers.
+- COPY-TO-CLIPBOARD (ALT-215 #7): new src/components/ui/CopyButton.tsx (copies + check + toast). ContactDetailPage InfoRow gained an optional copyValue; Email/Phone/Alt-Phone now have a copy button, and Phone/Alt-Phone became tel: links (were plain text).
+- SHARED MODAL A11Y (ALT-203, Top#26): admin Modal now closes on Escape, has role=dialog/aria-modal/aria-label, and moves focus into the dialog on open — fixes every admin modal (Users/Projects/Clients/Dropdowns) at once.
+- Build passes (tsc + vite) at each step. Security/correctness: filter predicates preserve semantics (single value = 1-element multi); CopyButton uses navigator.clipboard (user-gesture only) and renders nothing for empty values; modal change is additive a11y. No new endpoints/RLS/secrets.
+- Tracker: ALT-183 Done; ALT-203 In Progress; ALT-215 notes updated (#1,3,4,6,7,9,13,14 shipped). Done now 121. Not pushed.

@@ -16,6 +16,7 @@ import { fetchWishlist, fmtLongDate, type WishlistItem } from '../data/wishlist'
 import { useAuth } from '../contexts/AuthContext';
 import { useRowSelection } from '../components/ui/useRowSelection';
 import { ExportButton } from '../components/ui/ExportButton';
+import { MultiSelectFilter } from '../components/ui/MultiSelectFilter';
 import { ColumnCustomizer, defaultColumnPrefs, reconcileColumns } from '../components/ui/ColumnCustomizer';
 import type { ColumnPref } from '../data/views';
 import type { ColumnDef as UIColumnDef, ExportColumn } from '../components/ui/columns';
@@ -88,20 +89,20 @@ function CompanyAvatar({ name }: { name: string }) {
 
 interface Filters {
   search: string;
-  status: string;
-  agent: string;
-  teamLead: string;
-  industry: string;
-  city: string;
+  status: string[];
+  agent: string[];
+  teamLead: string[];
+  industry: string[];
+  city: string[];
 }
 
 const defaultFilters: Filters = {
   search: '',
-  status: '',
-  agent: '',
-  teamLead: '',
-  industry: '',
-  city: '',
+  status: [],
+  agent: [],
+  teamLead: [],
+  industry: [],
+  city: [],
 };
 
 /* ── shared input style ─────────────────────────────────────────────────── */
@@ -150,35 +151,6 @@ function StatusBadge({ status }: { status: string }) {
 
 /* ── filters ────────────────────────────────────────────────────────────── */
 
-function SelectFilter({
-  label,
-  value,
-  onChange,
-  options,
-}: {
-  label: string;
-  value: string;
-  onChange: (v: string) => void;
-  options: string[];
-}) {
-  return (
-    <div className="flex flex-col gap-1" style={{ minWidth: 150 }}>
-      <label className="font-medium text-zinc-500" style={{ fontSize: 11 }}>{label}</label>
-      <select
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        style={{ ...inputBase, paddingRight: 24, cursor: 'pointer' }}
-        onFocus={(e) => { e.currentTarget.style.borderColor = '#1A7EE8'; }}
-        onBlur={(e) => { e.currentTarget.style.borderColor = '#d4d4d8'; }}
-      >
-        <option value="">All</option>
-        {options.map((o) => (
-          <option key={o} value={o}>{o}</option>
-        ))}
-      </select>
-    </div>
-  );
-}
 
 /* ── Column catalogue (for ColumnCustomizer + ExportButton) ─────────────── */
 
@@ -258,7 +230,9 @@ export function WishlistPage() {
     sel.clear();
   };
 
-  const hasActiveFilters = Object.values(filters).some((v) => v !== '');
+  const hasActiveFilters = Object.values(filters).some((v) =>
+    Array.isArray(v) ? v.length > 0 : v !== '',
+  );
 
   const filteredData = useMemo(() => {
     return allItems.filter((item) => {
@@ -271,11 +245,11 @@ export function WishlistPage() {
         ].join(' ').toLowerCase();
         if (!searchable.includes(q)) return false;
       }
-      if (filters.status && item.status !== filters.status) return false;
-      if (filters.agent && item.agent !== filters.agent) return false;
-      if (filters.teamLead && item.teamLead !== filters.teamLead) return false;
-      if (filters.industry && item.industry !== filters.industry) return false;
-      if (filters.city && item.city !== filters.city) return false;
+      if (filters.status.length && !filters.status.includes(item.status)) return false;
+      if (filters.agent.length && !filters.agent.includes(item.agent)) return false;
+      if (filters.teamLead.length && !filters.teamLead.includes(item.teamLead)) return false;
+      if (filters.industry.length && !filters.industry.includes(item.industry)) return false;
+      if (filters.city.length && !filters.city.includes(item.city)) return false;
       return true;
     });
   }, [filters, allItems]);
@@ -537,33 +511,33 @@ export function WishlistPage() {
               </div>
             </div>
 
-            <SelectFilter
+            <MultiSelectFilter
               label="Status"
-              value={filters.status}
+              selected={filters.status}
               onChange={(v) => setFilter('status', v)}
               options={statuses}
             />
-            <SelectFilter
+            <MultiSelectFilter
               label="Assigned Agent"
-              value={filters.agent}
+              selected={filters.agent}
               onChange={(v) => setFilter('agent', v)}
               options={agents}
             />
-            <SelectFilter
+            <MultiSelectFilter
               label="Team Lead"
-              value={filters.teamLead}
+              selected={filters.teamLead}
               onChange={(v) => setFilter('teamLead', v)}
               options={teamLeads}
             />
-            <SelectFilter
+            <MultiSelectFilter
               label="Industry"
-              value={filters.industry}
+              selected={filters.industry}
               onChange={(v) => setFilter('industry', v)}
               options={industries}
             />
-            <SelectFilter
+            <MultiSelectFilter
               label="City"
-              value={filters.city}
+              selected={filters.city}
               onChange={(v) => setFilter('city', v)}
               options={cities}
             />

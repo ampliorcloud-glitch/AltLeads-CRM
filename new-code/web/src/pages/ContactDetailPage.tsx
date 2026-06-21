@@ -31,6 +31,7 @@ import {
   type ContactLead,
 } from '../data/contacts';
 import { fetchCompanyContacts, type CompanyContact } from '../data/companies';
+import { CopyButton } from '../components/ui/CopyButton';
 import { StageBadge } from '../components/ui/Badge';
 import {
   getContactStatus,
@@ -100,24 +101,29 @@ function FieldEditor({
 /*  Info row helper (read-only display)                                */
 /* ------------------------------------------------------------------ */
 
-function InfoRow({ icon, label, value, href }: {
+function InfoRow({ icon, label, value, href, copyValue }: {
   icon: React.ReactNode;
   label: string;
   value: React.ReactNode;
   href?: string;
+  /** When set, shows a copy-to-clipboard button next to the value. */
+  copyValue?: string | null;
 }) {
   return (
     <div className="flex items-start gap-3" style={{ minHeight: 32 }}>
       <span style={{ color: '#9CA3AF', marginTop: 2, flexShrink: 0 }}>{icon}</span>
       <div className="flex flex-col gap-0.5 min-w-0">
         <span style={{ fontSize: 11, color: '#9CA3AF', fontWeight: 500 }}>{label}</span>
-        {href ? (
-          <a href={href} target="_blank" rel="noopener noreferrer" style={{ fontSize: 13, color: '#1A7EE8', textDecoration: 'none' }}>
-            {value}
-          </a>
-        ) : (
-          <span style={{ fontSize: 13, color: '#111827' }}>{value || <span style={{ color: '#D1D5DB' }}>—</span>}</span>
-        )}
+        <span className="flex items-center gap-1.5 min-w-0">
+          {href ? (
+            <a href={href} target="_blank" rel="noopener noreferrer" style={{ fontSize: 13, color: '#1A7EE8', textDecoration: 'none', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              {value}
+            </a>
+          ) : (
+            <span style={{ fontSize: 13, color: '#111827', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{value || <span style={{ color: '#D1D5DB' }}>—</span>}</span>
+          )}
+          {copyValue ? <CopyButton value={copyValue} label={label} /> : null}
+        </span>
       </div>
     </div>
   );
@@ -574,9 +580,22 @@ export function ContactDetailPage() {
                   label="Email"
                   value={contact.email}
                   href={contact.email ? `mailto:${contact.email}` : undefined}
+                  copyValue={contact.email}
                 />
-                <InfoRow icon={<Phone size={15} />} label="Phone" value={contact.mobile_no} />
-                <InfoRow icon={<Phone size={15} />} label="Alt Phone" value={contact.alt_mobile_no} />
+                <InfoRow
+                  icon={<Phone size={15} />}
+                  label="Phone"
+                  value={contact.mobile_no}
+                  href={contact.mobile_no ? `tel:${contact.mobile_no}` : undefined}
+                  copyValue={contact.mobile_no}
+                />
+                <InfoRow
+                  icon={<Phone size={15} />}
+                  label="Alt Phone"
+                  value={contact.alt_mobile_no}
+                  href={contact.alt_mobile_no ? `tel:${contact.alt_mobile_no}` : undefined}
+                  copyValue={contact.alt_mobile_no}
+                />
                 <InfoRow
                   icon={<Link2 size={15} />}
                   label="LinkedIn"

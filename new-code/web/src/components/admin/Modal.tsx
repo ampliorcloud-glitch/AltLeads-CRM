@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useRef } from 'react';
 import type { ReactNode } from 'react';
 import { X } from 'lucide-react';
 
@@ -13,6 +13,19 @@ interface ModalProps {
 }
 
 export function Modal({ open, title, onClose, children, footer, width = 460 }: ModalProps) {
+  const dialogRef = useRef<HTMLDivElement>(null);
+
+  // Escape closes; focus moves into the dialog on open (a11y — UX-AUDIT Top#26).
+  useEffect(() => {
+    if (!open) return;
+    function onKey(e: KeyboardEvent) {
+      if (e.key === 'Escape') { e.preventDefault(); onClose(); }
+    }
+    document.addEventListener('keydown', onKey);
+    const t = window.setTimeout(() => dialogRef.current?.focus(), 0);
+    return () => { document.removeEventListener('keydown', onKey); window.clearTimeout(t); };
+  }, [open, onClose]);
+
   if (!open) return null;
   return (
     <div
@@ -21,6 +34,11 @@ export function Modal({ open, title, onClose, children, footer, width = 460 }: M
       onClick={onClose}
     >
       <div
+        ref={dialogRef}
+        role="dialog"
+        aria-modal="true"
+        aria-label={title}
+        tabIndex={-1}
         style={{
           background: '#FFFFFF',
           borderRadius: 12,
@@ -31,6 +49,7 @@ export function Modal({ open, title, onClose, children, footer, width = 460 }: M
           maxWidth: width,
           maxHeight: '90vh',
           overflowY: 'auto',
+          outline: 'none',
         }}
         onClick={(e) => e.stopPropagation()}
       >
