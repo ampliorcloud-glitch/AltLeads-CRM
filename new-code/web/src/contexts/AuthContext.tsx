@@ -2,6 +2,7 @@ import React, { createContext, useContext, useEffect, useState } from 'react';
 import type { ReactNode } from 'react';
 import type { Session, User } from '@supabase/supabase-js';
 import { supabase } from '../lib/supabase';
+import { clearSearchIndex } from '../data/globalSearch';
 
 export interface Profile {
   id: string;
@@ -143,6 +144,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     } catch {
       /* storage unavailable — ignore */
     }
+    // Drop the in-memory global-search index so the next user on a shared
+    // machine can't see the previous user's cached records (cross-session leak).
+    clearSearchIndex();
     await supabase.auth.signOut();
   };
 
