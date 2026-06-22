@@ -19,6 +19,9 @@ import { useRowSelection } from '../components/ui/useRowSelection';
 import { ExportButton } from '../components/ui/ExportButton';
 import { MultiSelectFilter } from '../components/ui/MultiSelectFilter';
 import { ColumnCustomizer, defaultColumnPrefs, reconcileColumns } from '../components/ui/ColumnCustomizer';
+import { ViewSwitcher, useViewMode } from '../components/ui/ViewSwitcher';
+import { CardGrid, CardShell } from '../components/ui/CardGrid';
+import { GenericKanban, type KanbanColumnDef } from '../components/kanban/GenericKanban';
 import { Skeleton } from '../components/ui/Skeleton';
 import { RecordPreviewPanel } from '../components/common/RecordPreviewPanel';
 import { WishlistPreview } from '../components/wishlist/WishlistPreview';
@@ -228,6 +231,9 @@ export function WishlistPage() {
 
   // Row selection
   const sel = useRowSelection<string>();
+
+  // Table / Grid / Kanban view (persisted per user + entity in localStorage).
+  const [view, setView] = useViewMode('wishlist', userId);
 
   // Right-hand preview drawer (ALT-327/328) — row click opens a compact mini
   // record instead of navigating away; "Open full record →" deep-links to the page.
@@ -497,6 +503,37 @@ export function WishlistPage() {
     [visibleKeys]
   );
 
+  // Grid / Kanban use the full filtered set (boards/cards aren't paginated).
+  const allFilteredRows = filteredData;
+
+  // Kanban (Board) view — group filtered wishlist entries by status. Columns are
+  // the known statuses (those present) + an "Unset" bucket for blanks. Card click
+  // opens the same preview drawer the row uses.
+  const kanbanColumns = useMemo<KanbanColumnDef[]>(() => {
+    const present = new Set<string>();
+    let hasUnset = false;
+    for (const i of allFilteredRows) {
+      if (i.status) present.add(i.status);
+      else hasUnset = true;
+    }
+    const cols: KanbanColumnDef[] = [];
+    for (const s of statuses) {
+      if (present.has(s)) { cols.push({ key: s, label: s }); present.delete(s); }
+    }
+    for (const s of [...present].sort()) cols.push({ key: s, label: s });
+    if (hasUnset) cols.push({ key: '__unset', label: 'Unset' });
+    return cols;
+  }, [allFilteredRows, statuses]);
+
+  const itemsByStatus = useMemo(() => {
+    const map = new Map<string, WishlistItem[]>();
+    for (const c of kanbanColumns) map.set(c.key, []);
+    for (const i of allFilteredRows) {
+      map.get(i.status || '__unset')?.push(i);
+    }
+    return map;
+  }, [allFilteredRows, kanbanColumns]);
+
   return (
     <AppShell title="Wishlist">
       <div className="space-y-3">
@@ -596,6 +633,8 @@ export function WishlistPage() {
             )}
           </p>
           <div className="flex items-center gap-2">
+            {/* Table / Grid / Kanban view switcher */}
+            <ViewSwitcher value={view} onChange={setView} />
             <ColumnCustomizer
               entity="wishlist"
               userId={userId}
@@ -614,7 +653,55 @@ export function WishlistPage() {
           </div>
         </div>
 
+        {/* Kanban (Board) view — grouped by status; cards open the preview drawer */}
+        {view === 'kanban' && !loading && !loadError && (
+          <GenericKanban<WishlistItem>
+            columns={kanbanColumns}
+            itemsByColumn={itemsByStatus}
+            getKey={(row) => row.id}
+            getCardLabel={(row) => `Open ${row.company || row.contactName || 'company'}`}
+            onCardClick={(row) => setPreviewId(row.wishlistId)}
+            renderCard={(row) => (
+              <CardShell
+                name={row.company || ''}
+                subtitle={row.contactName || undefined}
+                chip={<StatusBadge status={row.status} />}
+                fields={[
+                  { label: 'Industry', value: row.industry ?? '' },
+                  { label: 'City', value: row.city ?? '' },
+                  { label: 'Agent', value: row.agent ?? '' },
+                  { label: 'Team Lead', value: row.teamLead ?? '' },
+                ]}
+              />
+            )}
+          />
+        )}
+
+        {/* Grid (card) view */}
+        {view === 'grid' && !loading && !loadError && (
+          <CardGrid<WishlistItem>
+            rows={allFilteredRows}
+            getKey={(row) => row.id}
+            onCardClick={(row) => setPreviewId(row.wishlistId)}
+            emptyLabel={hasActiveFilters ? 'No companies match the current filters.' : 'No companies in the wishlist yet.'}
+            renderCard={(row) => (
+              <CardShell
+                name={row.company || ''}
+                subtitle={row.contactName || undefined}
+                chip={<StatusBadge status={row.status} />}
+                fields={[
+                  { label: 'Industry', value: row.industry ?? '' },
+                  { label: 'City', value: row.city ?? '' },
+                  { label: 'Agent', value: row.agent ?? '' },
+                  { label: 'Team Lead', value: row.teamLead ?? '' },
+                ]}
+              />
+            )}
+          />
+        )}
+
         {/* Table */}
+        {(view === 'table' || loading || loadError) && (
         <div className="bg-white border border-zinc-200 rounded-lg overflow-hidden">
           <div className="overflow-x-auto">
             <table className="w-full">
@@ -640,6 +727,12 @@ export function WishlistPage() {
                           borderBottom: '2px solid #1A7EE8',
                           cursor: canSort ? 'pointer' : 'default',
                           width: header.id === '__select' ? 40 : undefined,
+                          // Sticky header (ALT-318): white background on the cell so body
+                          // rows can't show through under the sticky header.
+                          position: 'sticky',
+                          top: 0,
+                          zIndex: 1,
+                          background: '#FFFFFF',
                         }}
                         onClick={canSort ? header.column.getToggleSortingHandler() : undefined}
                         onKeyDown={(e) => {
@@ -779,6 +872,7 @@ export function WishlistPage() {
             </div>
           )}
         </div>
+        )}
       </div>
 
       {/* Right-hand preview drawer — view-oriented mini record (ALT-327/328). */}

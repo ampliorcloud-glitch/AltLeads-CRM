@@ -31,6 +31,7 @@ import {
 } from '../components/ui/ColumnCustomizer';
 import { ViewSwitcher, useViewMode } from '../components/ui/ViewSwitcher';
 import { CardGrid, CardShell } from '../components/ui/CardGrid';
+import { GenericKanban, type KanbanColumnDef } from '../components/kanban/GenericKanban';
 import type { ColumnDef as ColDef, ExportColumn } from '../components/ui/columns';
 import type { ColumnPref } from '../data/views';
 import {
@@ -379,6 +380,35 @@ export function MeetingsPage() {
     [selectedProjectId, allMeetings],
   );
 
+  // Kanban (Board) view — group filtered meetings by meeting status. Columns are
+  // the known status options (those present) + an "Unset" bucket for blanks.
+  // Card click opens the same preview drawer the row uses.
+  const kanbanColumns = useMemo<KanbanColumnDef[]>(() => {
+    const present = new Set<string>();
+    let hasUnset = false;
+    for (const m of filteredData) {
+      if (m.status) present.add(m.status);
+      else hasUnset = true;
+    }
+    const cols: KanbanColumnDef[] = [];
+    for (const s of statuses) {
+      if (present.has(s)) { cols.push({ key: s, label: s }); present.delete(s); }
+    }
+    for (const s of [...present].sort()) cols.push({ key: s, label: s });
+    if (hasUnset) cols.push({ key: '__unset', label: 'Unset' });
+    return cols;
+  }, [filteredData, statuses]);
+
+  const meetingsByStatus = useMemo(() => {
+    const map = new Map<string, MeetingRow[]>();
+    for (const c of kanbanColumns) map.set(c.key, []);
+    for (const m of filteredData) {
+      const key = m.status || '__unset';
+      map.get(key)?.push(m);
+    }
+    return map;
+  }, [filteredData, kanbanColumns]);
+
   // Visible column keys in display order (driven by colPrefs).
   const visibleKeys = useMemo(
     () => colPrefs.filter((p) => p.visible).map((p) => p.key),
@@ -699,6 +729,31 @@ export function MeetingsPage() {
             />
           </div>
         </div>
+
+        {/* Kanban (Board) view — grouped by meeting status; cards open the preview drawer */}
+        {view === 'kanban' && !loading && !loadError && (
+          <GenericKanban<MeetingRow>
+            columns={kanbanColumns}
+            itemsByColumn={meetingsByStatus}
+            getKey={(row) => row.id}
+            getCardLabel={(row) => `Open meeting for ${row.company || row.leadName || row.name || 'meeting'}`}
+            onCardClick={(row) => setPreviewId(Number(row.id))}
+            renderCard={(row) => {
+              const title = row.name || row.company || row.leadName || '';
+              return (
+                <CardShell
+                  name={title}
+                  subtitle={[row.company, row.city].filter(Boolean).join(' · ') || undefined}
+                  chip={<MeetingStatusBadge status={row.status} />}
+                  fields={[
+                    { label: 'Meeting Date', value: row.meetingDate ? formatDate(row.meetingDate) : '' },
+                    { label: 'Salesperson', value: row.salesperson ?? '' },
+                  ]}
+                />
+              );
+            }}
+          />
+        )}
 
         {/* Grid (card) view */}
         {view === 'grid' && !loading && !loadError && (

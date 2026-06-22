@@ -16,6 +16,7 @@ import { ExportButton } from '../components/ui/ExportButton';
 import { ColumnCustomizer, defaultColumnPrefs } from '../components/ui/ColumnCustomizer';
 import { ViewSwitcher, useViewMode } from '../components/ui/ViewSwitcher';
 import { CardGrid, CardShell } from '../components/ui/CardGrid';
+import { GenericKanban, type KanbanColumnDef } from '../components/kanban/GenericKanban';
 import { StatusBadge } from '../components/ui/StatusBadge';
 import { MultiSelectFilter } from '../components/ui/MultiSelectFilter';
 import { Skeleton } from '../components/ui/Skeleton';
@@ -545,6 +546,28 @@ export function ContactsPage() {
     return enriched;
   }, [allContacts, filters, statusMap, ownerMap, sort]);
 
+  // Kanban (Board) view — contact status is PER PROJECT (contact_project_status
+  // .contact_status), so the board is only meaningful with a project selected;
+  // otherwise the page shows a gentle inline note. Columns are built from the
+  // known contact_status options (+ an "Unset" bucket); cards open the preview.
+  const kanbanColumns = useMemo<KanbanColumnDef[]>(() => {
+    const cols: KanbanColumnDef[] = statusOptions.map((o) => ({ key: o.value, label: o.label }));
+    cols.push({ key: '__unset', label: 'Unset' });
+    return cols;
+  }, [statusOptions]);
+
+  const contactsByStatus = useMemo(() => {
+    const known = new Set(kanbanColumns.map((c) => c.key));
+    const map = new Map<string, ContactRow[]>();
+    for (const c of kanbanColumns) map.set(c.key, []);
+    for (const c of filteredData) {
+      const status = c.contact_status ?? null;
+      const key = status && known.has(status) ? status : '__unset';
+      map.get(key)?.push(c);
+    }
+    return map;
+  }, [filteredData, kanbanColumns]);
+
   // Pagination
   const totalRows = filteredData.length;
   const pageCount = Math.max(1, Math.ceil(totalRows / pageSize));
@@ -843,6 +866,37 @@ export function ContactsPage() {
             )}
           </div>
         </div>
+
+        {/* Kanban (Board) view — grouped by per-project contact status */}
+        {view === 'kanban' && !loading && !loadError && (
+          projectId == null ? (
+            <div
+              className="rounded-lg flex items-center justify-center text-zinc-500"
+              style={{ background: 'var(--color-surface)', border: '1px solid var(--border-color)', padding: '40px 16px', fontSize: 13, textAlign: 'center' }}
+            >
+              Select a project to group records on the board.
+            </div>
+          ) : (
+            <GenericKanban<ContactRow>
+              columns={kanbanColumns}
+              itemsByColumn={contactsByStatus}
+              getKey={(row) => row.contact_id}
+              getCardLabel={(row) => `Open ${row.full_name || row.company_name || 'contact'}`}
+              onCardClick={(row) => setPreviewId(row.contact_id)}
+              renderCard={(row) => (
+                <CardShell
+                  name={row.full_name || ''}
+                  subtitle={row.designation || row.company_name || undefined}
+                  chip={row.contact_status ? <StatusBadge value={row.contact_status} category="contact_status" /> : undefined}
+                  fields={[
+                    { label: 'Company', value: row.company_name ?? '' },
+                    { label: 'City', value: row.city_name ?? '' },
+                  ]}
+                />
+              )}
+            />
+          )
+        )}
 
         {/* Grid (card) view */}
         {view === 'grid' && !loading && !loadError && (

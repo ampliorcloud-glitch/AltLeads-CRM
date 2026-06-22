@@ -13,7 +13,7 @@
  */
 
 import React, { useCallback, useState } from 'react';
-import { List, LayoutGrid } from 'lucide-react';
+import { List, LayoutGrid, KanbanSquare } from 'lucide-react';
 
 export type ViewKey = string;
 
@@ -23,10 +23,11 @@ export interface ViewOption {
   icon: React.ReactNode;
 }
 
-/** Default options — Table + Grid. Extend by passing your own `options`. */
+/** Default options — Table + Grid + Kanban. Extend by passing your own `options`. */
 export const DEFAULT_VIEW_OPTIONS: ViewOption[] = [
-  { key: 'table', label: 'Table', icon: <List size={14} /> },
-  { key: 'grid', label: 'Grid', icon: <LayoutGrid size={14} /> },
+  { key: 'table', label: 'Table', icon: <List size={15} /> },
+  { key: 'grid', label: 'Grid', icon: <LayoutGrid size={15} /> },
+  { key: 'kanban', label: 'Kanban', icon: <KanbanSquare size={15} /> },
 ];
 
 /* ------------------------------------------------------------------ */
@@ -102,16 +103,16 @@ export function ViewSwitcher({ value, onChange, options = DEFAULT_VIEW_OPTIONS }
             key={opt.key}
             type="button"
             aria-pressed={active}
+            aria-label={`${opt.label} view`}
             title={`${opt.label} view`}
             onClick={() => { if (!active) onChange(opt.key); }}
             style={{
               display: 'inline-flex',
               alignItems: 'center',
-              gap: 5,
-              fontSize: 13,
-              fontWeight: 500,
+              justifyContent: 'center',
               height: 26,
-              padding: '0 10px',
+              width: 28,
+              padding: 0,
               border: 'none',
               borderRadius: 5,
               background: active ? '#fff' : 'transparent',
@@ -122,7 +123,6 @@ export function ViewSwitcher({ value, onChange, options = DEFAULT_VIEW_OPTIONS }
             }}
           >
             {opt.icon}
-            {opt.label}
           </button>
         );
       })}

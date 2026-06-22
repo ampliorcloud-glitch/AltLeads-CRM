@@ -21,6 +21,7 @@ import { MultiSelectFilter } from '../components/ui/MultiSelectFilter';
 import { ColumnCustomizer, defaultColumnPrefs, reconcileColumns } from '../components/ui/ColumnCustomizer';
 import { ViewSwitcher, useViewMode } from '../components/ui/ViewSwitcher';
 import { CardGrid, CardShell } from '../components/ui/CardGrid';
+import { GenericKanban, type KanbanColumnDef } from '../components/kanban/GenericKanban';
 import { StatusBadge } from '../components/ui/StatusBadge';
 import { ProjectSelect } from '../components/ui/ProjectSelect';
 import { Skeleton } from '../components/ui/Skeleton';
@@ -449,6 +450,41 @@ export function CompaniesPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectId]);
 
+  /* ---- Kanban (Board) view ----
+     Companies' status is PER PROJECT (company_project_status.account_status), so
+     the board is only meaningful with a project selected. When none is selected
+     the page shows a gentle inline note instead of a wrong/empty board. Columns
+     are built from the known account_status options (+ an "Unset" bucket for
+     blanks); cards open the same preview drawer the row uses.
+
+     Statuses are normally batch-loaded for the current page only — so when the
+     board is shown, load statuses for the WHOLE filtered set so every card lands
+     in the right column. */
+  useEffect(() => {
+    if (view !== 'kanban' || projectId == null) return;
+    const ids = filteredData.map((c) => Number(c.id)).filter((id) => !(id in statusMap));
+    if (ids.length > 0) loadStatuses(projectId, ids);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [view, projectId, filteredData]);
+
+  const kanbanColumns = useMemo<KanbanColumnDef[]>(() => {
+    const cols: KanbanColumnDef[] = statusOptions.map((o) => ({ key: o.value, label: o.label }));
+    cols.push({ key: '__unset', label: 'Unset' });
+    return cols;
+  }, [statusOptions]);
+
+  const companiesByStatus = useMemo(() => {
+    const known = new Set(kanbanColumns.map((c) => c.key));
+    const map = new Map<string, Company[]>();
+    for (const c of kanbanColumns) map.set(c.key, []);
+    for (const c of filteredData) {
+      const status = statusMap[Number(c.id)]?.account_status ?? null;
+      const key = status && known.has(status) ? status : '__unset';
+      map.get(key)?.push(c);
+    }
+    return map;
+  }, [filteredData, statusMap, kanbanColumns]);
+
   /* ---- visible column keys (from prefs) ---- */
   const visibleKeys = useMemo(
     () => new Set(columnPrefs.filter((p) => p.visible).map((p) => p.key)),
@@ -810,6 +846,42 @@ export function CompaniesPage() {
             )}
           </div>
         </div>
+
+        {/* Kanban (Board) view — grouped by per-project account status */}
+        {view === 'kanban' && !loading && !loadError && (
+          projectId == null ? (
+            <div
+              className="rounded-lg flex items-center justify-center text-zinc-500"
+              style={{ background: 'var(--color-surface)', border: '1px solid var(--border-color)', padding: '40px 16px', fontSize: 13, textAlign: 'center' }}
+            >
+              Select a project to group records on the board.
+            </div>
+          ) : (
+            <GenericKanban<Company>
+              columns={kanbanColumns}
+              itemsByColumn={companiesByStatus}
+              getKey={(row) => row.id}
+              getCardLabel={(row) => `Open ${row.name || 'company'}`}
+              onCardClick={(row) => setPreviewId(Number(row.id))}
+              renderCard={(row) => {
+                const lite = statusMap[Number(row.id)] ?? null;
+                const status = lite?.account_status ?? null;
+                return (
+                  <CardShell
+                    name={row.name || ''}
+                    subtitle={row.domainClean || undefined}
+                    chip={status ? <StatusBadge value={status} category="account_status" /> : undefined}
+                    fields={[
+                      { label: 'Industry', value: row.industry ?? '' },
+                      { label: 'City', value: row.city ?? '' },
+                      { label: 'Owner', value: lite?.owner_name ?? 'Unassigned' },
+                    ]}
+                  />
+                );
+              }}
+            />
+          )
+        )}
 
         {/* Grid (card) view */}
         {view === 'grid' && !loading && !loadError && (

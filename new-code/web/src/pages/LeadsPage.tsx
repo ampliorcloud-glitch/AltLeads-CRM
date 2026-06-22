@@ -32,6 +32,7 @@ import {
 } from '../components/ui/ColumnCustomizer';
 import { ViewSwitcher, useViewMode } from '../components/ui/ViewSwitcher';
 import { CardGrid, CardShell } from '../components/ui/CardGrid';
+import { GenericKanban, type KanbanColumnDef } from '../components/kanban/GenericKanban';
 import { RecordPreviewPanel } from '../components/common/RecordPreviewPanel';
 import { LeadPreview } from '../components/leads/LeadPreview';
 import type { ColumnDef as ColDef, ExportColumn } from '../components/ui/columns';
@@ -49,7 +50,6 @@ import {
   RefreshCw,
   AlertCircle,
   UserCheck,
-  LayoutGrid,
 } from 'lucide-react';
 
 const columnHelper = createColumnHelper<RealLead>();
@@ -399,6 +399,35 @@ export function LeadsPage() {
     () => (projectScopeId == null ? 0 : allLeads.filter((l) => l.projectId == null).length),
     [projectScopeId, allLeads],
   );
+
+  // Kanban (Board) view — group the filtered leads by stage. Columns: the known
+  // stage list (only those present), any extra present stage, + an "Unset" bucket
+  // for blanks. Card click opens the same preview drawer the row uses.
+  const kanbanColumns = useMemo<KanbanColumnDef[]>(() => {
+    const present = new Set<string>();
+    let hasUnset = false;
+    for (const l of filteredData) {
+      if (l.stage) present.add(l.stage);
+      else hasUnset = true;
+    }
+    const cols: KanbanColumnDef[] = [];
+    for (const s of stages) {
+      if (present.has(s)) { cols.push({ key: s, label: s }); present.delete(s); }
+    }
+    for (const s of [...present].sort()) cols.push({ key: s, label: s });
+    if (hasUnset) cols.push({ key: '__unset', label: 'Unset' });
+    return cols;
+  }, [filteredData, stages]);
+
+  const leadsByStage = useMemo(() => {
+    const map = new Map<string, RealLead[]>();
+    for (const c of kanbanColumns) map.set(c.key, []);
+    for (const l of filteredData) {
+      const key = l.stage || '__unset';
+      map.get(key)?.push(l);
+    }
+    return map;
+  }, [filteredData, kanbanColumns]);
 
   // Derive the ordered, visibility-filtered set of column keys from prefs.
   const visibleKeys = useMemo(
@@ -770,17 +799,6 @@ export function LeadsPage() {
             )}
           </p>
           <div className="flex items-center gap-2">
-            {/* Board (kanban) view toggle (ALT-292) */}
-            <button
-              onClick={() => navigate('/leads/board')}
-              className="inline-flex items-center gap-1.5 border border-zinc-300 hover:border-zinc-400 bg-white hover:bg-zinc-50 text-zinc-700 font-medium rounded-md transition-colors"
-              style={{ fontSize: 13, padding: '6px 12px', height: 34 }}
-              title="View leads as a pipeline board"
-            >
-              <LayoutGrid size={14} />
-              Board
-            </button>
-
             {/* Bulk reassign selected leads (ALT-291) */}
             {canReassign && sel.count > 0 && (
               <button
@@ -844,6 +862,28 @@ export function LeadsPage() {
             )}
           </div>
         </div>
+
+        {/* Kanban (Board) view — grouped by stage; cards open the preview drawer */}
+        {view === 'kanban' && !loading && !loadError && (
+          <GenericKanban<RealLead>
+            columns={kanbanColumns}
+            itemsByColumn={leadsByStage}
+            getKey={(row) => row.id}
+            getCardLabel={(row) => `Open ${row.company || row.contactName || 'lead'}`}
+            onCardClick={(row) => setPreviewId(row.id)}
+            renderCard={(row) => (
+              <CardShell
+                name={row.company || row.contactName || ''}
+                subtitle={row.contactName || undefined}
+                chip={row.stage ?? undefined}
+                fields={[
+                  { label: 'City', value: row.city ?? '' },
+                  { label: 'Salesperson', value: row.salesperson ?? '' },
+                ]}
+              />
+            )}
+          />
+        )}
 
         {/* Grid (card) view */}
         {view === 'grid' && !loading && !loadError && (
