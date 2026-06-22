@@ -835,3 +835,11 @@ Next wave: #8 global project selector (cross-cutting ProjectContext).
 - **STAGED/not applied** (launch posture). To go live: apply apply-create-call-log.cjs + apply-call-log-rls.cjs in prod (gated). Follow-ups: a My-Calls list page (so the dashboard card drills down); wire real telephony into the recording_url/transcript seam.
 - **Session so far (15 commits, nothing pushed):** project selector + full hostile-review fix set + notify-service hardening + ALT-275 mobile record view + ALT-276 wishlist + ALT-269 Call module. Tracker: 148 Done.
 - Next: ALT-268 (#5 admin all-projects activity timeline). Portal DB apply (ALT-274) still awaits owner go-ahead.
+
+---
+## 2026-06-21 (cont. 27) — ALT-268 #5 admin activity timeline SHIPPED (commit ab92711) — built direct (workflows hit session limit)
+- The ALT-268 build WORKFLOW failed (both agents hit "session limit · resets 1am"), so I built it DIRECTLY in the main loop.
+- **What shipped:** new "Activity" tab in AdminPage (already ADMIN-gated → inherits admin-only). `data/activityTimeline.ts` reads the `interaction` table (the rich activity store: status_change + call rows, with project_id/occurred_at/actor), newest-first, cap 200, project selector incl. "All projects". `components/admin/ActivityTimelineTab.tsx` groups by IST day, kind badges (call/status), links each event to its record (contact/company/lead), resolves actor + project names. Read-only; no migration. Build green.
+- **Follow-ups (future):** date/user filters; also aggregate meetings/tasks/call_log (currently `interaction` only — the richest single source); pagination beyond 200.
+- **Session: 18 commits.** Remaining owner items: #1 advanced filters (ALT-270, partially via MultiSelectFilter), #7 grouped global search (ALT-272), ALT-271 websearch (LAST). Gated: portal DB (ALT-274), feasibility (ALT-277/278).
+- NOTE: sub-agent workflows are hitting the weekly/session limit; continuing DIRECT builds in the main loop while budget remains.

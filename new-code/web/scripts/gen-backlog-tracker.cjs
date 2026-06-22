@@ -2053,10 +2053,10 @@ const TICKETS = [
   {
     id:'ALT-268', title:'Admin: all-projects activity view with detailed timeline',
     type:'Feature', module:'Admin', wave:'Roadmap',
-    priority:'P1', status:'Planned',
-    created: d(2026,6,21), updated: d(2026,6,21), finished: null,
+    priority:'P1', status:'Done',
+    created: d(2026,6,21), updated: d(2026,6,21), finished: d(2026,6,21),
     owner:'Mohit',
-    notes:'OWNER (#5, "big one") 2026-06-21: for ADMIN, an option to show ALL activity in detail across ALL projects (choose all / specific projects), with a chronological timeline + detailed activity timeline. A cross-project audit/timeline view reading the interaction/activity log; filter by project(s)/user/date; drill into each event.'
+    notes:'OWNER (#5, "big one") 2026-06-21: for ADMIN, ALL activity in detail across ALL projects + chronological timeline. SHIPPED (commit ab92711): new "Activity" tab in AdminPage (already ADMIN-gated). data/activityTimeline.ts reads the interaction table (status changes + logged calls, with project_id/occurred_at/actor), newest-first, cap 200, with a project selector incl. "All projects". components/admin/ActivityTimelineTab.tsx groups events by IST day, links each to its record (contact/company/lead), resolves actor+project names. Read-only, no migration. FOLLOW-UPS (future): add date/user filters; aggregate meetings/tasks/call_log sources too (currently interaction only — the richest single source); pagination beyond 200.'
   },
   {
     id:'ALT-269', title:'EPIC: Call module — schedule + log calls per record, dashboard, future call-tool integration',
