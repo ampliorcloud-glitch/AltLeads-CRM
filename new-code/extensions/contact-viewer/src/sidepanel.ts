@@ -340,7 +340,7 @@ async function renderContactCard(result: ContactPanelResult) {
 
   // ---- OWNED CARD (canView = true — admin / owner / manager / QC) ----
   if (canView) {
-    html += renderOwnedCard(result, detail, status);
+    html += renderOwnedCard(result, detail, status, isAdmin);
     // Research request section — compute missing detail fields
     const missingFields = computeMissingFields(result, detail);
     html += renderResearchRequestSection(result.contact_id, openRequest, missingFields);
@@ -380,35 +380,102 @@ async function renderContactCard(result: ContactPanelResult) {
 function renderOwnedCard(
   result: ContactPanelResult,
   detail: Awaited<ReturnType<typeof fetchContactDetail>>,
-  status: Awaited<ReturnType<typeof fetchContactStatus>>
+  status: Awaited<ReturnType<typeof fetchContactStatus>>,
+  isAdmin: boolean
 ): string {
   let html = '';
 
-  // Contact PII — partial mask + click-to-reveal
+  // Contact details section
   html += `<div class="section-title">Contact details</div>`;
 
-  // Email
+  // Designation (not in header — show as first field)
+  const designation = detail?.designation;
+  if (designation) {
+    html += `
+      <div class="field-row">
+        <span class="label">Designation</span>
+        <span class="value">${esc(designation)}</span>
+      </div>
+    `;
+  } else {
+    html += emptyFieldRow('Designation');
+  }
+
+  // Company
+  const companyName = detail?.company_name ?? result.company_name;
+  if (companyName) {
+    html += `
+      <div class="field-row">
+        <span class="label">Company</span>
+        <span class="value">${esc(companyName)}</span>
+      </div>
+    `;
+  } else {
+    html += emptyFieldRow('Company');
+  }
+
+  // City
+  const cityName = detail?.city_name;
+  if (cityName) {
+    html += `
+      <div class="field-row">
+        <span class="label">City</span>
+        <span class="value">${esc(cityName)}</span>
+      </div>
+    `;
+  } else {
+    html += emptyFieldRow('City');
+  }
+
+  // Email — unmasked for admin, partial mask + click-to-reveal for others
   const email = detail?.email ?? result.email;
   if (email) {
-    html += maskedFieldRow('Email', email, maskEmail(email));
+    if (isAdmin) {
+      html += `
+        <div class="field-row">
+          <span class="label">Email</span>
+          <span class="value">${esc(email)}</span>
+        </div>
+      `;
+    } else {
+      html += maskedFieldRow('Email', email, maskEmail(email));
+    }
   } else {
     html += emptyFieldRow('Email');
   }
 
-  // Mobile
+  // Mobile — unmasked for admin, partial mask + click-to-reveal for others
   const mobile = detail?.mobile_no ?? result.mobile_no;
   if (mobile) {
-    html += maskedFieldRow('Mobile', mobile, maskPhone(mobile));
+    if (isAdmin) {
+      html += `
+        <div class="field-row">
+          <span class="label">Mobile</span>
+          <span class="value">${esc(mobile)}</span>
+        </div>
+      `;
+    } else {
+      html += maskedFieldRow('Mobile', mobile, maskPhone(mobile));
+    }
   } else {
     html += emptyFieldRow('Mobile');
   }
 
-  // Alt mobile (if present in detail)
+  // Alt mobile — unmasked for admin, partial mask + click-to-reveal for others
   if (detail?.alt_mobile_no) {
-    html += maskedFieldRow('Alt mobile', detail.alt_mobile_no, maskPhone(detail.alt_mobile_no));
+    if (isAdmin) {
+      html += `
+        <div class="field-row">
+          <span class="label">Alt mobile</span>
+          <span class="value">${esc(detail.alt_mobile_no)}</span>
+        </div>
+      `;
+    } else {
+      html += maskedFieldRow('Alt mobile', detail.alt_mobile_no, maskPhone(detail.alt_mobile_no));
+    }
   }
 
-  // LinkedIn (show as link — not masked since it's a profile URL the agent used to get here)
+  // LinkedIn (always a plain link — not masked regardless of role)
   const linkedin = detail?.linkedin_url ?? result.linkedin_url;
   if (linkedin) {
     html += `

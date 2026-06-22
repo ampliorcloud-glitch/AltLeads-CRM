@@ -198,28 +198,19 @@ export interface ProjectOption {
 
 /**
  * Load the list of projects accessible to the current user.
- * Used to populate the project selector in the top bar.
+ * Mirrors the web CRM's fetchProjects in new-code/web/src/data/companies.ts —
+ * queries `project` (the canonical table; there is no project_master in use).
+ * RLS ensures the user only sees projects they have access to.
  * Returns [] on error.
  */
 export async function fetchProjects(): Promise<ProjectOption[]> {
   const supabase = getSupabaseClient();
 
-  // project_master (or project table — name may vary; try both).
-  // RLS ensures the user only sees projects they have access to.
-  let { data, error } = await supabase
-    .from('project_master')
+  const { data, error } = await supabase
+    .from('project')
     .select('project_id, project_name')
+    .is('deleted_date', null)
     .order('project_name', { ascending: true });
-
-  if (error && error.code === '42P01') {
-    // Try alternative table name
-    const alt = await supabase
-      .from('project')
-      .select('project_id, project_name')
-      .order('project_name', { ascending: true });
-    data = alt.data;
-    error = alt.error;
-  }
 
   if (error) {
     console.error('[AltLeads] fetchProjects error:', error.message);
