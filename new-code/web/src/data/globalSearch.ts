@@ -9,8 +9,10 @@
 import { fetchLeadsFallback } from './realLeads';
 import { fetchCompanies } from './companies';
 import { fetchAllContacts } from './contacts';
+import { fetchMeetings } from './meetings';
+import { supabase } from '../lib/supabase';
 
-export type SearchType = 'lead' | 'company' | 'contact';
+export type SearchType = 'lead' | 'company' | 'contact' | 'task' | 'meeting';
 
 export interface SearchItem {
   type: SearchType;
@@ -36,10 +38,22 @@ export async function loadSearchIndex(force = false): Promise<SearchItem[]> {
 
   inflight = (async () => {
     try {
-    const [leadsRes, compRes, contactsRes] = await Promise.all([
+    const [leadsRes, compRes, contactsRes, meetingsRes, tasksRes] = await Promise.all([
       fetchLeadsFallback(),
       fetchCompanies(),
       fetchAllContacts(),
+      fetchMeetings().catch(() => ({ meetings: [] })),
+      // Tasks are RLS-scoped to the caller (own + managed + admin), so a direct
+      // read returns only what they may see. Best-effort — empty on any error.
+      supabase
+        .from('task')
+        .select('task_id, subject, task_type, status, assoc_label, lead_id, company_id, contact_id, meeting_id')
+        .is('deleted_date', null)
+        .order('updated_date', { ascending: false, nullsFirst: false })
+        .limit(500)
+        .then((r) => r.data ?? [])
+        .then((rows) => ({ rows }))
+        .then((x) => x, () => ({ rows: [] as Record<string, unknown>[] })),
     ]);
 
     const items: SearchItem[] = [];
@@ -84,6 +98,47 @@ export async function loadSearchIndex(force = false): Promise<SearchItem[]> {
       });
     }
 
+    for (const m of (meetingsRes as { meetings?: unknown[] }).meetings ?? []) {
+      const mm = m as {
+        id: string; name?: string; company?: string; client?: string; leadName?: string;
+        salesperson?: string; status?: string; meetingDate?: string | null;
+      };
+      const title = mm.name || mm.company || mm.leadName || 'Meeting';
+      items.push({
+        type: 'meeting',
+        id: mm.id,
+        title,
+        subtitle: join([mm.company || mm.client, mm.status, mm.meetingDate]),
+        route: `/meetings/${mm.id}`,
+        haystack: join(
+          [mm.name, mm.company, mm.client, mm.leadName, mm.salesperson, mm.status],
+          ' ',
+        ).toLowerCase(),
+      });
+    }
+
+    for (const t of (tasksRes as { rows: Record<string, unknown>[] }).rows) {
+      const taskId = t.task_id as number;
+      // Open the task's associated record when there is one; else the task list.
+      let route = '/tasks';
+      if (t.lead_id != null) route = `/leads/${t.lead_id}`;
+      else if (t.company_id != null) route = `/companies/${t.company_id}`;
+      else if (t.contact_id != null) route = `/contacts/${t.contact_id}`;
+      else if (t.meeting_id != null) route = `/meetings/${t.meeting_id}`;
+      const subject = (t.subject as string) || 'Task';
+      items.push({
+        type: 'task',
+        id: String(taskId),
+        title: subject,
+        subtitle: join([t.task_type as string, t.status as string, t.assoc_label as string]),
+        route,
+        haystack: join(
+          [subject, t.task_type as string, t.status as string, t.assoc_label as string],
+          ' ',
+        ).toLowerCase(),
+      });
+    }
+
     cache = items;
     return items;
     } catch (e) {
@@ -98,7 +153,7 @@ export async function loadSearchIndex(force = false): Promise<SearchItem[]> {
 }
 
 /** Rank index items against a query. Every whitespace-separated term must match. */
-export function searchIndex(items: SearchItem[], termRaw: string, limit = 24): SearchItem[] {
+export function searchIndex(items: SearchItem[], termRaw: string, limit = 40): SearchItem[] {
   const term = termRaw.trim().toLowerCase();
   if (!term) return [];
   const terms = term.split(/\s+/);

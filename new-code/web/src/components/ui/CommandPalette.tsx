@@ -10,7 +10,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
-import { Search, Loader2, Target, Building2, User, CornerDownLeft } from 'lucide-react';
+import { Search, Loader2, Target, Building2, User, CheckSquare, CalendarDays, CornerDownLeft } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import {
   loadSearchIndex,
@@ -19,11 +19,16 @@ import {
   type SearchType,
 } from '../../data/globalSearch';
 
-const TYPE_META: Record<SearchType, { label: string; Icon: typeof Target; color: string }> = {
-  lead: { label: 'Lead', Icon: Target, color: '#1A7EE8' },
-  company: { label: 'Company', Icon: Building2, color: '#7C3AED' },
-  contact: { label: 'Contact', Icon: User, color: '#0E9F6E' },
+const TYPE_META: Record<SearchType, { label: string; group: string; Icon: typeof Target; color: string }> = {
+  lead: { label: 'Lead', group: 'Leads', Icon: Target, color: '#1A7EE8' },
+  company: { label: 'Company', group: 'Companies', Icon: Building2, color: '#7C3AED' },
+  contact: { label: 'Contact', group: 'Contacts', Icon: User, color: '#0E9F6E' },
+  task: { label: 'Task', group: 'Tasks', Icon: CheckSquare, color: '#D97706' },
+  meeting: { label: 'Meeting', group: 'Meetings', Icon: CalendarDays, color: '#0891B2' },
 };
+
+/** Fixed display order of result groups (Zoho/HubSpot-style sections). */
+const GROUP_ORDER: SearchType[] = ['lead', 'company', 'contact', 'task', 'meeting'];
 
 export function CommandPalette() {
   const { session, isInternalUser } = useAuth();
@@ -94,6 +99,20 @@ export function CommandPalette() {
     [items, query],
   );
 
+  // Group the ranked results by type into Zoho/HubSpot-style sections, in a fixed
+  // order. `flat` is the display-order list the keyboard navigates (so ↑/↓ walks
+  // groups top-to-bottom and Enter opens the highlighted row).
+  const grouped = useMemo(() => {
+    const m = new Map<SearchType, SearchItem[]>();
+    for (const it of results) {
+      const arr = m.get(it.type) ?? [];
+      arr.push(it);
+      m.set(it.type, arr);
+    }
+    return GROUP_ORDER.filter((t) => m.has(t)).map((t) => ({ type: t, items: m.get(t)! }));
+  }, [results]);
+  const flat = useMemo(() => grouped.flatMap((g) => g.items), [grouped]);
+
   // Keep the selection in range as results change.
   useEffect(() => { setSelected(0); }, [query]);
 
@@ -111,13 +130,13 @@ export function CommandPalette() {
   const onInputKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'ArrowDown') {
       e.preventDefault();
-      setSelected((s) => Math.min(s + 1, Math.max(results.length - 1, 0)));
+      setSelected((s) => Math.min(s + 1, Math.max(flat.length - 1, 0)));
     } else if (e.key === 'ArrowUp') {
       e.preventDefault();
       setSelected((s) => Math.max(s - 1, 0));
     } else if (e.key === 'Enter') {
       e.preventDefault();
-      go(results[selected]);
+      go(flat[selected]);
     } else if (e.key === 'Escape') {
       e.preventDefault();
       close();
@@ -161,8 +180,8 @@ export function CommandPalette() {
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             onKeyDown={onInputKeyDown}
-            placeholder="Search leads, companies, contacts…"
-            aria-label="Search leads, companies and contacts"
+            placeholder="Search leads, companies, contacts, tasks, meetings…"
+            aria-label="Search leads, companies, contacts, tasks and meetings"
             style={{
               flex: 1, border: 'none', outline: 'none', fontSize: 14,
               color: 'var(--color-gray-900)', background: 'transparent',
@@ -182,53 +201,73 @@ export function CommandPalette() {
             </div>
           ) : query.trim() === '' ? (
             <div className="text-zinc-400" style={{ fontSize: 13, padding: '28px 18px', textAlign: 'center' }}>
-              Type to search across leads, companies and contacts.
+              Type to search across leads, companies, contacts, tasks and meetings.
             </div>
-          ) : results.length === 0 ? (
+          ) : flat.length === 0 ? (
             <div className="text-zinc-400" style={{ fontSize: 13, padding: '28px 18px', textAlign: 'center' }}>
               No matches for “{query.trim()}”.
             </div>
           ) : (
-            results.map((item, i) => {
-              const meta = TYPE_META[item.type];
-              const active = i === selected;
-              return (
-                <div
-                  key={`${item.type}-${item.id}`}
-                  data-idx={i}
-                  role="button"
-                  tabIndex={-1}
-                  aria-label={`${meta.label}: ${item.title}`}
-                  onMouseEnter={() => setSelected(i)}
-                  onClick={() => go(item)}
-                  style={{
-                    display: 'flex', alignItems: 'center', gap: 12,
-                    padding: '10px 16px', cursor: 'pointer',
-                    background: active ? 'var(--color-brand-light)' : 'transparent',
-                  }}
-                >
-                  <span style={{
-                    flexShrink: 0, width: 28, height: 28, borderRadius: 6,
-                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    background: '#F4F4F5',
+            (() => {
+              // Running index across groups so keyboard selection maps to display order.
+              let idx = -1;
+              return grouped.map((g) => (
+                <div key={g.type}>
+                  {/* Group header (Zoho/HubSpot-style section) */}
+                  <div style={{
+                    padding: '10px 16px 4px', fontSize: 11, fontWeight: 600,
+                    color: 'var(--color-gray-400)', textTransform: 'uppercase', letterSpacing: '0.04em',
                   }}>
-                    <meta.Icon size={15} style={{ color: meta.color }} />
-                  </span>
-                  <div style={{ minWidth: 0, flex: 1 }}>
-                    <div className="truncate" style={{ fontSize: 13, fontWeight: 500, color: 'var(--color-gray-900)' }}>
-                      {item.title}
-                    </div>
-                    {item.subtitle && (
-                      <div className="truncate" style={{ fontSize: 11, color: 'var(--color-gray-400)' }}>
-                        {item.subtitle}
-                      </div>
-                    )}
+                    {TYPE_META[g.type].group}
+                    <span style={{ marginLeft: 6, color: 'var(--color-gray-300)', fontWeight: 500 }}>
+                      {g.items.length}
+                    </span>
                   </div>
-                  <span style={{ fontSize: 10, color: 'var(--color-gray-400)', flexShrink: 0 }}>{meta.label}</span>
-                  {active && <CornerDownLeft size={13} className="text-zinc-400 shrink-0" />}
+                  {g.items.map((item) => {
+                    idx += 1;
+                    const i = idx;
+                    const meta = TYPE_META[item.type];
+                    const active = i === selected;
+                    return (
+                      <div
+                        key={`${item.type}-${item.id}`}
+                        data-idx={i}
+                        role="button"
+                        tabIndex={-1}
+                        aria-label={`${meta.label}: ${item.title}`}
+                        onMouseEnter={() => setSelected(i)}
+                        onClick={() => go(item)}
+                        style={{
+                          display: 'flex', alignItems: 'center', gap: 12,
+                          padding: '10px 16px', cursor: 'pointer',
+                          background: active ? 'var(--color-brand-light)' : 'transparent',
+                        }}
+                      >
+                        <span style={{
+                          flexShrink: 0, width: 28, height: 28, borderRadius: 6,
+                          display: 'flex', alignItems: 'center', justifyContent: 'center',
+                          background: '#F4F4F5',
+                        }}>
+                          <meta.Icon size={15} style={{ color: meta.color }} />
+                        </span>
+                        <div style={{ minWidth: 0, flex: 1 }}>
+                          <div className="truncate" style={{ fontSize: 13, fontWeight: 500, color: 'var(--color-gray-900)' }}>
+                            {item.title}
+                          </div>
+                          {item.subtitle && (
+                            <div className="truncate" style={{ fontSize: 11, color: 'var(--color-gray-400)' }}>
+                              {item.subtitle}
+                            </div>
+                          )}
+                        </div>
+                        <span style={{ fontSize: 10, color: 'var(--color-gray-400)', flexShrink: 0 }}>{meta.label}</span>
+                        {active && <CornerDownLeft size={13} className="text-zinc-400 shrink-0" />}
+                      </div>
+                    );
+                  })}
                 </div>
-              );
-            })
+              ));
+            })()
           )}
         </div>
 
