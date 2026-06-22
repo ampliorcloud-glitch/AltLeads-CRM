@@ -82,6 +82,15 @@
 | J2 | Client enable/disable works | Admin → Clients tab → toggle a client's status | The toggle actually changes status (confirm on disable) + toast; previously it did nothing | ⬜ | |
 | J3 | Add-User roles complete | Admin → Users → Add User → open the Role dropdown | Shows all roles from the database (not a hardcoded 6); a newly added role would appear | ⬜ | |
 
+## K. Record preview panel — Contacts pilot (just shipped)
+
+| # | What to test | Steps | Expected | Result | Notes |
+|---|---|---|---|---|---|
+| K1 | Row opens a preview drawer | Contacts list → click a row | A right-hand slide-over opens with the contact's compact record (owner + status, email/phone/LinkedIn, key fields, Leads + Colleagues, recent activity) — list stays behind it | ⬜ | |
+| K2 | Open full record | In the drawer → **Open full record →** | Navigates to the full Contact detail page | ⬜ | |
+| K3 | Close | Press Esc / click the backdrop / click ✕ | Drawer closes, you're back on the list | ⬜ | |
+| K4 | Is this the right shape? | Eyeball the drawer contents/size | Tell me what to add/remove — this is the pattern I'll copy to Companies/Leads/Meetings | ⬜ | |
+
 ---
 
 ## F. Held back — DO NOT expect these yet (here so you know the plan)
