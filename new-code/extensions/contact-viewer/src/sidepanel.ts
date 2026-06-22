@@ -21,11 +21,14 @@ import {
   fetchContactDetail,
   fetchContactLeads,
   fetchContactStatus,
+  fetchContactStatusWithOwner,
   fetchActivityFeed,
   fetchTasks,
   fetchProjects,
+  resolveUserName,
+  fetchCompanyContacts,
 } from '@shared/contactData';
-import type { BgMessage, UserProfile, ContactPanelResult, ResearchRequestResult } from '@shared/types';
+import type { BgMessage, UserProfile, ContactPanelResult, ResearchRequestResult, ContactProjectStatusWithOwner } from '@shared/types';
 import {
   getOpenRequestForContact,
   createResearchRequest,
@@ -292,14 +295,22 @@ async function renderContactCard(result: ContactPanelResult) {
   // Parallelize all independent fetches (none depend on each other).
   // fetchContactDetail and getOpenRequestForContact run unconditionally —
   // canView is derived from the detail response itself (see below).
-  const [detail, leads, status, activities, tasks, openRequest] = await Promise.all([
+  const [detail, leads, statusWithOwner, activities, tasks, openRequest] = await Promise.all([
     fetchContactDetail(result.contact_id),
     fetchContactLeads(result.contact_id),
-    currentProjectId ? fetchContactStatus(result.contact_id, currentProjectId) : Promise.resolve(null),
-    fetchActivityFeed(result.contact_id, 3),
+    currentProjectId ? fetchContactStatusWithOwner(result.contact_id, currentProjectId) : Promise.resolve(null),
+    fetchActivityFeed(result.contact_id, 15),
     fetchTasks(result.contact_id),
     getOpenRequestForContact(result.contact_id),
   ]);
+
+  // fetchContactStatus is still used by the non-owned card path (it doesn't need owner_user_id)
+  // so derive a compatible shape from the extended result.
+  const status = statusWithOwner
+    ? { contact_id: statusWithOwner.contact_id, project_id: statusWithOwner.project_id,
+        contact_status: statusWithOwner.contact_status, description: statusWithOwner.description,
+        comments: statusWithOwner.comments, updated_date: statusWithOwner.updated_date }
+    : null;
 
   // Compute effective "can view" — the RPC flag may be false when the RPC
   // isn't deployed yet (fallback path hard-codes false).  Derive it from real
@@ -313,6 +324,14 @@ async function renderContactCard(result: ContactPanelResult) {
     String(detail.created_by) === String(currentProfile.user_id);
   const hasPii = !!(detail?.email || detail?.mobile_no || detail?.linkedin_url);
   const canView = result.can_view_details || isAdmin || isOwner || hasPii;
+
+  // Fetch colleagues + owner name in parallel (both are cheap, independent lookups).
+  // Colleagues need company_id from detail; owner name needs owner_user_id from statusWithOwner.
+  const companyId = detail?.company_id ?? result.company_id;
+  const [colleagues, ownerName] = await Promise.all([
+    companyId ? fetchCompanyContacts(companyId) : Promise.resolve([]),
+    resolveUserName(statusWithOwner?.owner_user_id ?? null),
+  ]);
 
   // Determine DNC from both contact_status and company_status
   const isDNC =
@@ -340,11 +359,12 @@ async function renderContactCard(result: ContactPanelResult) {
 
   // ---- OWNED CARD (canView = true — admin / owner / manager / QC) ----
   if (canView) {
-    html += renderOwnedCard(result, detail, status, isAdmin);
+    html += renderOwnedCard(result, detail, statusWithOwner, ownerName, isAdmin);
     // Research request section — compute missing detail fields
     const missingFields = computeMissingFields(result, detail);
     html += renderResearchRequestSection(result.contact_id, openRequest, missingFields);
     html += renderLeads(leads);
+    html += renderColleagues(colleagues, result.contact_id, result.company_name, companyId);
     html += renderTasks(tasks);
     html += renderActivity(activities);
   }
@@ -380,7 +400,8 @@ async function renderContactCard(result: ContactPanelResult) {
 function renderOwnedCard(
   result: ContactPanelResult,
   detail: Awaited<ReturnType<typeof fetchContactDetail>>,
-  status: Awaited<ReturnType<typeof fetchContactStatus>>,
+  statusWithOwner: Awaited<ReturnType<typeof fetchContactStatusWithOwner>>,
+  ownerName: string,
   isAdmin: boolean
 ): string {
   let html = '';
@@ -488,10 +509,20 @@ function renderOwnedCard(
     `;
   }
 
-  // Per-project status
+  // Per-project status — mirrors the CRM's project status panel (read-only)
   if (currentProjectId) {
     html += `<div class="section-title">Project status</div>`;
-    const contactStatus = status?.contact_status ?? result.contact_status;
+
+    // Owner (this project) — resolved display name
+    html += `
+      <div class="field-row">
+        <span class="label">Owner</span>
+        <span class="value">${esc(ownerName || 'Unassigned')}</span>
+      </div>
+    `;
+
+    // Contact Status badge (red if do_not_contact, blue otherwise)
+    const contactStatus = statusWithOwner?.contact_status ?? result.contact_status;
     if (contactStatus) {
       const isDNC2 = contactStatus === 'do_not_contact';
       const cls = isDNC2 ? 'badge-red' : 'badge-blue';
@@ -509,19 +540,23 @@ function renderOwnedCard(
         </div>
       `;
     }
-    if (status?.description) {
+
+    // Description
+    if (statusWithOwner?.description) {
       html += `
         <div class="field-row">
-          <span class="label">Notes</span>
-          <span class="value">${esc(status.description)}</span>
+          <span class="label">Description</span>
+          <span class="value">${esc(statusWithOwner.description)}</span>
         </div>
       `;
     }
-    if (status?.comments) {
+
+    // Comments
+    if (statusWithOwner?.comments) {
       html += `
         <div class="field-row">
           <span class="label">Comments</span>
-          <span class="value">${esc(status.comments)}</span>
+          <span class="value">${esc(statusWithOwner.comments)}</span>
         </div>
       `;
     }
@@ -631,24 +666,62 @@ function renderNonOwnedCard(
 // ---------------------------------------------------------------------------
 
 function renderLeads(leads: Awaited<ReturnType<typeof fetchContactLeads>>): string {
-  if (leads.length === 0) return '';
+  const count = leads.length;
+  let html = `<div class="section-title">Leads${count > 0 ? ` (${count})` : ''}</div>`;
 
-  let html = `<div class="section-title">Leads (${leads.length})</div>`;
-  leads.slice(0, 3).forEach((l) => {
+  if (count === 0) {
+    html += `<div class="empty-section">No leads linked to this contact yet.</div>`;
+    return html;
+  }
+
+  // Show all leads (not capped) — CRM shows all; side panel is narrow but still readable
+  leads.forEach((l) => {
     const stage = l.lead_stage ?? l.lead_status ?? 'unknown';
     html += `
       <div class="field-row">
         <span class="label">#${l.lead_id}</span>
         <span class="value">
           <span class="badge badge-blue">${esc(stage)}</span>
-          ${l.company_name ? ` ${esc(l.company_name)}` : ''}
+          ${l.company_name ? ` <span style="color:#6b7280;">${esc(l.company_name)}</span>` : ''}
         </span>
       </div>
     `;
   });
-  if (leads.length > 3) {
-    html += `<div class="more-note">…and ${leads.length - 3} more</div>`;
+  return html;
+}
+
+function renderColleagues(
+  colleagues: Awaited<ReturnType<typeof fetchCompanyContacts>>,
+  currentContactId: number,
+  companyName: string | null,
+  companyId: number | null
+): string {
+  if (!companyId) return '';
+
+  // Exclude the current contact from the list
+  const others = colleagues.filter((c) => c.contact_id !== currentContactId);
+  const headerLabel = companyName
+    ? `Colleagues · ${esc(companyName)} (${others.length})`
+    : `Colleagues (${others.length})`;
+
+  let html = `<div class="section-title">${headerLabel}</div>`;
+
+  if (others.length === 0) {
+    html += `<div class="empty-section">No other contacts at this company.</div>`;
+    return html;
   }
+
+  others.forEach((c) => {
+    html += `
+      <div class="field-row">
+        <span class="label" style="width:auto;flex:1;min-width:0;">${esc(c.full_name)}</span>
+        ${c.designation
+          ? `<span class="value" style="color:#6b7280;flex-shrink:0;max-width:50%;text-align:right;">${esc(c.designation)}</span>`
+          : ''
+        }
+      </div>
+    `;
+  });
   return html;
 }
 
@@ -668,15 +741,30 @@ function renderTasks(tasks: Awaited<ReturnType<typeof fetchTasks>>): string {
 }
 
 function renderActivity(activities: Awaited<ReturnType<typeof fetchActivityFeed>>): string {
-  if (activities.length === 0) return '';
+  let html = `<div class="section-title">Activity Timeline</div>`;
 
-  let html = `<div class="section-title">Recent activity</div>`;
+  if (activities.length === 0) {
+    html += `<div class="empty-section">No activity recorded yet.</div>`;
+    return html;
+  }
+
+  // Group by calendar date (most-recent-first — activities are already ordered DESC)
+  let lastDateLabel = '';
   activities.forEach((a) => {
+    const dateLabel = formatDateShort(a.occurred_at);
+    if (dateLabel !== lastDateLabel) {
+      html += `<div class="activity-date-group">${esc(dateLabel)}</div>`;
+      lastDateLabel = dateLabel;
+    }
+
+    const typeLabel = a.type === 'call' ? 'Call' : a.type === 'status_change' ? 'Status change' : esc(a.type);
     html += `
       <div class="activity-item">
-        <span class="type">${esc(a.type)}</span>
-        ${a.disposition ? `<span class="badge badge-gray">${esc(a.disposition)}</span>` : ''}
-        <span class="time">${formatDate(a.occurred_at)}</span>
+        <div class="activity-header">
+          <span class="type">${typeLabel}</span>
+          ${a.disposition ? `<span class="badge badge-gray">${esc(a.disposition)}</span>` : ''}
+          <span class="time">${formatTime(a.occurred_at)}</span>
+        </div>
         ${a.note_text ? `<div class="note">${esc(a.note_text)}</div>` : ''}
       </div>
     `;
@@ -1020,6 +1108,26 @@ function formatDate(iso: string): string {
     return d.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
   } catch {
     return iso;
+  }
+}
+
+/** Short date label for activity group headers, e.g. "22 Jun 2026". */
+function formatDateShort(iso: string): string {
+  try {
+    const d = new Date(iso);
+    return d.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
+  } catch {
+    return iso.substring(0, 10);
+  }
+}
+
+/** Time-only label for activity entries within a day group, e.g. "3:42 PM". */
+function formatTime(iso: string): string {
+  try {
+    const d = new Date(iso);
+    return d.toLocaleTimeString('en-IN', { hour: 'numeric', minute: '2-digit', hour12: true });
+  } catch {
+    return '';
   }
 }
 

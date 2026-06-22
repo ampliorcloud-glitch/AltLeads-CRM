@@ -121,6 +121,28 @@ export interface TaskRecord {
   created_by: string | null;
 }
 
+/** A colleague contact at the same company (from fetchCompanyContacts). */
+export interface CompanyContact {
+  contact_id: number;
+  full_name: string;
+  designation: string | null;
+  city_name: string | null;
+}
+
+/**
+ * Extended contact_project_status that also includes owner_user_id.
+ * fetchContactStatusWithOwner returns this shape.
+ */
+export interface ContactProjectStatusWithOwner {
+  contact_id: number;
+  project_id: number;
+  contact_status: string | null;
+  description: string | null;
+  comments: string | null;
+  owner_user_id: number | null;
+  updated_date: string | null;
+}
+
 // ---------------------------------------------------------------------------
 // Research request (contact_research_request — ALT-282/R3; table may not exist yet)
 // ---------------------------------------------------------------------------
