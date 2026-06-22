@@ -2280,10 +2280,10 @@ const TICKETS = [
   {
     id:'ALT-293', title:'Merge duplicate companies / contacts (in-app)',
     type:'Feature', module:'Data Quality', wave:'Wave 3',
-    priority:'P3', status:'In Progress',
+    priority:'P3', status:'On Hold',
     created: d(2026,6,22), updated: d(2026,6,22), finished: null,
     owner:'Ankit',
-    notes:'Tier-3. CODE BUILT via parallel subagent (data/merge.ts: mergeCompanies/mergeContacts re-point children + soft-delete loser; components/merge/MergeDuplicatesModal.tsx: side-by-side compare, pick survivor, type-MERGE confirm). Company merge re-points contact_master/company_project_status/lead_master.company_id + interaction(company); contact merge re-points lead_master.contact_id/contact_project_status + interaction(contact). DELIBERATELY NOT WIRED to a live entry point yet — it is NON-ATOMIC (client-side sequence, can half-merge), does not de-dupe per-project UNIQUE(record,project) rows (stops on 23505), and is admin-only by convention not DB-enforced. BEFORE going live: move to a single SECURITY DEFINER transactional RPC + validate with throwaway logins; then wire an admin-gated "Merge" action on Companies/Contacts lists (2 selected). Build green.'
+    notes:'PARKING LOT (Ankit 2026-06-22): dedupe/merge DEFERRED — revisit later. Code is parked (no live button). // Tier-3. CODE BUILT via parallel subagent (data/merge.ts: mergeCompanies/mergeContacts re-point children + soft-delete loser; components/merge/MergeDuplicatesModal.tsx: side-by-side compare, pick survivor, type-MERGE confirm). Company merge re-points contact_master/company_project_status/lead_master.company_id + interaction(company); contact merge re-points lead_master.contact_id/contact_project_status + interaction(contact). DELIBERATELY NOT WIRED to a live entry point yet — it is NON-ATOMIC (client-side sequence, can half-merge), does not de-dupe per-project UNIQUE(record,project) rows (stops on 23505), and is admin-only by convention not DB-enforced. BEFORE going live: move to a single SECURITY DEFINER transactional RPC + validate with throwaway logins; then wire an admin-gated "Merge" action on Companies/Contacts lists (2 selected). Build green.'
   },
   {
     id:'ALT-294', title:'BUG: record detail per-project view ignored the global project selector (defaulted to first project)',
@@ -2301,6 +2301,81 @@ const TICKETS = [
     owner:'Ankit',
     notes:'ANKIT 2026-06-22: kill ownership ambiguity by giving Admin a per-PROJECT access mode in Project Settings (overrides per-record ownership) — "control & flexibility else we keep colliding on ambiguity." Modes: (1) Owner-scoped (current default — owner + upline edit, others limited); (2) Public · Edit (everyone in the project can edit everything); (3) Public · View-only (everyone sees ALL fields, no edit); (4) Public · Limited view (everyone sees NON-sensitive fields only — contact_status/designation/linkedin etc.; contact details email/phone + sensitive info MASKED). Maps onto the existing project_visibility_setting dials (ALT-134 view_scope/edit_scope) + the masking view can_see_contact_details (ALT-133) — needs a new "limited" masking tier. Build = Project Settings UI writing the dial + RLS/masking respect. STAGED RLS + throwaway-login validation before prod. Supersedes/extends ALT-134/ALT-174; record an ADR in DECISIONS.md.'
   },
+
+  // ══════════════════════════════════════════════════════════════════════
+  // EPIC: Persona Audit (2026-06-22) — 4 parallel persona/UX research agents
+  //   (Admin/TL · Agent/QC · Sales/Client · cross-cutting UI). NEW findings only
+  //   (overlaps with existing ALT-### were skipped). See docs/product/
+  //   PERSONA-AUDIT-2026-06.md + AMBIGUOUS-DECISIONS.md.
+  // ══════════════════════════════════════════════════════════════════════
+  ...((() => {
+    const A = (id, title, type, module, priority, notes) => ({
+      id, title, type, module, wave:'Persona Audit 2026-06', priority, status:'Planned',
+      created: d(2026,6,22), updated: d(2026,6,22), finished: null, owner:'Ankit', notes,
+    });
+    return [
+      // — Admin / Team Lead —
+      A('ALT-296','Show owner/salesperson on lists (Companies+Contacts Owner column; Leads Salesperson column+filter)','Bug','Companies','P1',
+        'Persona audit (Admin/TL). CompaniesPage renders Owner hardcoded "Unassigned" (TODO ownership) though company_project_status.owner_user_id now exists + is written by reassign (ALT-290); Contacts has NO owner column; Leads exposes only "Agent" (created_by) not the salesperson (lead_report.user_id) it reassigns. FIX: resolve + show the real owner on Companies & Contacts, add a Salesperson column+filter to Leads (mirror MeetingsPage). HubSpot/SFDC: Owner column+filter is table-stakes.'),
+      A('ALT-297','ClientsTab status toggle is a dead control','Bug','Admin','P2',
+        'Persona audit. ClientsTab renders <StatusToggle> with no onToggle — clicking does nothing (UsersTab/ProjectsTab toggles are live). Wire onToggle or remove.'),
+      A('ALT-298','Add-User role picker hardcodes the 6 roles','Bug','Admin','P2',
+        'Persona audit. UsersTab hardcodes roles for the Add-User picker while the rest uses lookups.roles — a new role_master row never appears. Drive from lookups.roles.'),
+      A('ALT-299','Project staffing is one-user-at-a-time','Task','Admin','P2',
+        'Persona audit. ProjectsTab assign modal closes after each single add → staffing a 10-person pod = 10 reopens. Multi-select user picker + single role, keep modal open, show running member list.'),
+      A('ALT-300','Activity timeline: date/actor filters + pagination/export + Team-Lead access','Feature','Admin','P2',
+        'Persona audit. ActivityTimelineTab hard limit:200, no date/actor filter, no load-more/export, and is Admin-only so a TL (who QCs calls) cannot reach it. Add filters + pagination/export + a team-scoped TL view.'),
+      A('ALT-301','Manager / team dashboard rollup (per-rep counts, workload)','Feature','Admin','P1',
+        'Persona audit (sharpens ALT-112). DashboardPage is role-blind — no per-agent/per-salesperson counts, no workload/leaderboard, no pending-approvals or stuck-record tiles. Build a "My Team" panel for ADMIN+TEAM_LEAD. HubSpot rep leaderboard / Zoho Team dashboard.'),
+      A('ALT-302','Reassign / Add-to-project buttons vanish without a project — show disabled+tooltip','Task','Companies','P3',
+        'Persona audit. On Companies/Contacts the bulk buttons hide unless a project is selected, with no hint. Keep visible-but-disabled with tooltip "Select a project to reassign."'),
+      // — Agent / QC —
+      A('ALT-303','Unify call logging: ONE disposition vocabulary + ONE logger (+ one-click outcomes)','Bug','Leads','P1',
+        'Persona audit (Agent). TWO live loggers with DIVERGENT vocab: LogCallModal (call_log enum CONNECTED/CALLBACK_REQUESTED…) vs DispositionForm (dropdown_option call_disposition connected/call_back/switched_off…) — both shown on ContactDetailPage, writing different tables/histories. Pick ONE canonical disposition list (recommend admin-editable dropdown driving call_log) + ONE logging path; retire the other; make Outcome one-click buttons (Salesloft-style) to cut per-call friction.'),
+      A('ALT-304','QC (role 6) workspace — define mandate + give a queue','Feature','Admin','P1',
+        'Persona audit. QC exists only as a label; no route/gating/screen, and the only review queue (Approvals) excludes QC. Decide QC mandate (2nd approver on reports AND/OR call/disposition quality auditor with sampling+scorecard) and build the queue. Today a QC login has nothing to do.'),
+      A('ALT-305','"My records" default + Assigned-to facet on all lists (scope by lead_report.user_id)','Feature','Leads','P1',
+        'Persona audit (Agent). All list fetchers return everything; the Agent facet keys off created_by not the salesperson. Add a "Mine" toggle (default ON for agents) scoping by the correct assignment field + an Assigned-to facet. HubSpot/Zoho default = "My open records."'),
+      A('ALT-306','Unified "Today / Next" work queue (tasks due + meetings today + stale assigned leads)','Feature','Leads','P1',
+        'Persona audit (Agent). "Due today" is split across My Tasks, Meetings (manual date filter), Dashboard. Build one prioritized home queue, one-click to act. Salesloft "Today" / Outreach tasks.'),
+      A('ALT-307','Click-to-call everywhere → auto-open Log-call prefilled','Feature','Leads','P2',
+        'Persona audit (Agent). Lead detail phone is not a tel: link; no dialer/auto-log. Make every phone click-to-call that opens the Log-call modal prefilled (recording_url/transcript seams already reserved in calls.ts). Salesloft/Outreach one-click dial.'),
+      A('ALT-308','Disposition implies a follow-up → inline "schedule callback" in the log modal','Task','Leads','P2',
+        'Persona audit (Agent). Logging CALLBACK_REQUESTED/FOLLOW_UP does nothing beyond the row; agent must remember to add a task. Offer an inline "Schedule callback" (prefilled) in the same modal. HubSpot prompts "create a task?" on call log.'),
+      A('ALT-309','Inline stage/disposition quick-edit on Leads list rows','Task','Leads','P2',
+        'Persona audit (Agent). Contacts has inline status edit; Leads has none (must open detail or Report tab). Add inline stage/status quick-edit on Leads rows. Zoho inline tick-to-save.'),
+      A('ALT-310','Global search index goes stale within a session','Bug','Leads','P2',
+        'Persona audit. globalSearch caches the index at module scope, cleared only on logout/bulk-import — a record edited mid-shift won\'t surface until re-login. Invalidate on write or add a short TTL.'),
+      // — Sales / Client —
+      A('ALT-311','Unify the meeting-record component across Sales + Client portals','Task','Meetings','P1',
+        'Persona audit (Sales/Client). MobileMeetingRecord (mobile-ditto, ALT-275) and PortalMeetingDetailPage (flat grid) are two implementations of the same screen that have drifted. Render ONE MobileMeetingRecord for both (client fed by snapshot) + unify the feedback model. One canonical record component, themed per audience.'),
+      A('ALT-312','Sales portal forgot-password / reset flow','Task','Admin','P3',
+        'Persona audit (Sales). SalesLoginPage has no reset, yet first-time provisioned users will need it. Wire forgot-password via the notify-service reset endpoint.'),
+      A('ALT-313','"Back to CRM" switcher for internal users viewing /sales','Task','UX','P3',
+        'Persona audit. Internal users may view /sales but have no way back; logout routes to /sales/login. Add a "Back to CRM" affordance for internal viewers.'),
+      // — Cross-cutting UI / design system —
+      A('ALT-314','Design-token sweep: replace hardcoded hex with CSS vars (+ lint)','Task','UX','P1',
+        'Persona audit (UI). var(--color-brand) defined but #1A7EE8 + raw hex hardcoded across ~46 files (190 occurrences); Settings/Admin/Approvals almost entirely inline hex. Sweep to tokens, add missing tokens (brand-darker/danger-bg/ring), lint-ban raw hex in style={}. The #1 drift risk.'),
+      A('ALT-315','One canonical Button component (variants) — retire the 3 primitive sets','Task','UX','P1',
+        'Persona audit (UI). admin/primitives + lead/primitives + per-page inline buttons = 4 implementations of the same button. Promote one ui/Button (variant/size, token-driven, CSS hover); migrate. HubSpot Canvas/Zoho ship one Button.'),
+      A('ALT-316','Shared DataTable + FilterBar + Pagination shell for all lists','Task','UX','P2',
+        'Persona audit (UI). Leads/Contacts/Companies/Meetings each re-implement table+filterbar+pagination (~4x duplication; Contacts uses a different engine). Extract a shared shell taking columns+filter defs; move Contacts onto TanStack.'),
+      A('ALT-317','Consolidate modals onto one ui/Modal','Task','UX','P2',
+        'Persona audit (UI). admin/Modal is accessible but only admin uses it; Approvals/meetings hand-roll raw overlays (inconsistent backdrop/radius/focus). Move Modal to components/ui and adopt everywhere.'),
+      A('ALT-318','Sticky table headers on all lists','Task','UX','P2',
+        'Persona audit (UI quick win). No list uses sticky headers; users lose column context on long pages. position:sticky on thead. Cheap, high perceived-quality. HubSpot/Zoho always sticky.'),
+      A('ALT-319','Fix muted-text contrast (gray-400 → gray-500) for WCAG AA','Bug','UX','P2',
+        'Persona audit (UI a11y quick win). --color-gray-400 #9CA3AF on white is ~2.6:1 (placeholders, captions, breadcrumb, secondary cells) — below AA 4.5:1. Use gray-500 #6B7280 (4.6:1) for any informational text; reserve 400 for decorative/disabled.'),
+      A('ALT-320','Shared role-aware EmptyState component','Task','UX','P2',
+        'Persona audit (UI). Empty states inconsistent (icon card vs bare text), no CTA. One <EmptyState> (icon+title+subtext+CTA) with role-aware copy ("ask admin to import" vs "no records assigned to you"). HubSpot/Zoho illustrated empties.'),
+      A('ALT-321','Canonical status-color map (badges + charts from one source)','Task','UX','P2',
+        'Persona audit (UI). Status colors defined 3x (Badge, StatusBadge VALUE_TONE, Dashboard chart map) with different greens/oranges. One exported statusColor(category,value) seeded from dropdown_option, used by badges AND charts.'),
+      A('ALT-322','Replace imperative JS hover with CSS hover/:focus-visible','Task','UX','P3',
+        'Persona audit (UI). onMouseEnter/Leave style-mutation in 42 files fakes :hover — fragile/inconsistent. Standardize on CSS hover + the existing :focus-visible ring; delete the handlers.'),
+      A('ALT-323','Breadcrumb: record name as leaf + clickable crumbs','Task','UX','P3',
+        'Persona audit (UI). TopBar breadcrumb is shallow ("Lead Detail", non-clickable). Show the record name as the leaf and make non-last crumbs navigable. HubSpot "Leads / Acme Corp".'),
+    ];
+  })()),
 
   ...uxAuditTickets(),
 ];
