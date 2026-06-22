@@ -60,6 +60,22 @@
 
 ---
 
+## H. Bulk "Add to project" (Companies + Contacts)
+
+| # | What to test | Steps | Expected | Result | Notes |
+|---|---|---|---|---|---|
+| H1 | Add companies to a project | Companies list → tick several rows → **Add to project (N)** → pick a project → Add to project | Toast confirms N added; opening one of those companies shows it now belongs to that project (its per-project panel exists for that project) | ⬜ | |
+| H2 | Add contacts to a project | Contacts list → tick rows → **Add to project (N)** → pick a project → confirm | Same as H1 for contacts | ⬜ | |
+| H3 | Only managers see it | Log in as a plain Agent | The **Add to project** button is hidden (Admin / Team Lead / Sales Head only) | ⬜ | |
+
+## I. Inline edit (already live for Contacts)
+
+| # | What to test | Steps | Expected | Result | Notes |
+|---|---|---|---|---|---|
+| I1 | Change contact status in the list | Contacts list → pick a project up top → in a row's **Status** cell, change the dropdown | Saves immediately (no opening the record); the change sticks on reload | ⬜ | |
+
+---
+
 ## F. Held back — DO NOT expect these yet (here so you know the plan)
 
 | # | Item | State | What unlocks it |
@@ -73,8 +89,7 @@
 ## G. Coming next (I'm building these now — will add test rows when ready)
 
 - **Bulk status-change** (tick rows → set a status for all)
-- **Bulk add-to-project** (tick rows → add them to a project)
-- **Inline edit** (change status/owner right in the list row, no opening the record)
+- **Inline edit** — extend the Contacts inline-status pattern to Companies (account status) and to status on the other lists
 - **Advanced per-column filters** on Contacts / Companies / Tasks
 
 _Last updated: 2026-06-22 by Claude (CRM)._
