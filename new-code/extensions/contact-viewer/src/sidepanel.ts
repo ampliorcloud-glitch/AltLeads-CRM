@@ -276,9 +276,7 @@ async function renderContactCard(result: ContactPanelResult) {
         ${esc(result.full_name)}
         ${isDNCEarly
           ? '<span class="badge badge-red">DO NOT CONTACT</span>'
-          : result.can_view_details
-            ? '<span class="badge badge-green">In CRM</span>'
-            : '<span class="badge badge-gray">In CRM</span>'
+          : '<span class="badge badge-gray">In CRM</span>'
         }
       </div>
       <div class="company">${esc(result.company_name ?? '—')}</div>
@@ -291,15 +289,30 @@ async function renderContactCard(result: ContactPanelResult) {
   `;
   showView('contact');
 
-  // Parallelize all independent fetches (none depend on each other)
+  // Parallelize all independent fetches (none depend on each other).
+  // fetchContactDetail and getOpenRequestForContact run unconditionally —
+  // canView is derived from the detail response itself (see below).
   const [detail, leads, status, activities, tasks, openRequest] = await Promise.all([
-    result.can_view_details ? fetchContactDetail(result.contact_id) : Promise.resolve(null),
+    fetchContactDetail(result.contact_id),
     fetchContactLeads(result.contact_id),
     currentProjectId ? fetchContactStatus(result.contact_id, currentProjectId) : Promise.resolve(null),
     fetchActivityFeed(result.contact_id, 3),
     fetchTasks(result.contact_id),
-    result.can_view_details ? getOpenRequestForContact(result.contact_id) : Promise.resolve(null),
+    getOpenRequestForContact(result.contact_id),
   ]);
+
+  // Compute effective "can view" — the RPC flag may be false when the RPC
+  // isn't deployed yet (fallback path hard-codes false).  Derive it from real
+  // signals instead: admin role, numeric owner match, or unmasked PII returned
+  // by contact_master_masked (which already unmasks server-side for admin /
+  // owner / manager / QC).
+  const isAdmin = String(currentProfile?.role ?? '').toUpperCase() === 'ADMIN';
+  const isOwner =
+    detail?.created_by != null &&
+    currentProfile?.user_id != null &&
+    String(detail.created_by) === String(currentProfile.user_id);
+  const hasPii = !!(detail?.email || detail?.mobile_no || detail?.linkedin_url);
+  const canView = result.can_view_details || isAdmin || isOwner || hasPii;
 
   // Determine DNC from both contact_status and company_status
   const isDNC =
@@ -315,7 +328,7 @@ async function renderContactCard(result: ContactPanelResult) {
         ${esc(result.full_name)}
         ${isDNC
           ? '<span class="badge badge-red">DO NOT CONTACT</span>'
-          : result.can_view_details
+          : canView
             ? '<span class="badge badge-green">In CRM</span>'
             : '<span class="badge badge-gray">In CRM</span>'
         }
@@ -325,8 +338,8 @@ async function renderContactCard(result: ContactPanelResult) {
     </div>
   `;
 
-  // ---- OWNED CARD (can_view_details = true) ----
-  if (result.can_view_details) {
+  // ---- OWNED CARD (canView = true — admin / owner / manager / QC) ----
+  if (canView) {
     html += renderOwnedCard(result, detail, status);
     // Research request section — compute missing detail fields
     const missingFields = computeMissingFields(result, detail);
@@ -335,7 +348,7 @@ async function renderContactCard(result: ContactPanelResult) {
     html += renderTasks(tasks);
     html += renderActivity(activities);
   }
-  // ---- NON-OWNED CARD (can_view_details = false) ----
+  // ---- NON-OWNED CARD (canView = false — genuine other-owner record) ----
   else {
     html += renderNonOwnedCard(result, isDNC, status);
   }
@@ -353,7 +366,7 @@ async function renderContactCard(result: ContactPanelResult) {
   contactCard.innerHTML = html;
 
   // Wire up click-to-reveal for masked PII fields (owned card only)
-  if (result.can_view_details) {
+  if (canView) {
     wireMaskReveal(contactCard);
     // Wire up research request buttons
     wireResearchRequestButtons(result, detail);
