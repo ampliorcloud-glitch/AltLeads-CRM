@@ -12,6 +12,7 @@
 Today: nothing is team-scoped — `canReassign` is a flat boolean, the reassign target list is unscoped (`fetchAssignableUsers(null)`), the Approvals queue is org-wide, and a Sales Person on `/sales` would see *every* lead (no `lead_report.user_id` scoping). There is no "who reports to whom" link in the DB yet.
 - Options: (a) **downline-scoped** via a `manager_id` / `sales_head_user_id` reporting line (managers see + act on their people only); (b) project-scoped (you see everyone on your projects); (c) stay org-wide (then "Team Lead/Sales Head" ≈ admin-lite).
 - **Recommend (a)** — it's the standard CRM model and what SALES-PORTAL.md already assumes. This single decision unblocks team reassign, team dashboards, scoped approvals, and the whole sales portal. (Tickets ALT-167, ALT-301; RLS ALT-152.)
+- ✅ **ANKIT RULED 2026-06-22:** a Team Lead (and admin) must ALSO see **UNASSIGNED** records (companies/leads/contacts) — that's the pool they assign from to their callers. So manager visibility = (their downline's records) **+ (all unassigned records)**. Build "My records" / team scoping (ALT-305, ALT-296) and the assignment RLS so the unassigned pool is visible to managers, not hidden. Still open: exact downline mechanism (manager_id) for "their team."
 
 **A2. 🔴 Who may reassign / change owner, and across what boundary?**
 Today: Admin + any Team Lead + any Sales Head can reassign *anything* (UI-gated; RLS not yet applied). You already confirmed "upline can edit + reassign their people."
