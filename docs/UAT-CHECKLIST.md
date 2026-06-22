@@ -103,6 +103,18 @@
 | L3 | Choice sticks | Pick Grid, reload the page | It remembers Grid for that list (saved per user) | ⬜ | |
 | L4 | Table still works | Toggle back to **Table** | The normal table returns; filters/pagination/bulk select unaffected | ⬜ | |
 
+## M. Universal pass A→F (preview drawer + owner columns + inline status)
+
+| # | What to test | Steps | Expected | Result | Notes |
+|---|---|---|---|---|---|
+| M1 | Preview drawer everywhere | Click a row in **Companies / Leads / Meetings / Wishlist** | A right-hand preview drawer opens (compact record) with "Open full record →" — same as Contacts | ⬜ | |
+| M2 | Edit in Company drawer | Company drawer → project selector + change Account Status/Feasibility/Owner → Save | Saves (admin); project selector reloads owner/status | ⬜ | |
+| M3 | Change owner from Lead/Meeting drawer | Lead drawer → Change salesperson; Meeting drawer → Change owner | Reassigns; drawer refreshes | ⬜ | |
+| M4 | Salesperson column on Leads | Leads list → Salesperson column + filter | Shows the assigned salesperson (distinct from Agent); filter works | ⬜ | |
+| M5 | Owner column on Companies + Contacts | Pick a project → Companies/Contacts lists | Owner column shows the real per-project owner (not always "Unassigned") | ⬜ | |
+| M6 | Inline Account Status on Companies | Companies list (project selected) → click the Account Status cell | Inline dropdown saves immediately (like Contacts) | ⬜ | |
+| — | *(Still coming in this pass)* | D: Kanban on all modules + compact icon switcher · E: bulk status-change · F: unified call logging | — | — | |
+
 ---
 
 ## F. Held back — DO NOT expect these yet (here so you know the plan)
