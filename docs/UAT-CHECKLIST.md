@@ -113,7 +113,11 @@
 | M4 | Salesperson column on Leads | Leads list → Salesperson column + filter | Shows the assigned salesperson (distinct from Agent); filter works | ⬜ | |
 | M5 | Owner column on Companies + Contacts | Pick a project → Companies/Contacts lists | Owner column shows the real per-project owner (not always "Unassigned") | ⬜ | |
 | M6 | Inline Account Status on Companies | Companies list (project selected) → click the Account Status cell | Inline dropdown saves immediately (like Contacts) | ⬜ | |
-| — | *(Still coming in this pass)* | D: Kanban on all modules + compact icon switcher · E: bulk status-change · F: unified call logging | — | — | |
+| M7 | **Kanban on every module** | Each list → switcher → Kanban icon | A board grouped by that module's status/stage; Companies/Contacts prompt "select a project"; cards open the preview drawer | ⬜ | |
+| M8 | **Compact icon switcher** | Look at the toolbar | Table/Grid/Kanban are now small icons (not wide labels) | ⬜ | |
+| M9 | **Wishlist parity** | Wish List → switcher | Wishlist now has Table/Grid/Kanban + sticky headers, like the others | ⬜ | |
+| M10 | **Bulk set status** | Companies/Contacts (project selected) → tick rows → **Set status (N)** → pick a status | All selected get that status; toast; statuses refresh | ⬜ | |
+| — | *(Still pending: F — unify call logging — needs your decision below)* | — | — | — | |
 
 ---
 
