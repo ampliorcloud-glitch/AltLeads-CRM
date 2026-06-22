@@ -32,9 +32,12 @@ import {
   RefreshCw,
   AlertCircle,
   UserCheck,
+  FolderPlus,
 } from 'lucide-react';
 import { ReassignModal } from '../components/common/ReassignModal';
 import { reassignContactsBulk, fetchAssignableUsers } from '../data/assignment';
+import { BulkProjectModal } from '../components/common/BulkProjectModal';
+import { addContactsToProject } from '../data/bulkActions';
 import type { UserOption } from '../data/wishlist';
 
 /* ------------------------------------------------------------------ */
@@ -280,7 +283,7 @@ export function ContactsPage() {
   // local picker is SEEDED + KEPT IN SYNC with the global project switcher so a
   // multi-project user sees one consistent project, not two competing controls
   // (review ALT-273B M8). The user may still override it locally for the status view.
-  const { selectedProjectId } = useProjectScope();
+  const { selectedProjectId, projects } = useProjectScope();
   const [projectId, setProjectId] = useState<number | null>(selectedProjectId);
 
   // Bulk reassign (ALT-291) — per-project owner_user_id for the selected contacts.
@@ -288,6 +291,11 @@ export function ContactsPage() {
   const [reassignSaving, setReassignSaving] = useState(false);
   const [reassignError, setReassignError] = useState<string | null>(null);
   const [reassignOwners, setReassignOwners] = useState<UserOption[]>([]);
+
+  // Bulk add-to-project (ALT-291).
+  const [showAddProject, setShowAddProject] = useState(false);
+  const [addProjectSaving, setAddProjectSaving] = useState(false);
+  const [addProjectError, setAddProjectError] = useState<string | null>(null);
 
   const openBulkReassign = async () => {
     setReassignError(null);
@@ -309,6 +317,21 @@ export function ContactsPage() {
       res.failed > 0
         ? `Reassigned ${res.ok}; ${res.failed} skipped (no permission).`
         : `Reassigned ${res.ok} contact${res.ok === 1 ? '' : 's'} — the new owner was notified.`,
+    );
+  };
+  const handleAddToProject = async (targetProjectId: number) => {
+    const ids = [...sel.selectedIds];
+    setAddProjectSaving(true);
+    setAddProjectError(null);
+    const res = await addContactsToProject(ids, targetProjectId, profile?.user_id != null ? String(profile.user_id) : '');
+    setAddProjectSaving(false);
+    if (res.ok === 0 && res.error) { setAddProjectError(res.error); return; }
+    setShowAddProject(false);
+    sel.clear();
+    toast.success(
+      res.failed > 0
+        ? `Added ${res.ok}; ${res.failed} skipped (no permission).`
+        : `Added ${res.ok} contact${res.ok === 1 ? '' : 's'} to the project.`,
     );
   };
   useEffect(() => { setProjectId(selectedProjectId); }, [selectedProjectId]);
@@ -654,6 +677,19 @@ export function ContactsPage() {
               >
                 <UserCheck size={14} />
                 Reassign ({sel.count})
+              </button>
+            )}
+
+            {/* Bulk add-to-project (ALT-291) */}
+            {canReassign && sel.count > 0 && (
+              <button
+                onClick={() => { setAddProjectError(null); setShowAddProject(true); }}
+                className="inline-flex items-center gap-1.5 border border-zinc-300 hover:border-zinc-400 bg-white hover:bg-zinc-50 text-zinc-700 font-medium rounded-md transition-colors"
+                style={{ fontSize: 13, padding: '6px 12px', height: 34 }}
+                title="Add the selected contacts to a project"
+              >
+                <FolderPlus size={14} />
+                Add to project ({sel.count})
               </button>
             )}
 
@@ -1092,6 +1128,18 @@ export function ContactsPage() {
           error={reassignError}
           onConfirm={handleBulkReassign}
           onClose={() => setShowReassign(false)}
+        />
+      )}
+
+      {showAddProject && (
+        <BulkProjectModal
+          entityLabel="Contact"
+          count={sel.count}
+          projects={projects}
+          saving={addProjectSaving}
+          error={addProjectError}
+          onConfirm={handleAddToProject}
+          onClose={() => setShowAddProject(false)}
         />
       )}
     </AppShell>
