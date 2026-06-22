@@ -53,3 +53,59 @@ export function addCompaniesToProject(ids: number[], projectId: number, actor: s
 export function addContactsToProject(ids: number[], projectId: number, actor: string | null): Promise<BulkResult> {
   return addToProjectLoop(ids, projectId, actor, 'contact');
 }
+
+/**
+ * Set the per-project status on each selected record (Step E, universal pass).
+ *
+ * Reuses the same audited single-record upserts as add-to-project, so RLS,
+ * history (interaction), and the 42501 friendly-message all behave identically.
+ * Mirrors addToProjectLoop's partial-result + friendly-error bubbling.
+ */
+async function setStatusLoop(
+  ids: number[],
+  projectId: number,
+  status: string,
+  actor: string | null,
+  kind: 'company' | 'contact',
+): Promise<BulkResult> {
+  let ok = 0;
+  let failed = 0;
+  let firstErr: string | null = null;
+  for (const id of ids) {
+    const res =
+      kind === 'company'
+        ? await upsertCompanyStatus(id, projectId, { account_status: status }, actor)
+        : await upsertContactStatus(id, projectId, { contact_status: status }, actor);
+    if (res.error) {
+      failed += 1;
+      if (!firstErr) firstErr = res.error;
+    } else {
+      ok += 1;
+    }
+  }
+  return {
+    ok,
+    failed,
+    error: failed > 0 ? firstErr ?? `${failed} could not be updated (no permission).` : null,
+  };
+}
+
+/** Set account_status on the selected companies (per-project). */
+export function setCompaniesStatus(
+  ids: number[],
+  projectId: number,
+  status: string,
+  actor: string | null,
+): Promise<BulkResult> {
+  return setStatusLoop(ids, projectId, status, actor, 'company');
+}
+
+/** Set contact_status on the selected contacts (per-project). */
+export function setContactsStatus(
+  ids: number[],
+  projectId: number,
+  status: string,
+  actor: string | null,
+): Promise<BulkResult> {
+  return setStatusLoop(ids, projectId, status, actor, 'contact');
+}

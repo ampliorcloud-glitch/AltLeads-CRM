@@ -40,12 +40,14 @@ import {
   AlertCircle,
   UserCheck,
   FolderPlus,
+  Tag,
 } from 'lucide-react';
 import { ReassignModal } from '../components/common/ReassignModal';
 import { reassignCompaniesBulk, fetchAssignableUsers } from '../data/assignment';
 import { fetchOptions, type DropdownOption } from '../data/dropdowns';
 import { BulkProjectModal } from '../components/common/BulkProjectModal';
-import { addCompaniesToProject } from '../data/bulkActions';
+import { BulkStatusModal } from '../components/common/BulkStatusModal';
+import { addCompaniesToProject, setCompaniesStatus } from '../data/bulkActions';
 import type { UserOption } from '../data/wishlist';
 import { useToast } from '../components/ui/Toast';
 import { RecordPreviewPanel } from '../components/common/RecordPreviewPanel';
@@ -289,6 +291,11 @@ export function CompaniesPage() {
   const [addProjectSaving, setAddProjectSaving] = useState(false);
   const [addProjectError, setAddProjectError] = useState<string | null>(null);
 
+  // Bulk set-status (Step E) — set account_status on selected companies (per-project).
+  const [showSetStatus, setShowSetStatus] = useState(false);
+  const [setStatusSaving, setSetStatusSaving] = useState(false);
+  const [setStatusError, setSetStatusError] = useState<string | null>(null);
+
   const openBulkReassign = async () => {
     setReassignError(null);
     setReassignOwners([]);
@@ -324,6 +331,24 @@ export function CompaniesPage() {
       res.failed > 0
         ? `Added ${res.ok}; ${res.failed} skipped (no permission).`
         : `Added ${res.ok} compan${res.ok === 1 ? 'y' : 'ies'} to the project.`,
+    );
+  };
+  const handleSetStatus = async (status: string) => {
+    if (projectId == null) { setSetStatusError('Select a project first.'); return; }
+    const ids = [...sel.selectedIds].map(Number).filter((n) => !isNaN(n));
+    setSetStatusSaving(true);
+    setSetStatusError(null);
+    const res = await setCompaniesStatus(ids, projectId, status, actorId ?? '');
+    setSetStatusSaving(false);
+    if (res.ok === 0 && res.error) { setSetStatusError(res.error); return; }
+    setShowSetStatus(false);
+    sel.clear();
+    // Refresh statuses for the affected rows so the new status shows immediately.
+    loadStatuses(projectId, ids);
+    toast.success(
+      res.failed > 0
+        ? `Updated ${res.ok}; ${res.failed} skipped (no permission).`
+        : `Set status on ${res.ok} compan${res.ok === 1 ? 'y' : 'ies'}.`,
     );
   };
   useEffect(() => { setProjectId(selectedProjectId); }, [selectedProjectId]);
@@ -798,6 +823,19 @@ export function CompaniesPage() {
               </button>
             )}
 
+            {/* Bulk set-status (Step E) — per-project, needs an active project */}
+            {canReassign && sel.count > 0 && projectId != null && (
+              <button
+                onClick={() => { setSetStatusError(null); setShowSetStatus(true); }}
+                className="inline-flex items-center gap-1.5 border border-zinc-300 hover:border-zinc-400 bg-white hover:bg-zinc-50 text-zinc-700 font-medium rounded-md transition-colors"
+                style={{ fontSize: 13, padding: '6px 12px', height: 34 }}
+                title="Set the account status of the selected companies (in this project)"
+              >
+                <Tag size={14} />
+                Set status ({sel.count})
+              </button>
+            )}
+
             {/* Table / Grid view switcher */}
             <ViewSwitcher value={view} onChange={setView} />
 
@@ -1250,6 +1288,18 @@ export function CompaniesPage() {
           error={addProjectError}
           onConfirm={handleAddToProject}
           onClose={() => setShowAddProject(false)}
+        />
+      )}
+
+      {showSetStatus && (
+        <BulkStatusModal
+          entityLabel="Company"
+          count={sel.count}
+          options={statusOptions.map((o) => ({ value: o.value, label: o.label }))}
+          saving={setStatusSaving}
+          error={setStatusError}
+          onConfirm={handleSetStatus}
+          onClose={() => setShowSetStatus(false)}
         />
       )}
     </AppShell>

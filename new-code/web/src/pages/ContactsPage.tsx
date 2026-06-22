@@ -36,12 +36,14 @@ import {
   AlertCircle,
   UserCheck,
   FolderPlus,
+  Tag,
 } from 'lucide-react';
 import { ReassignModal } from '../components/common/ReassignModal';
 import { reassignContactsBulk, fetchAssignableUsers } from '../data/assignment';
 import { supabase } from '../lib/supabase';
 import { BulkProjectModal } from '../components/common/BulkProjectModal';
-import { addContactsToProject } from '../data/bulkActions';
+import { BulkStatusModal } from '../components/common/BulkStatusModal';
+import { addContactsToProject, setContactsStatus } from '../data/bulkActions';
 import type { UserOption } from '../data/wishlist';
 import { RecordPreviewPanel } from '../components/common/RecordPreviewPanel';
 import { ContactPreview } from '../components/contacts/ContactPreview';
@@ -310,6 +312,11 @@ export function ContactsPage() {
   const [addProjectSaving, setAddProjectSaving] = useState(false);
   const [addProjectError, setAddProjectError] = useState<string | null>(null);
 
+  // Bulk set-status (Step E) — set contact_status on selected contacts (per-project).
+  const [showSetStatus, setShowSetStatus] = useState(false);
+  const [setStatusSaving, setSetStatusSaving] = useState(false);
+  const [setStatusError, setSetStatusError] = useState<string | null>(null);
+
   const openBulkReassign = async () => {
     setReassignError(null);
     setReassignOwners([]);
@@ -345,6 +352,31 @@ export function ContactsPage() {
       res.failed > 0
         ? `Added ${res.ok}; ${res.failed} skipped (no permission).`
         : `Added ${res.ok} contact${res.ok === 1 ? '' : 's'} to the project.`,
+    );
+  };
+  const handleSetStatus = async (status: string) => {
+    if (projectId == null) { setSetStatusError('Select a project first.'); return; }
+    const ids = [...sel.selectedIds];
+    setSetStatusSaving(true);
+    setSetStatusError(null);
+    const res = await setContactsStatus(ids, projectId, status, actorId ?? '');
+    setSetStatusSaving(false);
+    if (res.ok === 0 && res.error) { setSetStatusError(res.error); return; }
+    setShowSetStatus(false);
+    sel.clear();
+    // Reflect the new statuses. On a clean run we can optimistically flip each
+    // badge; if some rows were skipped (no permission) we don't know which, so
+    // re-fetch the affected rows from the server to stay truthful.
+    if (res.failed > 0) {
+      const fresh = await fetchContactStatuses(projectId, ids);
+      setStatusMap((prev) => ({ ...prev, ...fresh }));
+    } else {
+      for (const id of ids) handleStatusUpdated(id, status);
+    }
+    toast.success(
+      res.failed > 0
+        ? `Updated ${res.ok}; ${res.failed} skipped (no permission).`
+        : `Set status on ${res.ok} contact${res.ok === 1 ? '' : 's'}.`,
     );
   };
   useEffect(() => { setProjectId(selectedProjectId); }, [selectedProjectId]);
@@ -815,6 +847,19 @@ export function ContactsPage() {
               >
                 <FolderPlus size={14} />
                 Add to project ({sel.count})
+              </button>
+            )}
+
+            {/* Bulk set-status (Step E) — per-project, needs an active project */}
+            {canReassign && sel.count > 0 && projectId != null && (
+              <button
+                onClick={() => { setSetStatusError(null); setShowSetStatus(true); }}
+                className="inline-flex items-center gap-1.5 border border-zinc-300 hover:border-zinc-400 bg-white hover:bg-zinc-50 text-zinc-700 font-medium rounded-md transition-colors"
+                style={{ fontSize: 13, padding: '6px 12px', height: 34 }}
+                title="Set the contact status of the selected contacts (in this project)"
+              >
+                <Tag size={14} />
+                Set status ({sel.count})
               </button>
             )}
 
@@ -1416,6 +1461,18 @@ export function ContactsPage() {
           error={addProjectError}
           onConfirm={handleAddToProject}
           onClose={() => setShowAddProject(false)}
+        />
+      )}
+
+      {showSetStatus && (
+        <BulkStatusModal
+          entityLabel="Contact"
+          count={sel.count}
+          options={statusOptions.map((o) => ({ value: o.value, label: o.label }))}
+          saving={setStatusSaving}
+          error={setStatusError}
+          onConfirm={handleSetStatus}
+          onClose={() => setShowSetStatus(false)}
         />
       )}
     </AppShell>

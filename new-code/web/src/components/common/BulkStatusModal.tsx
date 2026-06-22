@@ -1,0 +1,103 @@
+/**
+ * BulkStatusModal — "Set the status for N records" (Step E, universal pass).
+ *
+ * A small status picker reusing the shared ModalShell — mirrors BulkProjectModal.
+ * Presentation only: the caller supplies the module's status options (account_status
+ * for companies, contact_status for contacts) and performs the write. Status is
+ * per-project, so the caller gates this behind a selected project.
+ */
+import { useState } from 'react';
+import { Loader2, Tag } from 'lucide-react';
+import { ModalShell } from '../wishlist/AssignModal';
+
+const selectCls =
+  'w-full border border-zinc-300 rounded-md px-3 text-zinc-800 bg-white ' +
+  'focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-colors';
+
+export function BulkStatusModal({
+  entityLabel,
+  count,
+  options,
+  saving,
+  error,
+  onConfirm,
+  onClose,
+}: {
+  entityLabel: string;
+  count: number;
+  options: { value: string; label: string }[];
+  saving: boolean;
+  error: string | null;
+  onConfirm: (status: string) => void;
+  onClose: () => void;
+}) {
+  const [status, setStatus] = useState<string>(options[0]?.value ?? '');
+
+  return (
+    <ModalShell
+      title={`Set status for ${count} ${entityLabel}${count === 1 ? '' : 's'}`}
+      icon={<Tag size={16} />}
+      onClose={onClose}
+    >
+      <p className="text-zinc-500 mb-4" style={{ fontSize: 12 }}>
+        {`Update the status of the ${count} selected ${entityLabel.toLowerCase()}${count === 1 ? '' : 's'} ` +
+          `in this project. Only records you own can be changed.`}
+      </p>
+
+      <div className="space-y-4">
+        <div>
+          <label htmlFor="bulk-status" className="block mb-1 text-zinc-600 font-medium" style={{ fontSize: 12 }}>
+            Status<span className="text-red-500 ml-0.5">*</span>
+          </label>
+          <select
+            id="bulk-status"
+            aria-required={true}
+            value={status}
+            onChange={(e) => setStatus(e.target.value)}
+            className={selectCls}
+            style={{ height: 36, fontSize: 13 }}
+            disabled={saving}
+          >
+            <option value="">Select a status…</option>
+            {options.map((o) => (
+              <option key={o.value} value={o.value}>
+                {o.label}
+              </option>
+            ))}
+          </select>
+          {options.length === 0 && (
+            <p className="text-zinc-400 mt-1" style={{ fontSize: 11 }}>
+              No status options are configured.
+            </p>
+          )}
+        </div>
+
+        {error && (
+          <p className="text-red-600" style={{ fontSize: 12 }}>
+            {error}
+          </p>
+        )}
+      </div>
+
+      <div className="flex items-center justify-end gap-2 mt-5 pt-4 border-t border-zinc-100">
+        <button
+          onClick={onClose}
+          disabled={saving}
+          className="border border-zinc-300 hover:border-zinc-400 bg-white text-zinc-700 font-medium rounded-md transition-colors disabled:opacity-50"
+          style={{ fontSize: 13, padding: '7px 14px', height: 34 }}
+        >
+          Cancel
+        </button>
+        <button
+          onClick={() => status && onConfirm(status)}
+          disabled={saving || !status}
+          className="inline-flex items-center gap-1.5 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed text-white font-medium rounded-md transition-colors"
+          style={{ fontSize: 13, padding: '7px 14px', height: 34 }}
+        >
+          {saving && <Loader2 size={14} className="animate-spin" />}
+          Set status
+        </button>
+      </div>
+    </ModalShell>
+  );
+}
