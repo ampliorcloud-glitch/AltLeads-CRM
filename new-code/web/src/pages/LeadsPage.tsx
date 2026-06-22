@@ -45,6 +45,7 @@ import {
   RefreshCw,
   AlertCircle,
   UserCheck,
+  LayoutGrid,
 } from 'lucide-react';
 
 const columnHelper = createColumnHelper<RealLead>();
@@ -734,6 +735,17 @@ export function LeadsPage() {
             )}
           </p>
           <div className="flex items-center gap-2">
+            {/* Board (kanban) view toggle (ALT-292) */}
+            <button
+              onClick={() => navigate('/leads/board')}
+              className="inline-flex items-center gap-1.5 border border-zinc-300 hover:border-zinc-400 bg-white hover:bg-zinc-50 text-zinc-700 font-medium rounded-md transition-colors"
+              style={{ fontSize: 13, padding: '6px 12px', height: 34 }}
+              title="View leads as a pipeline board"
+            >
+              <LayoutGrid size={14} />
+              Board
+            </button>
+
             {/* Bulk reassign selected leads (ALT-291) */}
             {canReassign && sel.count > 0 && (
               <button

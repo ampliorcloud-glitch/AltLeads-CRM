@@ -108,7 +108,7 @@ function uxAuditTickets() {
     'ALT-199': { status: 'In Progress', finished: null, extra: ' 🔧 IN PROGRESS 2026-06-21: shared pure validators built (src/lib/validators.ts: isEmail/isPhone/isUrl/isRequired + validateField/validateForm). Remaining: wire on-blur inline errors into Contact/Company/Lead forms.' },
     'ALT-200': { status: 'Done',        finished: AD, extra: ' ✅ DONE 2026-06-21: Skeleton/SkeletonText/SkeletonTable/SkeletonCards built; all 5 lists render column-aligned skeleton rows on load instead of one spinner (no layout jump).' },
     'ALT-204': { status: 'Done',        finished: AD, extra: ' ✅ DONE 2026-06-21: Approvals queue gained an SLA age badge (escalating colour), search, sort (oldest-first SLA / name), no-match state, and in-modal Approve/Reject. Pagination deferred (low value at current volume).' },
-    'ALT-213': { status: 'In Progress', finished: null, extra: ' 🔧 IN PROGRESS 2026-06-21: global quick-search delivered via the Cmd-K palette (ALT-188). Remaining: inline row quick-edit, recently-viewed/pinned, undo-toast.' },
+    'ALT-213': { status: 'In Progress', finished: null, extra: ' 🔧 IN PROGRESS: global quick-search via Cmd-K palette (ALT-188) + NOW an ALWAYS-VISIBLE top-bar search bar (2026-06-22, parallel subagent) — components/ui/GlobalSearchBar.tsx in TopBar, reuses the same globalSearch index + palette grouping/nav, debounced inline grouped dropdown, Cmd-K + clear-on-logout (ALT-220) untouched. Remaining: inline row quick-edit, recently-viewed/pinned, undo-toast.' },
     'ALT-183': { status: 'Done',        finished: AD, extra: ' ✅ DONE 2026-06-21 (owner #1 ask): reusable MultiSelectFilter (searchable popover + checkboxes + chip count, OR-within-facet, empty=all) now on ALL FIVE lists — Leads (Agent/Project/City/Source/Industry/Stage), Contacts (Company/City), Companies (Industry/City), Meetings (Agent/Industry/City/Salesperson/Status), Wishlist (Status/Agent/TeamLead/Industry/City). Separate follow-up: per-column/advanced operators (Top#7, ALT-184).' },
     'ALT-203': { status: 'Done',        finished: AD, extra: ' ✅ DONE 2026-06-21: shared admin Modal + global ConfirmDialog now have role=dialog/aria-modal/aria-label, Escape-to-close, initial focus, focus-restore, AND a real focus-trap (useFocusTrap — Tab/Shift+Tab cycle inside). Bespoke meeting/approval modals can adopt the hook as touched.' },
     'ALT-190': { status: 'In Progress', finished: null, extra: ' 🔧 IN PROGRESS 2026-06-21: useUnsavedChanges hook (localStorage draft cache + restore + beforeunload warn) wired into the New/Edit Lead, Contact and Company forms with Cancel-confirm; drafts cleared on save + on logout. Remaining: detail-page edit modes + modals + (optional) in-app route blocker (needs data-router).' },
@@ -2272,18 +2272,18 @@ const TICKETS = [
   {
     id:'ALT-292', title:'Kanban pipeline board — drag leads across stages',
     type:'Feature', module:'UX', wave:'Wave 3',
-    priority:'P3', status:'Planned',
+    priority:'P3', status:'In Progress',
     created: d(2026,6,22), updated: d(2026,6,22), finished: null,
     owner:'Ankit',
-    notes:'Tier-3 polish. A board view of leads grouped by stage with drag-to-change-stage (writes the same stage-change workflow as ALT-036, incl. approval/auto-meeting where applicable). Project-scoped (ALT-273). Optional toggle alongside the existing Leads list. Expected-CRM feel (HubSpot/Zoho deal board).'
+    notes:'Tier-3. SHIPPED (read-only) via parallel subagent: src/pages/LeadsKanbanPage.tsx + components/kanban/{KanbanBoard,KanbanColumn,KanbanCard}. One column per stage (+ Unstaged bucket), counts, cards show company/city/agent and open the lead; project-scoped (ALT-273, mirrors LeadsPage noProjectHidden); sales-shell aware. Route /leads/board + a "Board" toggle on the Leads toolbar. Native HTML5 drag seam is built but DISABLED: drag→stage-change needs lead_report.report_id + numeric stage_id (not on RealLead) — left as // TODO(ALT-292) to extend the fetch + map stage names, then call updateLeadStage. REMAINING: enable drag-write (with the ALT-036 stage workflow). Build green.'
   },
   {
     id:'ALT-293', title:'Merge duplicate companies / contacts (in-app)',
     type:'Feature', module:'Data Quality', wave:'Wave 3',
-    priority:'P3', status:'Planned',
+    priority:'P3', status:'In Progress',
     created: d(2026,6,22), updated: d(2026,6,22), finished: null,
     owner:'Ankit',
-    notes:'Tier-3 polish. Dedup exists on CREATE (find_contact_dup, company domain/CIN dedup) but there is NO way to MERGE two existing duplicate records — pick a survivor, re-point children (leads/meetings/contacts/interactions/statuses), soft-delete the loser, audit the merge. Admin-gated (data-altering). Pairs with the bulk tooling.'
+    notes:'Tier-3. CODE BUILT via parallel subagent (data/merge.ts: mergeCompanies/mergeContacts re-point children + soft-delete loser; components/merge/MergeDuplicatesModal.tsx: side-by-side compare, pick survivor, type-MERGE confirm). Company merge re-points contact_master/company_project_status/lead_master.company_id + interaction(company); contact merge re-points lead_master.contact_id/contact_project_status + interaction(contact). DELIBERATELY NOT WIRED to a live entry point yet — it is NON-ATOMIC (client-side sequence, can half-merge), does not de-dupe per-project UNIQUE(record,project) rows (stops on 23505), and is admin-only by convention not DB-enforced. BEFORE going live: move to a single SECURITY DEFINER transactional RPC + validate with throwaway logins; then wire an admin-gated "Merge" action on Companies/Contacts lists (2 selected). Build green.'
   },
   {
     id:'ALT-294', title:'BUG: record detail per-project view ignored the global project selector (defaulted to first project)',

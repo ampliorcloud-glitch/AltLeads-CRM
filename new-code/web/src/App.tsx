@@ -16,6 +16,7 @@ import { SalesMeetingDetailPage } from './pages/sales/SalesMeetingDetailPage';
 import { SalesWishlistPage } from './pages/sales/SalesWishlistPage';
 import { DashboardPage } from './pages/DashboardPage';
 import { LeadsPage } from './pages/LeadsPage';
+import { LeadsKanbanPage } from './pages/LeadsKanbanPage';
 import { LeadDetailPage } from './pages/LeadDetailPage';
 import { LeadFormPage } from './pages/LeadFormPage';
 import { MeetingsPage } from './pages/MeetingsPage';
@@ -238,6 +239,14 @@ function AppRoutes() {
         element={
           <ProtectedRoute>
             <LeadsPage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/leads/board"
+        element={
+          <ProtectedRoute>
+            <LeadsKanbanPage />
           </ProtectedRoute>
         }
       />

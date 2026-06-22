@@ -1,9 +1,10 @@
 import React, { useEffect, useState } from 'react';
-import { Bell, Search } from 'lucide-react';
+import { Bell } from 'lucide-react';
 import { useLocation, useParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import { fetchUnreadNotifCount } from '../../data/account';
 import { ProjectSwitcher } from './ProjectSwitcher';
+import { GlobalSearchBar } from '../ui/GlobalSearchBar';
 
 interface TopBarProps {
   title: string;
@@ -60,10 +61,6 @@ function useBreadcrumb(title: string): Crumb[] {
 
   return [{ label: sectionLabel }, { label: leaf }];
 }
-
-const IS_MAC =
-  typeof navigator !== 'undefined' &&
-  /Mac|iPhone|iPad|iPod/.test(navigator.platform || navigator.userAgent || '');
 
 export function TopBar({ title }: TopBarProps) {
   const { userEmail, profile, isInternalUser } = useAuth();
@@ -149,32 +146,10 @@ export function TopBar({ title }: TopBarProps) {
            with <2 accessible projects. Internal users only — sits left of search. */}
         {isInternalUser && <ProjectSwitcher />}
 
-        {/* Global search affordance (opens the Cmd-K palette). Internal users only. */}
-        {isInternalUser && (
-          <button
-            onClick={() => window.dispatchEvent(new Event('altleads:open-search'))}
-            aria-label="Search leads, companies and contacts"
-            style={{
-              display: 'flex', alignItems: 'center', gap: 8,
-              height: 32, padding: '0 10px 0 10px',
-              borderRadius: 8, border: '1px solid var(--border-color)',
-              background: 'var(--color-gray-50)', color: 'var(--color-gray-400)',
-              cursor: 'pointer', fontSize: 12, transition: 'border-color 0.12s',
-            }}
-            onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.borderColor = 'var(--color-brand)'; }}
-            onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.borderColor = 'var(--border-color)'; }}
-          >
-            <Search size={14} strokeWidth={1.75} />
-            <span className="hidden sm:inline">Search…</span>
-            <kbd style={{
-              fontSize: 10, fontWeight: 600, color: 'var(--color-gray-400)',
-              border: '1px solid var(--border-color)', borderRadius: 4,
-              padding: '1px 5px', background: 'var(--color-surface)',
-            }}>
-              {IS_MAC ? '⌘K' : 'Ctrl K'}
-            </kbd>
-          </button>
-        )}
+        {/* Always-visible global search bar (ALT-213). Shows grouped results inline
+           as you type, reusing the same shared index as the Cmd-K palette (which
+           still works via its own ⌘K/Ctrl-K listener). Internal users only. */}
+        {isInternalUser && <GlobalSearchBar />}
 
         {/* Bell notification icon → opens /notifications, with unread-count badge */}
         <button
