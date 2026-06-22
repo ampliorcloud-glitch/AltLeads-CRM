@@ -895,3 +895,14 @@ Next wave: #8 global project selector (cross-cutting ProjectContext).
 - **⚠️ OWNER GATE (Ankit):** reassignment UI works NOW (writes columns the blanket policy allows), but EDIT-unlocking + manager-only enforcement need `apply-assignment-rls.cjs` APPLIED → requires go-ahead + throwaway-login validation (agent-edits-assigned ✓, agent-cannot-reassign ✓, regression on legacy created_by owner + snapshot trigger ✓) → then prod apply.
 - **SALES-SIDE reassign = GATED** on a separate downline migration (`project_user.sales_head_user_id` + `is_sales_head()`/`sales_downline_ids()`, ALT-167/171/235). UI is role-aware but not downline-scoped yet.
 - Build green every commit. NOTHING PUSHED.
+
+---
+## 2026-06-22 (cont. 31) — Company→contacts cascade, ALT-295 access modes, + Tier-2/3 via PARALLEL subagents
+- **Cascade (Ankit ask):** assigning a company now also assigns ALL its contacts in that project to the same owner (`cascadeCompanyContacts` in data/assignment.ts; applies to single + bulk company reassign).
+- **ALT-295 captured (NEW, P1):** per-project **access mode** in Project Settings (admin) to kill ownership ambiguity — Owner-scoped / Public-Edit / Public-View-only / Public-Limited-view (sensitive fields masked). Maps onto the existing `project_visibility_setting` dials (ALT-134) + masking (ALT-133). To build with a Settings UI + STAGED RLS/masking tier + validation. ADR to follow in DECISIONS.md.
+- **Parallel subagents (Ankit asked to fan out):** ran 3 general-purpose agents concurrently on DISJOINT files, integrated + built green:
+  - **ALT-292 Kanban (read-only):** LeadsKanbanPage + components/kanban/*; route /leads/board + "Board" toggle on Leads. Drag seam built but disabled (needs report_id/stage_id — TODO).
+  - **ALT-213 Always-visible search:** components/ui/GlobalSearchBar.tsx in TopBar; reuses the globalSearch index + palette grouping/nav; Cmd-K + clear-on-logout intact.
+  - **ALT-293 Merge duplicates:** data/merge.ts + MergeDuplicatesModal — CODE ONLY, **deliberately NOT wired** (non-atomic, no per-project dedupe, admin-only-by-convention). Needs a transactional SECURITY DEFINER RPC + validation before going live.
+- **Collision posture:** subagents scoped to disjoint files; the extension session also commits to `clean-main` — sequential commits, no conflicts. Commits this batch: cascade+ALT-295, then kanban+search+merge.
+- **REMAINING Tier-2 (shared list pages, main-loop next):** bulk status-change + bulk add-to-project (ALT-291), inline edit (ALT-157), per-column advanced filters (ALT-270). **OWNER GATE still open:** validate + apply `apply-assignment-rls.cjs` to make assigned-agent editing + manager-only reassign actually enforced. NOTHING PUSHED.
