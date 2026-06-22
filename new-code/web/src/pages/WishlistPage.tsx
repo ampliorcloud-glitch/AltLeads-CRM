@@ -20,6 +20,8 @@ import { ExportButton } from '../components/ui/ExportButton';
 import { MultiSelectFilter } from '../components/ui/MultiSelectFilter';
 import { ColumnCustomizer, defaultColumnPrefs, reconcileColumns } from '../components/ui/ColumnCustomizer';
 import { Skeleton } from '../components/ui/Skeleton';
+import { RecordPreviewPanel } from '../components/common/RecordPreviewPanel';
+import { WishlistPreview } from '../components/wishlist/WishlistPreview';
 import type { ColumnPref } from '../data/views';
 import type { ColumnDef as UIColumnDef, ExportColumn } from '../components/ui/columns';
 import {
@@ -226,6 +228,10 @@ export function WishlistPage() {
 
   // Row selection
   const sel = useRowSelection<string>();
+
+  // Right-hand preview drawer (ALT-327/328) — row click opens a compact mini
+  // record instead of navigating away; "Open full record →" deep-links to the page.
+  const [previewId, setPreviewId] = useState<number | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -710,14 +716,14 @@ export function WishlistPage() {
                     return (
                       <tr
                         key={row.id}
-                        role="link"
+                        role="button"
                         tabIndex={0}
-                        aria-label={`Open ${row.original.company || row.original.contactName || 'company'}`}
-                        onClick={() => navigate(`/wishlist/${row.original.wishlistId}`)}
+                        aria-label={`Preview ${row.original.company || row.original.contactName || 'company'}`}
+                        onClick={() => setPreviewId(row.original.wishlistId)}
                         onKeyDown={(e) => {
                           if ((e.key === 'Enter' || e.key === ' ') && e.target === e.currentTarget) {
                             e.preventDefault();
-                            navigate(`/wishlist/${row.original.wishlistId}`);
+                            setPreviewId(row.original.wishlistId);
                           }
                         }}
                         className="border-b border-zinc-100 hover:bg-zinc-50 transition-colors last:border-0 cursor-pointer"
@@ -774,6 +780,17 @@ export function WishlistPage() {
           )}
         </div>
       </div>
+
+      {/* Right-hand preview drawer — view-oriented mini record (ALT-327/328). */}
+      {previewId != null && (
+        <RecordPreviewPanel
+          title="Wishlist"
+          onClose={() => setPreviewId(null)}
+          onOpenFull={() => navigate(`/wishlist/${previewId}`)}
+        >
+          <WishlistPreview wishlistId={previewId} />
+        </RecordPreviewPanel>
+      )}
     </AppShell>
   );
 }

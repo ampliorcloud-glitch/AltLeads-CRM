@@ -32,6 +32,8 @@ import {
 } from '../components/ui/ColumnCustomizer';
 import { ViewSwitcher, useViewMode } from '../components/ui/ViewSwitcher';
 import { CardGrid, CardShell } from '../components/ui/CardGrid';
+import { RecordPreviewPanel } from '../components/common/RecordPreviewPanel';
+import { LeadPreview } from '../components/leads/LeadPreview';
 import type { ColumnDef as ColDef, ExportColumn } from '../components/ui/columns';
 import type { ColumnPref } from '../data/views';
 import {
@@ -271,6 +273,11 @@ export function LeadsPage() {
 
   // Row multi-selection
   const sel = useRowSelection<string>();
+
+  // Row-click preview slide-over (ALT-327/328). Opening the panel replaces the
+  // old navigate-away behaviour; the full detail page stays reachable via the
+  // panel's "Open full record →" action (respecting the Sales-shell base).
+  const [previewId, setPreviewId] = useState<string | null>(null);
 
   // Table / Grid view (persisted per user + entity in localStorage).
   const [view, setView] = useViewMode('leads', userId);
@@ -820,7 +827,7 @@ export function LeadsPage() {
           <CardGrid<RealLead>
             rows={table.getRowModel().rows.map((r) => r.original)}
             getKey={(row) => row.id}
-            onCardClick={(row) => navigate(`${leadBase}/${row.id}`)}
+            onCardClick={(row) => setPreviewId(row.id)}
             emptyLabel={hasActiveFilters ? 'No leads match the current filters.' : 'No leads yet.'}
             renderCard={(row) => (
               <CardShell
@@ -961,14 +968,14 @@ export function LeadsPage() {
                   table.getRowModel().rows.map((row) => (
                     <tr
                       key={row.id}
-                      role="link"
+                      role="button"
                       tabIndex={0}
-                      aria-label={`Open ${row.original.company || row.original.contactName || 'lead'}`}
-                      onClick={() => navigate(`${leadBase}/${row.original.id}`)}
+                      aria-label={`Preview ${row.original.company || row.original.contactName || 'lead'}`}
+                      onClick={() => setPreviewId(row.original.id)}
                       onKeyDown={(e) => {
                         if ((e.key === 'Enter' || e.key === ' ') && e.target === e.currentTarget) {
                           e.preventDefault();
-                          navigate(`${leadBase}/${row.original.id}`);
+                          setPreviewId(row.original.id);
                         }
                       }}
                       style={{
@@ -1143,6 +1150,17 @@ export function LeadsPage() {
           </div>
         )}
       </div>
+
+      {/* Row-click preview slide-over (ALT-327/328) */}
+      {previewId != null && (
+        <RecordPreviewPanel
+          title="Lead"
+          onClose={() => setPreviewId(null)}
+          onOpenFull={() => navigate(`${leadBase}/${previewId}`)}
+        >
+          <LeadPreview leadId={Number(previewId)} />
+        </RecordPreviewPanel>
+      )}
 
       {showReassign && (
         <ReassignModal

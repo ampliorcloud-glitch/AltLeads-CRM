@@ -48,6 +48,8 @@ import {
   UserCheck,
 } from 'lucide-react';
 import { ReassignModal } from '../components/common/ReassignModal';
+import { RecordPreviewPanel } from '../components/common/RecordPreviewPanel';
+import { MeetingPreview } from '../components/meetings/MeetingPreview';
 import { reassignMeetingsBulk, fetchAssignableUsers } from '../data/assignment';
 import type { UserOption } from '../data/wishlist';
 import { useToast } from '../components/ui/Toast';
@@ -270,6 +272,10 @@ export function MeetingsPage() {
   const [loadError, setLoadError] = useState<string | null>(null);
   // Bump to re-run the load effect (Retry on error). ALT-215 #12.
   const [reloadKey, setReloadKey] = useState(0);
+
+  // Row-click / card-click preview slide-over (ALT-327/328) — opens a compact
+  // mini-record instead of navigating; "Open full record" goes to meetingBase/:id.
+  const [previewId, setPreviewId] = useState<number | null>(null);
 
   // Bulk reassign (ALT-291) — reassigns each selected meeting's underlying lead.
   const [showReassign, setShowReassign] = useState(false);
@@ -699,7 +705,7 @@ export function MeetingsPage() {
           <CardGrid<MeetingRow>
             rows={rowsOnPage.map((r) => r.original)}
             getKey={(row) => row.id}
-            onCardClick={(row) => navigate(`${meetingBase}/${row.id}`)}
+            onCardClick={(row) => setPreviewId(Number(row.id))}
             emptyLabel={hasActiveFilters ? 'No meetings match the current filters.' : 'No meetings found.'}
             renderCard={(row) => {
               const title = row.name || row.company || row.leadName || '';
@@ -836,11 +842,11 @@ export function MeetingsPage() {
                         role="link"
                         tabIndex={0}
                         aria-label={`Open meeting for ${row.original.company || row.original.leadName || row.original.name || 'meeting'}`}
-                        onClick={() => navigate(`${meetingBase}/${row.original.id}`)}
+                        onClick={() => setPreviewId(Number(row.original.id))}
                         onKeyDown={(e) => {
                           if ((e.key === 'Enter' || e.key === ' ') && e.target === e.currentTarget) {
                             e.preventDefault();
-                            navigate(`${meetingBase}/${row.original.id}`);
+                            setPreviewId(Number(row.original.id));
                           }
                         }}
                         className="border-b border-zinc-100 hover:bg-zinc-50 transition-colors last:border-0 cursor-pointer"
@@ -927,6 +933,17 @@ export function MeetingsPage() {
           </div>
         )}
       </div>
+
+      {/* Row/card-click preview slide-over (ALT-327/328) */}
+      {previewId != null && (
+        <RecordPreviewPanel
+          title="Meeting"
+          onClose={() => setPreviewId(null)}
+          onOpenFull={() => navigate(`${meetingBase}/${previewId}`)}
+        >
+          <MeetingPreview meetingId={previewId} />
+        </RecordPreviewPanel>
+      )}
 
       {showReassign && (
         <ReassignModal

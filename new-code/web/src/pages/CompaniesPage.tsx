@@ -46,6 +46,8 @@ import { BulkProjectModal } from '../components/common/BulkProjectModal';
 import { addCompaniesToProject } from '../data/bulkActions';
 import type { UserOption } from '../data/wishlist';
 import { useToast } from '../components/ui/Toast';
+import { RecordPreviewPanel } from '../components/common/RecordPreviewPanel';
+import { CompanyPreview } from '../components/companies/CompanyPreview';
 
 // TODO visibility: per-project status/notes are owner + admin only (security pass).
 
@@ -305,6 +307,11 @@ export function CompaniesPage() {
 
   // Table / Grid view (persisted per user + entity in localStorage).
   const [view, setView] = useViewMode('companies', userId);
+
+  // Row-click preview slide-over (ALT-327/328). Opening the panel replaces the
+  // old navigate-away behaviour; the full detail page stays reachable via the
+  // panel's "Open full record →" action.
+  const [previewId, setPreviewId] = useState<number | null>(null);
 
   /* ---- load companies ---- */
   useEffect(() => {
@@ -735,7 +742,7 @@ export function CompaniesPage() {
           <CardGrid<Company>
             rows={table.getRowModel().rows.map((r) => r.original)}
             getKey={(row) => row.id}
-            onCardClick={(row) => navigate(`/companies/${row.id}`)}
+            onCardClick={(row) => setPreviewId(Number(row.id))}
             emptyLabel={hasActiveFilters ? 'No companies match the current filters.' : 'No companies yet.'}
             renderCard={(row) => {
               const status = projectId == null ? null : (statusMap[Number(row.id)]?.account_status ?? null);
@@ -879,14 +886,14 @@ export function CompaniesPage() {
                     return (
                       <tr
                         key={row.id}
-                        role="link"
+                        role="button"
                         tabIndex={0}
-                        aria-label={`Open ${row.original.name || 'company'}`}
-                        onClick={() => navigate(`/companies/${row.original.id}`)}
+                        aria-label={`Preview ${row.original.name || 'company'}`}
+                        onClick={() => setPreviewId(Number(row.original.id))}
                         onKeyDown={(e) => {
                           if ((e.key === 'Enter' || e.key === ' ') && e.target === e.currentTarget) {
                             e.preventDefault();
-                            navigate(`/companies/${row.original.id}`);
+                            setPreviewId(Number(row.original.id));
                           }
                         }}
                         style={{
@@ -1060,6 +1067,17 @@ export function CompaniesPage() {
           </div>
         )}
       </div>
+
+      {/* Row-click preview slide-over (ALT-327/328) */}
+      {previewId != null && (
+        <RecordPreviewPanel
+          title="Company"
+          onClose={() => setPreviewId(null)}
+          onOpenFull={() => navigate(`/companies/${previewId}`)}
+        >
+          <CompanyPreview companyId={previewId} projectId={projectId} />
+        </RecordPreviewPanel>
+      )}
 
       {showReassign && (
         <ReassignModal
