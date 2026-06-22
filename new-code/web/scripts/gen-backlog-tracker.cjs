@@ -2146,6 +2146,146 @@ const TICKETS = [
     owner:'Mohit',
     notes:'OWNER 2026-06-21: before real calling agents get LIVE production data, walk the agent\'s actual path and enumerate every place they can stall (missing feasibility/employee-size, non-feasible sites unflagged, ambiguous lead ownership, masked contact info they actually need, broken write-path, etc.) → produce a go/no-go checklist. Depends on ALT-277 (feasibility data) landing. See SITE-FEASIBILITY.md.'
   },
+
+  // ══════════════════════════════════════════════════════════════════════
+  // EPIC: Chrome extension rebuild (LinkedIn CRM side-panel on Supabase)
+  // Scoped 2026-06-22. Full docs: docs/chrome-extension-rebuild/ (README +
+  // 01-CURRENT-STATE-ANALYSIS + 02-MIGRATION-BLUEPRINT + 03-LINKEDIN-MINI-CRM-FLOW
+  // + CRM-HANDOFF-FOR-CRM-OPUS). Owner decisions locked: NO page injection /
+  // side-panel only / read ONLY the address-bar URL (LinkedIn banned users for
+  // injection); non-owned contact view + request-company→TL approval; project
+  // selector shared with the CRM (ALT-273).
+  // ══════════════════════════════════════════════════════════════════════
+  {
+    id:'ALT-279', title:'EPIC: Chrome extension rebuild — show CRM contact on LinkedIn (Supabase), side-panel only',
+    type:'Docs', module:'Extension', wave:'Chrome extension',
+    priority:'P2', status:'In Progress',
+    created: d(2026,6,22), updated: d(2026,6,22), finished: null,
+    owner:'Claude',
+    notes:'OWNER 2026-06-22: rebuild the 2 Firebase extensions (AltLeads 4.1.0 + Data ResearchExt) into ONE MV3 extension wired to our Supabase CRM (not a separate prospects DB). HARD CONSTRAINT: NO injection into the LinkedIn page and NO reading of LinkedIn page DOM — LinkedIn BANNED the owner\'s users\' personal accounts for injection. The ONLY LinkedIn input is the active tab\'s address-bar URL. Planning + scan complete (13-agent workflow); 5 docs written to docs/chrome-extension-rebuild/. Phase 1 (read-only show details) = shippable; Phase 2 (edit) = blocked on ALT-152. Children: ALT-280..287.'
+  },
+  {
+    id:'ALT-280', title:'Extension Phase 0 — MV3 side-panel scaffold + Vite build + Supabase client + auth',
+    type:'Feature', module:'Extension', wave:'Chrome extension',
+    priority:'P2', status:'Planned',
+    created: d(2026,6,22), updated: d(2026,6,22), finished: null,
+    owner:'Claude',
+    notes:'MV3 manifest (side_panel; permissions ["sidePanel","tabs","storage"]; host_permissions = Supabase URL only, + crm.altleads.com if SSO). Bundle @supabase/supabase-js (anon key — public/safe). Auth A1 = popup email/password signInWithPassword; A2 (later) = lift the CRM tab\'s Supabase session via host permission. Load profiles.user_id + roles (mirror AuthContext) for later write-stamping. NO content_scripts. Acceptance: extension logs in, holds a real JWT, can call find_contact_dup. See 02-MIGRATION-BLUEPRINT.md.'
+  },
+  {
+    id:'ALT-281', title:'Extension Phase 1 — detect tab LinkedIn URL + normalize + match contact + show details (read-only)',
+    type:'Feature', module:'Extension', wave:'Chrome extension',
+    priority:'P2', status:'Planned',
+    created: d(2026,6,22), updated: d(2026,6,22), finished: null,
+    owner:'Claude',
+    notes:'Background service worker watches chrome.tabs.onUpdated/onActivated, reads tab.url, tests for "linkedin.com/in/", normalizes to the slug (MUST mirror deriveLinkedinClean + lowercase + strip query/fragment + first path segment after /in/), calls supabase.rpc(find_contact_dup,{p_linkedin}). On match, side panel loads contact + leads + per-project status + tasks + meetings (via meeting_schedule chain) + interaction feed through the masked view/existing query shapes, shown "in short". Handle no-match + masked states. NO page read; SPA nav handled via chrome.tabs.onUpdated. Strictly read-only (outreach-only north-star). See 03-LINKEDIN-MINI-CRM-FLOW.md. Depends on CRM ALT-287 (normalization fix).'
+  },
+  {
+    id:'ALT-282', title:'Extension Phase 1 — non-owned contact limited card + masking-safe find_contact_for_panel RPC',
+    type:'Feature', module:'Extension', wave:'Chrome extension',
+    priority:'P2', status:'Planned',
+    created: d(2026,6,22), updated: d(2026,6,22), finished: null,
+    owner:'Claude',
+    notes:'When the matched contact is NOT owned by the agent, the panel shows name + company + COMPANY STATUS (may be DNC — must be visible so the agent does not request a do-not-contact company) + last activity date + owner name (within the selected project) + a "Request this company" button. find_contact_dup only returns id/name/company, so this needs a NEW SECURITY DEFINER RPC find_contact_for_panel(p_linkedin,p_project_id) returning the limited masking-safe payload (PII stays NULL for non-owners). CRM dependency — see CRM-HANDOFF-FOR-CRM-OPUS.md TODO-A.'
+  },
+  {
+    id:'ALT-283', title:'Company-assignment request → TL approval workflow (reuse lead approval pattern); reveal on approve',
+    type:'Feature', module:'Extension', wave:'Chrome extension',
+    priority:'P2', status:'Planned',
+    created: d(2026,6,22), updated: d(2026,6,22), finished: null,
+    owner:'Claude',
+    notes:'OWNER 2026-06-22: agent can request to work a company they don\'t own; request goes to their TL, mirroring the existing lead-report/meeting approval flow (ALT-032). On approve, ownership is re-pointed to the agent so RLS lets them reveal contact info + (Phase 2) edit. This is one assignment mechanism for ALT-152. Spans CRM (workflow + schema + queue/bell/email) and the extension (request button). The "Request this company" button in ALT-282 is wired only once this ships. See CRM-HANDOFF-FOR-CRM-OPUS.md TODO-B.'
+  },
+  {
+    id:'ALT-284', title:'Extension project selector synced with CRM global selector (ALT-273)',
+    type:'Feature', module:'Extension', wave:'Chrome extension',
+    priority:'P2', status:'Planned',
+    created: d(2026,6,22), updated: d(2026,6,22), finished: null,
+    owner:'Claude',
+    notes:'OWNER 2026-06-22: the extension side panel has a top project selector (like the old ext); it defaults to the user\'s CRM personal-settings project (or the only project) and stays in sync with the CRM\'s global project selector (ALT-273, already shipped). All per-project data (contact_project_status, company status, meetings) is scoped to the selected project. CRM exposes the current selection to the extension — see CRM-HANDOFF-FOR-CRM-OPUS.md TODO-C.'
+  },
+  {
+    id:'ALT-285', title:'Extension Phase 2 — edit-in-place mini-CRM (recorded identically to web)',
+    type:'Feature', module:'Extension', wave:'Chrome extension',
+    priority:'P2', status:'Blocked',
+    created: d(2026,6,22), updated: d(2026,6,22), finished: null,
+    owner:'Claude',
+    notes:'BLOCKED on ALT-152. Edit/status/log-call from the LinkedIn side panel; every write routes through the SAME data-layer recipe as the web app (UPSERT contact_project_status + append interaction status_change/call + re-derive linkedin_clean + optional lead_activity + in_app_notification + notify email), stamping created_by/updated_by as user_id-as-text, wrapped in a SECURITY-INVOKER RPC for atomicity. Verifier found the blocker spans THREE owner-only write gates (contact_master + contact_project_status + interaction-on-contact) — ALT-152 must align all three. Do NOT ship before ALT-152 is validated with a real non-admin agent login. NEVER embed the service-role key in the extension.'
+  },
+  {
+    id:'ALT-286', title:'SECURITY: rotate leaked secrets in the old extensions (Firebase apiKey + LLM keys)',
+    type:'Security', module:'Security', wave:'Chrome extension',
+    priority:'P1', status:'Planned',
+    created: d(2026,6,22), updated: d(2026,6,22), finished: null,
+    owner:'Mohit',
+    notes:'From 01-CURRENT-STATE-ANALYSIS.md: the old extensions ship a hardcoded Firebase apiKey (shared across all 3 apps) plus DO Gradient / Groq / Gemini / OpenRouter LLM API keys in client code — treat as COMPROMISED and rotate/disable. The rebuild drops all of them (no Firebase, no AI), but the existing keys are exposed in the shipped/old code and should be revoked.'
+  },
+  {
+    id:'ALT-287', title:'CRM: fix deriveLinkedinClean() to lowercase + one-time backfill of linkedin_clean',
+    type:'Bug', module:'Contacts', wave:'Chrome extension',
+    priority:'P1', status:'Planned',
+    created: d(2026,6,22), updated: d(2026,6,22), finished: null,
+    owner:'Claude',
+    notes:'CRM-side prerequisite for reliable LinkedIn matching. deriveLinkedinClean() (web src/data/contacts.ts) does NOT lowercase, but the migration stored linkedin_clean = lower(...); find_contact_dup does an exact = match, so app-written rows with mixed-case slugs silently MISS. Fix: lowercase (+ trim query/fragment + first path segment after /in/) in deriveLinkedinClean, and a one-time backfill to lowercase existing linkedin_clean. See CRM-HANDOFF-FOR-CRM-OPUS.md TODO-1.'
+  },
+
+  // ══════════════════════════════════════════════════════════════════════
+  // EPIC: High-impact UX gaps (Ankit 2026-06-22). Prioritized Tier 1/2/3.
+  // Full write-up: docs/product/HIGH-IMPACT-UX-GAPS.md. Reassignment is the
+  // owner's #1 named gap and ships WITH the ALT-152 write-model. Already-
+  // ticketed items referenced (NOT duplicated): ALT-152 (write model),
+  // ALT-167 (sales RLS scoping), ALT-157/213 (inline edit), ALT-272/188
+  // (global search), ALT-035/044/050/081 (saved column views).
+  // ══════════════════════════════════════════════════════════════════════
+  {
+    id:'ALT-288', title:'EPIC: Reassign / change owner across lead/company/contact/meeting (internal + sales, single + bulk)',
+    type:'Docs', module:'Access/Ownership', wave:'Wave 2',
+    priority:'P1', status:'In Progress',
+    created: d(2026,6,22), updated: d(2026,6,22), finished: null,
+    owner:'Ankit',
+    notes:'ANKIT 2026-06-22 (Tier-1 UX gap #1): today there is NO UI to reassign / change the owner of a lead, company, contact or meeting — internal OR sales side. Only wishlist has assignment (assignWishlist + AssignModal); leads only have a request-to-claim approval flow. This is the owner-named gap. Ships WITH the ALT-152 assignment write-model (you can only edit what you own, so reassignment is ALSO how a record becomes editable). Children: ALT-289 (lead+meeting — buildable now, clear assignment col lead_report.user_id), ALT-290 (company+contact — needs ownership-model decision), ALT-291 (bulk toolbar). Sales-side reassignment = existing ALT-171/235. Design pass = workflow wa2g8qboi. See HIGH-IMPACT-UX-GAPS.md.'
+  },
+  {
+    id:'ALT-289', title:'Reassign lead + meeting owner (lead_report.user_id) — detail action + staged RLS',
+    type:'Feature', module:'Access/Ownership', wave:'Wave 2',
+    priority:'P1', status:'Planned',
+    created: d(2026,6,22), updated: d(2026,6,22), finished: null,
+    owner:'Ankit',
+    notes:'Phase A of ALT-288 (buildable now). Lead assignment = lead_report.user_id (NOT created_by); meeting owner derives from its lead. "Change owner" action on Lead + Meeting detail → reuse the AssignModal/assignWishlist pattern (user picker + RLS-checked write) → fire lead_reassigned email + in-app notify (ALT-052 template already exists). RLS must let the manager/admin (and the assignee accept-path) re-point user_id; the write itself is authorized by manages_user()/is_admin(). Pairs with ALT-152 so the new owner can then EDIT. Migration STAGED, prod apply + throwaway-login validation gated (ALT-153/229 pattern).'
+  },
+  {
+    id:'ALT-290', title:'Reassign company + contact owner — OPEN ownership-model decision first',
+    type:'Feature', module:'Access/Ownership', wave:'Wave 2',
+    priority:'P1', status:'Planned',
+    created: d(2026,6,22), updated: d(2026,6,22), finished: null,
+    owner:'Ankit',
+    notes:'Phase B of ALT-288. Company/contact ownership is PER-PROJECT (company_project_status / contact_project_status). OPEN DECISION (flagged in CRM-RESPONSE-TO-EXTENSION.md TODO-3): is the owner a dedicated owner_user_id column on *_project_status, or derived via the contact→lead link? Recommended default = add owner_user_id to *_project_status (explicit, per-project, mirrors lead_report.user_id). Needs a staged schema add + RLS write-path alignment of ALL THREE contact gates (contact_master + contact_project_status + interaction-on-contact, per extension verifier) so the assignee can edit. Confirm model in DECISIONS.md before build.'
+  },
+  {
+    id:'ALT-291', title:'Bulk-action toolbar on lists (bulk reassign / bulk status / bulk add-to-project)',
+    type:'Feature', module:'UX', wave:'Wave 2',
+    priority:'P2', status:'Planned',
+    created: d(2026,6,22), updated: d(2026,6,22), finished: null,
+    owner:'Ankit',
+    notes:'Tier-2 UX gap. Lists already have multi-select + Excel export; add a bulk-action bar on the same selection: Bulk reassign (reuses ALT-289/290 write), Bulk status-change, Bulk add-to-project. Daily driver for a calling team processing lists. Each bulk write is RLS-checked per row (partial-success summary + friendly 42501 surfacing). Distinct from ALT-159 (export→edit→import UPDATE, admin-only) — this is in-app selection→action. Builds on the existing list selection state + ConfirmDialog/Toast.'
+  },
+  {
+    id:'ALT-292', title:'Kanban pipeline board — drag leads across stages',
+    type:'Feature', module:'UX', wave:'Wave 3',
+    priority:'P3', status:'Planned',
+    created: d(2026,6,22), updated: d(2026,6,22), finished: null,
+    owner:'Ankit',
+    notes:'Tier-3 polish. A board view of leads grouped by stage with drag-to-change-stage (writes the same stage-change workflow as ALT-036, incl. approval/auto-meeting where applicable). Project-scoped (ALT-273). Optional toggle alongside the existing Leads list. Expected-CRM feel (HubSpot/Zoho deal board).'
+  },
+  {
+    id:'ALT-293', title:'Merge duplicate companies / contacts (in-app)',
+    type:'Feature', module:'Data Quality', wave:'Wave 3',
+    priority:'P3', status:'Planned',
+    created: d(2026,6,22), updated: d(2026,6,22), finished: null,
+    owner:'Ankit',
+    notes:'Tier-3 polish. Dedup exists on CREATE (find_contact_dup, company domain/CIN dedup) but there is NO way to MERGE two existing duplicate records — pick a survivor, re-point children (leads/meetings/contacts/interactions/statuses), soft-delete the loser, audit the merge. Admin-gated (data-altering). Pairs with the bulk tooling.'
+  },
+
   ...uxAuditTickets(),
 ];
 
