@@ -39,7 +39,11 @@ import {
   PhoneOutgoing,
   CalendarPlus,
   ListPlus,
+  UserCheck,
 } from 'lucide-react';
+import { ReassignModal } from '../components/common/ReassignModal';
+import { reassignMeeting, fetchAssignableUsers } from '../data/assignment';
+import type { UserOption } from '../data/wishlist';
 
 /* ------------------------------------------------------------------ */
 /* Small primitives                                                    */
@@ -300,7 +304,7 @@ function QuickTaskActions({
 export function MeetingDetailPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const { profile } = useAuth();
+  const { profile, canReassign } = useAuth();
   const [meeting, setMeeting] = useState<MeetingDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -309,6 +313,13 @@ export function MeetingDetailPage() {
   const [showEdit, setShowEdit] = useState(false);
   const [confirming, setConfirming] = useState(false);
   const [actionError, setActionError] = useState('');
+
+  // Reassign / change-salesperson (ALT-288). A meeting's owner = its lead's
+  // assigned salesperson; reassigning here reassigns the underlying lead.
+  const [showReassign, setShowReassign] = useState(false);
+  const [reassignSaving, setReassignSaving] = useState(false);
+  const [reassignError, setReassignError] = useState<string | null>(null);
+  const [reassignOwners, setReassignOwners] = useState<UserOption[]>([]);
 
   const actor = profile?.user_id != null ? String(profile.user_id) : '';
   const role = (profile?.role ?? '').toUpperCase();
@@ -350,6 +361,36 @@ export function MeetingDetailPage() {
       setActionError(res.error);
       return;
     }
+    await load();
+  };
+
+  const openReassign = async () => {
+    setReassignError(null);
+    setReassignOwners([]);
+    setShowReassign(true);
+    const owners = await fetchAssignableUsers(meeting?.salespersonUserId ?? null);
+    setReassignOwners(owners);
+  };
+
+  const handleReassign = async (newUserId: number) => {
+    if (!meeting) return;
+    setReassignSaving(true);
+    setReassignError(null);
+    const res = await reassignMeeting({
+      meetingId: Number(meeting.id),
+      leadId: meeting.leadId != null ? Number(meeting.leadId) : null,
+      newUserId,
+      actor,
+      meetingName: meeting.company || meeting.leadName || meeting.name || undefined,
+      company: meeting.company || undefined,
+      isReassign: meeting.salespersonUserId != null,
+    });
+    setReassignSaving(false);
+    if (res?.error) {
+      setReassignError(res.error);
+      return;
+    }
+    setShowReassign(false);
     await load();
   };
 
@@ -441,6 +482,17 @@ export function MeetingDetailPage() {
                     >
                       <Pencil size={13} />
                       Edit
+                    </button>
+                  )}
+                  {canReassign && meeting.leadId && (
+                    <button
+                      onClick={openReassign}
+                      className="inline-flex items-center gap-1.5 border border-zinc-300 hover:border-zinc-400 bg-white hover:bg-zinc-50 text-zinc-700 font-medium transition-colors"
+                      style={{ fontSize: 12, padding: '5px 12px', height: 30, borderRadius: 6 }}
+                      title="Reassign this meeting's lead to another salesperson"
+                    >
+                      <UserCheck size={13} />
+                      Change salesperson
                     </button>
                   )}
                   <button
@@ -767,6 +819,18 @@ export function MeetingDetailPage() {
             setShowEdit(false);
             await load();
           }}
+        />
+      )}
+      {meeting && showReassign && (
+        <ReassignModal
+          entityLabel="Meeting"
+          ownerLabel="Salesperson"
+          currentOwnerId={meeting.salespersonUserId}
+          owners={reassignOwners}
+          saving={reassignSaving}
+          error={reassignError}
+          onConfirm={handleReassign}
+          onClose={() => setShowReassign(false)}
         />
       )}
     </AppShell>

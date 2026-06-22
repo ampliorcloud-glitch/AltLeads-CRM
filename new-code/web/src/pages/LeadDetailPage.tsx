@@ -13,6 +13,7 @@ import {
   PhoneOutgoing,
   CalendarPlus,
   ListPlus,
+  UserCheck,
 } from 'lucide-react';
 import { AppShell } from '../components/layout/AppShell';
 import { StageBadge } from '../components/ui/Badge';
@@ -33,6 +34,9 @@ import {
   initials,
   type CompanyInfo,
 } from '../data/leadWorkspace';
+import { ReassignModal } from '../components/common/ReassignModal';
+import { reassignLead, fetchAssignableUsers } from '../data/assignment';
+import type { UserOption } from '../data/wishlist';
 import { LeadInfoPanel } from '../components/lead/LeadInfoPanel';
 import { ActivityTab } from '../components/lead/ActivityTab';
 import { ReportTab } from '../components/lead/ReportTab';
@@ -279,7 +283,7 @@ export function LeadDetailPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const location = useLocation();
-  const { profile } = useAuth();
+  const { profile, canReassign } = useAuth();
   // When reused inside the Sales Portal, keep "back to Leads" within /sales/*.
   const isSalesShell = useIsSalesShell();
   const confirm = useConfirm();
@@ -300,6 +304,12 @@ export function LeadDetailPage() {
   const [clinching, setClinching] = useState(false);
   // Bumped after a call is logged so the call-history card re-fetches (ALT-269).
   const [callsRefresh, setCallsRefresh] = useState(0);
+
+  // Reassign / change-salesperson (ALT-288).
+  const [showReassign, setShowReassign] = useState(false);
+  const [reassignSaving, setReassignSaving] = useState(false);
+  const [reassignError, setReassignError] = useState<string | null>(null);
+  const [reassignOwners, setReassignOwners] = useState<UserOption[]>([]);
 
   // lead_master.created_by / lead_report audit fields MUST be the numeric user_id
   // (ownership / RLS keys on created_by = user_id). NEVER fall back to full_name or
@@ -378,6 +388,36 @@ export function LeadDetailPage() {
     } else {
       toast.error(res?.error || 'Could not clinch the lead. Please try again.');
     }
+  };
+
+  const openReassign = async () => {
+    setReassignError(null);
+    setReassignOwners([]);
+    setShowReassign(true);
+    const owners = await fetchAssignableUsers(lead?.salesperson_user_id ?? null);
+    setReassignOwners(owners);
+  };
+
+  const handleReassign = async (newUserId: number) => {
+    if (!lead || !hasActor) return;
+    setReassignSaving(true);
+    setReassignError(null);
+    const res = await reassignLead({
+      leadId: lead.lead_id,
+      newUserId,
+      actor,
+      leadName: company?.client_name || lead.company_name || lead.lead_name,
+      company: company?.client_name || lead.company_name || undefined,
+      isReassign: lead.salesperson_user_id != null,
+    });
+    setReassignSaving(false);
+    if (res?.error) {
+      setReassignError(res.error);
+      return;
+    }
+    setShowReassign(false);
+    toast.success('Lead reassigned — the new salesperson has been notified');
+    await refreshLead();
   };
 
   if (loadingLead) {
@@ -565,6 +605,18 @@ export function LeadDetailPage() {
                 Clinch / Close
               </button>
             )}
+            {canReassign && (
+              <button
+                type="button"
+                onClick={openReassign}
+                className="inline-flex items-center gap-1.5 border border-zinc-300 hover:border-zinc-400 bg-white hover:bg-zinc-50 text-zinc-700 font-medium rounded-md transition-colors shrink-0"
+                style={{ fontSize: 13, padding: '6px 14px', height: 32 }}
+                title="Reassign this lead to another salesperson"
+              >
+                <UserCheck size={14} />
+                Change salesperson
+              </button>
+            )}
           </div>
         </div>
 
@@ -657,6 +709,19 @@ export function LeadDetailPage() {
             <CallHistoryCard recordRef={{ leadId: lead.lead_id }} refreshKey={callsRefresh} />
           </div>
         </div>
+
+        {showReassign && (
+          <ReassignModal
+            entityLabel="Lead"
+            ownerLabel="Salesperson"
+            currentOwnerId={lead.salesperson_user_id}
+            owners={reassignOwners}
+            saving={reassignSaving}
+            error={reassignError}
+            onConfirm={handleReassign}
+            onClose={() => setShowReassign(false)}
+          />
+        )}
       </div>
     </AppShell>
   );

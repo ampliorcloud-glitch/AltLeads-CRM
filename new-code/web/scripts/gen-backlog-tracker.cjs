@@ -2248,10 +2248,10 @@ const TICKETS = [
   {
     id:'ALT-289', title:'Reassign lead + meeting owner (lead_report.user_id) — detail action + staged RLS',
     type:'Feature', module:'Access/Ownership', wave:'Wave 2',
-    priority:'P1', status:'Planned',
-    created: d(2026,6,22), updated: d(2026,6,22), finished: null,
+    priority:'P1', status:'Done',
+    created: d(2026,6,22), updated: d(2026,6,22), finished: d(2026,6,22),
     owner:'Ankit',
-    notes:'Phase A of ALT-288 (buildable now). Lead assignment = lead_report.user_id (NOT created_by); meeting owner derives from its lead. "Change owner" action on Lead + Meeting detail → reuse the AssignModal/assignWishlist pattern (user picker + RLS-checked write) → fire lead_reassigned email + in-app notify (ALT-052 template already exists). RLS must let the manager/admin (and the assignee accept-path) re-point user_id; the write itself is authorized by manages_user()/is_admin(). Pairs with ALT-152 so the new owner can then EDIT. Migration STAGED, prod apply + throwaway-login validation gated (ALT-153/229 pattern).'
+    notes:'Phase A of ALT-288 — SHIPPED (UI + data + STAGED RLS). "Change salesperson" button on Lead detail (stepper action row) + Meeting detail (header actions), gated by useAuth().canReassign (admin/TL/SH). New components/common/ReassignModal.tsx (generic single-owner picker on ModalShell) + data/assignment.ts (reassignLead / reassignMeeting / reassignLeadsBulk / fetchAssignableUsers) modeled on assignWishlist — writes lead_report.user_id, fires lead_reassigned email + in-app notify to the new owner. LeadDetail now exposes salesperson_user_id/name. Meeting reassign resolves the lead via meeting_schedule→lead_report and reassigns it (no cascade beyond, OD-5). RLS = new-code/migration/apply-assignment-rls.cjs (assigned_to() + meeting_lead_id() helpers; lead_master UPDATE gains an assignment OR-term = the ALT-152 fix; lead_report RESTRICTIVE UPDATE guard so only assignee self-edits / managers reassign; company/contact *_project_status gain owner_user_id term). STAGED + reversible (--rollback); NOT applied — prod apply gated on throwaway-login validation. Build green. Client code is harmless pre-RLS.'
   },
   {
     id:'ALT-290', title:'Reassign company + contact owner — OPEN ownership-model decision first',

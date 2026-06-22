@@ -29,6 +29,17 @@ interface AuthContextType {
   isInternalUser: boolean;
   /** True when the user holds the ADMIN role. */
   isAdmin: boolean;
+  /** True when the user holds the TEAM_LEAD role. */
+  isTeamLead: boolean;
+  /** True when the user holds the SALES_HEAD role. */
+  isSalesHead: boolean;
+  /**
+   * Whether this user may reassign / change the owner of a record (lead,
+   * company, contact, meeting). Admin or any manager (Team Lead / Sales Head).
+   * Plain agents and sales persons cannot reassign (ALT-288 OD-4). Sales-side
+   * reassignment is additionally downline-scoped once that migration lands.
+   */
+  canReassign: boolean;
   /**
    * Whether this user may CREATE core data entities (Company/Contact/Lead).
    * Per ADR-21 the default is ADMIN-only; create is a per-project grantable
@@ -154,6 +165,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const isSalesUser = roles.some((r) => SALES_ROLE_NAMES.includes(r));
   const isInternalUser = roles.some((r) => INTERNAL_ROLE_NAMES.includes(r));
   const isAdmin = roles.includes('ADMIN');
+  const isTeamLead = roles.includes('TEAM_LEAD');
+  const isSalesHead = roles.includes('SALES_HEAD');
+  const canReassign = isAdmin || isTeamLead || isSalesHead;
   const canCreateData = isAdmin;
 
   const value = useMemo(
@@ -165,6 +179,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       isSalesUser,
       isInternalUser,
       isAdmin,
+      isTeamLead,
+      isSalesHead,
+      canReassign,
       canCreateData,
       loading,
       userEmail,

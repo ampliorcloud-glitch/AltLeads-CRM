@@ -50,6 +50,10 @@ export interface LeadDetail {
   report_id: number | null;
   stage_id: number | null;
   stage_name: string;
+
+  // assigned salesperson (lead_report.user_id) — the reassignable owner (ALT-288)
+  salesperson_user_id: number | null;
+  salesperson_name: string;
 }
 
 export interface ActivityItem {
@@ -174,7 +178,7 @@ export async function fetchLeadDetail(leadId: number): Promise<LeadDetail | null
     // Latest lead_report
     supabase
       .from('lead_report')
-      .select('report_id, stage_id, created_date, updated_date')
+      .select('report_id, stage_id, user_id, created_date, updated_date')
       .eq('lead_id', leadId)
       .is('deleted_date', null)
       .order('updated_date', { ascending: false, nullsFirst: false })
@@ -187,10 +191,10 @@ export async function fetchLeadDetail(leadId: number): Promise<LeadDetail | null
   const source = sourceRes.data as { source_id: number; source_name: string } | null;
   const project = projectRes.data as { project_id: number; project_name: string } | null;
   const client = clientRes.data as { client_assoc_id: number; client_name: string } | null;
-  const report = reportRes.data as { report_id: number; stage_id: number; created_date: string; updated_date: string } | null;
+  const report = reportRes.data as { report_id: number; stage_id: number; user_id: number | null; created_date: string; updated_date: string } | null;
 
-  // Resolve industry & city
-  const [industryRes, cityRes, stageRes] = await Promise.all([
+  // Resolve industry & city (+ assigned salesperson name)
+  const [industryRes, cityRes, stageRes, salespersonRes] = await Promise.all([
     company?.industry_id
       ? supabase
           .from('industry_master')
@@ -214,11 +218,20 @@ export async function fetchLeadDetail(leadId: number): Promise<LeadDetail | null
           .eq('stage_id', report.stage_id)
           .maybeSingle()
       : Promise.resolve({ data: null }),
+
+    report?.user_id
+      ? supabase
+          .from('user_master')
+          .select('full_name')
+          .eq('user_id', report.user_id)
+          .maybeSingle()
+      : Promise.resolve({ data: null }),
   ]);
 
   const industryName = (industryRes.data as { industry_name: string } | null)?.industry_name ?? '';
   const cityId = (cityRes.data as { city_id: number } | null)?.city_id ?? null;
   const stageName = (stageRes.data as { stage: string } | null)?.stage ?? '';
+  const salespersonName = (salespersonRes.data as { full_name: string } | null)?.full_name ?? '';
 
   let cityName = '';
   if (cityId) {
@@ -264,6 +277,8 @@ export async function fetchLeadDetail(leadId: number): Promise<LeadDetail | null
     report_id: report?.report_id ?? null,
     stage_id: report?.stage_id ?? null,
     stage_name: stageName,
+    salesperson_user_id: report?.user_id ?? null,
+    salesperson_name: salespersonName,
   };
 }
 
