@@ -43,13 +43,23 @@ export interface CityOption {
   city_name: string;
 }
 
-/** Derive linkedin_clean from a linkedin_url */
+/**
+ * Derive linkedin_clean (the normalized match slug) from a linkedin_url.
+ *
+ * MUST stay byte-identical to the migration backfill (companies-contacts.sql:62-76),
+ * which lower()s the result. Without the .toLowerCase() here, a contact created/edited
+ * through the web app stores a mixed-case linkedin_clean that the exact-match lookup
+ * `find_contact_dup(... linkedin_clean = p_linkedin)` then silently MISSES for any slug
+ * with capitals — breaking the Chrome extension's LinkedIn→contact match. (Flagged in
+ * docs/chrome-extension-rebuild/CRM-HANDOFF-FOR-CRM-OPUS.md TODO-1.)
+ */
 export function deriveLinkedinClean(url: string | null | undefined): string | null {
   if (!url) return null;
   const cleaned = url
     .replace(/^https?:\/\/(www\.)?linkedin\.com\/in\//i, '')
     .replace(/\/$/, '')
-    .trim();
+    .trim()
+    .toLowerCase();
   return cleaned || null;
 }
 

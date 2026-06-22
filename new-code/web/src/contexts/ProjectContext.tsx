@@ -84,6 +84,22 @@ function writeStoredProjectId(key: string, id: number | null): void {
   }
 }
 
+/**
+ * Canonical cross-surface bridge key (Chrome extension TODO-C). A SINGLE, stable
+ * key the extension can read to know the active user + project WITHOUT needing the
+ * per-user key name or React state. Updated on hydration and on every selection
+ * change. Shape: { userId: number|null, projectId: number|null } (projectId null =
+ * All projects). See docs/chrome-extension-rebuild/CRM-RESPONSE-TO-EXTENSION.md.
+ */
+export const ACTIVE_CONTEXT_KEY = 'altleads:active-context';
+function writeActiveContext(userId: number | null, projectId: number | null): void {
+  try {
+    localStorage.setItem(ACTIVE_CONTEXT_KEY, JSON.stringify({ userId, projectId }));
+  } catch {
+    /* storage unavailable — ignore */
+  }
+}
+
 export function ProjectProvider({ children }: { children: ReactNode }) {
   const { profile, isAdmin, loading: authLoading } = useAuth();
   const userId = profile?.user_id ?? null;
@@ -112,6 +128,7 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
     if (userId == null && !isAdmin) {
       setProjects([]);
       setSelectedProjectIdState(null);
+      writeActiveContext(null, null);
       setLoading(false);
       return () => {
         cancelled = true;
@@ -132,8 +149,10 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
         // otherwise fall back to "All". This branch runs only on a SUCCESSFUL load.
         if (stored != null && list.some((p) => p.project_id === stored)) {
           setSelectedProjectIdState(stored);
+          writeActiveContext(userId, stored);
         } else {
           setSelectedProjectIdState(null);
+          writeActiveContext(userId, null);
           if (stored != null) writeStoredProjectId(selectedProjectKey(userId), null);
         }
       })
@@ -158,6 +177,7 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
     (id: number | null) => {
       setSelectedProjectIdState(id);
       writeStoredProjectId(selectedProjectKey(userId), id);
+      writeActiveContext(userId, id); // keep the cross-surface bridge in sync (extension)
     },
     [userId],
   );
