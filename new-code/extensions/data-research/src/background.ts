@@ -35,11 +35,18 @@ function postToPanel(msg: BgMessage): void {
   });
 }
 
+// Debounce 300ms so rapid LinkedIn SPA navigations don't thrash/flicker
+let debounceTimer: ReturnType<typeof setTimeout> | null = null;
+
 chrome.tabs.onUpdated.addListener((tabId, changeInfo) => {
   if (!changeInfo.url) return;
-  chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
-    if (tabs[0]?.id === tabId) processTabUrl(changeInfo.url);
-  });
+  if (debounceTimer !== null) clearTimeout(debounceTimer);
+  debounceTimer = setTimeout(() => {
+    debounceTimer = null;
+    chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+      if (tabs[0]?.id === tabId) processTabUrl(changeInfo.url);
+    });
+  }, 300);
 });
 
 chrome.tabs.onActivated.addListener(({ tabId }) => {

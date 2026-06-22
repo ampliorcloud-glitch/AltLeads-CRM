@@ -190,7 +190,7 @@
       .section-title {
         font-size: 10px;
         font-weight: 700;
-        color: #9ca3af;
+        color: #6b7280;
         text-transform: uppercase;
         letter-spacing: 0.07em;
         margin: 12px 0 6px;
@@ -205,14 +205,14 @@
         font-size: 12px;
       }
       .field-row .label {
-        color: #9ca3af;
+        color: #6b7280;
         width: 68px;
         flex-shrink: 0;
         font-size: 11px;
       }
       .field-row .value { color: #1a1a1a; word-break: break-all; }
-      .field-row .value.masked { color: #9ca3af; font-style: italic; }
-      .field-row .value.hidden { color: #d1d5db; font-style: italic; }
+      .field-row .value.masked { color: #6b7280; font-style: italic; }
+      .field-row .value.hidden { color: #6b7280; font-style: italic; }
 
       /* ---- Activity list ---- */
       .activity-item {
@@ -223,19 +223,19 @@
         color: #4b5563;
       }
       .activity-item .type { font-weight: 600; color: #374151; }
-      .activity-item .time { color: #9ca3af; margin-left: 4px; }
+      .activity-item .time { color: #6b7280; margin-left: 4px; }
       .activity-item .note { margin-top: 2px; color: #6b7280; }
 
       /* ---- Masked / empty field states ---- */
       .field-row .value.masked {
-        color: #9ca3af;
+        color: #6b7280;
         font-style: italic;
         cursor: pointer;
         text-decoration: underline dotted;
       }
-      .field-row .value.masked:hover { color: #6b7280; }
-      .field-row .value.empty { color: #d1d5db; }
-      .field-row .value.hidden-notice { color: #d1d5db; font-style: italic; }
+      .field-row .value.masked:hover { color: #374151; }
+      .field-row .value.empty { color: #6b7280; }
+      .field-row .value.hidden-notice { color: #6b7280; font-style: italic; }
 
       /* ---- Request section (non-owned card) ---- */
       .request-section {
@@ -264,10 +264,93 @@
         line-height: 1.4;
       }
 
+      /* ---- Research request section (owned card) ---- */
+      .research-request-box {
+        margin-top: 2px;
+        padding: 10px 12px;
+        background: #f0f7ff;
+        border: 1px solid #bfdbfe;
+        border-radius: 8px;
+        margin-bottom: 10px;
+      }
+      .rr-missing {
+        font-size: 11px;
+        color: #1d4ed8;
+        margin-bottom: 6px;
+      }
+      .rr-status {
+        font-size: 11px;
+        color: #374151;
+        margin-bottom: 4px;
+      }
+      .rr-fields {
+        font-size: 10px;
+        color: #6b7280;
+        margin-bottom: 6px;
+      }
+      .rr-note {
+        font-size: 11px;
+        margin-bottom: 4px;
+      }
+      .rr-muted { color: #6b7280; font-style: italic; }
+      .rr-success {
+        font-size: 11px;
+        color: #16a34a;
+        margin-top: 4px;
+        font-weight: 600;
+      }
+      /* Status badges inside the research section */
+      .rr-badge {
+        display: inline-block;
+        padding: 1px 6px;
+        border-radius: 9999px;
+        font-size: 10px;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+      }
+      .rr-badge-pending    { background: #fef9c3; color: #854d0e; }
+      .rr-badge-in_progress { background: #dbeafe; color: #1d4ed8; }
+      .rr-badge-done       { background: #dcfce7; color: #16a34a; }
+      /* Request / re-request buttons */
+      .btn-rr-primary {
+        width: 100%;
+        padding: 7px;
+        background: #1d4ed8;
+        color: #fff;
+        border: none;
+        border-radius: 6px;
+        font-size: 12px;
+        font-weight: 600;
+        cursor: pointer;
+      }
+      .btn-rr-primary:hover    { background: #1e40af; }
+      .btn-rr-primary:disabled { opacity: 0.6; cursor: not-allowed; }
+      .btn-rr-secondary {
+        width: 100%;
+        padding: 6px;
+        background: #fff;
+        color: #1d4ed8;
+        border: 1px solid #93c5fd;
+        border-radius: 6px;
+        font-size: 12px;
+        font-weight: 600;
+        cursor: pointer;
+        margin-top: 4px;
+      }
+      .btn-rr-secondary:hover    { background: #eff6ff; }
+      .btn-rr-secondary:disabled { opacity: 0.6; cursor: not-allowed; }
+      .rr-feedback {
+        font-size: 11px;
+        margin-top: 4px;
+      }
+      .rr-feedback-error   { color: #b91c1c; }
+      .rr-feedback-success { color: #16a34a; }
+
       /* ---- More note (leads overflow) ---- */
       .more-note {
         font-size: 11px;
-        color: #9ca3af;
+        color: #6b7280;
         margin-bottom: 4px;
       }
 
@@ -293,6 +376,64 @@
       }
       @keyframes spin { to { transform: rotate(360deg); } }
 
+      /* ---- Skeleton loading lines ---- */
+      .skeleton-card {
+        background: #fff;
+        border: 1px solid #e5e7eb;
+        border-radius: 8px;
+        padding: 12px;
+        margin-bottom: 10px;
+      }
+      .skeleton-line {
+        background: linear-gradient(90deg, #e5e7eb 25%, #f3f4f6 50%, #e5e7eb 75%);
+        background-size: 200% 100%;
+        animation: shimmer 1.2s infinite;
+        border-radius: 4px;
+        margin-bottom: 8px;
+      }
+      .skeleton-line.title  { height: 14px; width: 60%; }
+      .skeleton-line.sub    { height: 11px; width: 40%; }
+      .skeleton-line.field  { height: 10px; width: 80%; }
+      .skeleton-line.field-short { height: 10px; width: 50%; }
+      @keyframes shimmer {
+        0%   { background-position: 200% 0; }
+        100% { background-position: -200% 0; }
+      }
+
+      /* ---- Password toggle ---- */
+      .password-wrapper {
+        position: relative;
+      }
+      .password-wrapper input {
+        padding-right: 34px;
+      }
+      .pw-toggle {
+        position: absolute;
+        right: 8px;
+        top: 50%;
+        transform: translateY(-50%);
+        background: none;
+        border: none;
+        cursor: pointer;
+        padding: 2px;
+        color: #6b7280;
+        font-size: 14px;
+        line-height: 1;
+      }
+      .pw-toggle:hover { color: #374151; }
+
+      /* ---- Forgot password link ---- */
+      .forgot-link {
+        display: block;
+        font-size: 11px;
+        color: #1d4ed8;
+        text-align: right;
+        margin-top: 4px;
+        text-decoration: underline;
+        cursor: pointer;
+      }
+      .forgot-link:hover { color: #1e40af; }
+
       /* Hidden utility */
       .hidden { display: none !important; }
     </style>
@@ -312,7 +453,7 @@
     <div id="content">
       <!-- LOGIN FORM (shown when not authenticated) -->
       <div id="login-form">
-        <div class="msg-info">Sign in with your AltLeads CRM account.</div>
+        <div class="msg-info">Sign in to see CRM contacts while you browse LinkedIn.</div>
         <br/>
         <div class="form-group">
           <label for="email-input">Email</label>
@@ -320,10 +461,14 @@
         </div>
         <div class="form-group">
           <label for="password-input">Password</label>
-          <input type="password" id="password-input" placeholder="••••••••" autocomplete="current-password" />
+          <div class="password-wrapper">
+            <input type="password" id="password-input" placeholder="••••••••" autocomplete="current-password" />
+            <button type="button" id="pw-toggle" class="pw-toggle" aria-label="Show/hide password">👁</button>
+          </div>
+          <a id="forgot-link" class="forgot-link" href="https://crm.altleads.com/forgot-password" target="_blank">Forgot password?</a>
         </div>
-        <button id="login-btn" class="btn-primary">Sign in</button>
         <div id="login-error" class="hidden msg-error"></div>
+        <button id="login-btn" class="btn-primary">Sign in</button>
       </div>
 
       <!-- IDLE STATE (authenticated, not on a LinkedIn /in/ profile) -->
@@ -334,8 +479,17 @@
 
       <!-- LOADING STATE -->
       <div id="loading-state" class="hidden">
-        <div class="spinner"></div>
-        <p style="margin-top:10px;color:#888;font-size:12px;">Looking up contact…</p>
+        <div class="skeleton-card">
+          <div class="skeleton-line title"></div>
+          <div class="skeleton-line sub"></div>
+          <div class="skeleton-line sub" style="width:30%;"></div>
+        </div>
+        <div class="skeleton-card">
+          <div class="skeleton-line field"></div>
+          <div class="skeleton-line field-short"></div>
+          <div class="skeleton-line field"></div>
+          <div class="skeleton-line field-short"></div>
+        </div>
       </div>
 
       <!-- NO MATCH STATE -->

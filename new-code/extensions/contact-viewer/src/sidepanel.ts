@@ -25,7 +25,12 @@ import {
   fetchTasks,
   fetchProjects,
 } from '@shared/contactData';
-import type { BgMessage, UserProfile, ContactPanelResult } from '@shared/types';
+import type { BgMessage, UserProfile, ContactPanelResult, ResearchRequestResult } from '@shared/types';
+import {
+  getOpenRequestForContact,
+  createResearchRequest,
+  reRequest,
+} from '@shared/researchRequests';
 
 // Suppress unused import warning — getSupabaseClient is referenced indirectly via shared modules
 void getSupabaseClient;
@@ -49,6 +54,7 @@ const emailInput    = $<HTMLInputElement>('email-input');
 const passwordInput = $<HTMLInputElement>('password-input');
 const loginBtn      = $<HTMLButtonElement>('login-btn');
 const loginError    = $('login-error');
+const pwToggle      = $<HTMLButtonElement>('pw-toggle');
 
 const idleState     = $('idle-state');
 const loadingState  = $('loading-state');
@@ -165,9 +171,19 @@ loginBtn.addEventListener('click', async () => {
   queryCurrentTab();
 });
 
-// Allow Enter key to submit
+// Allow Enter key to submit from either field
+emailInput.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') loginBtn.click();
+});
 passwordInput.addEventListener('keydown', (e) => {
   if (e.key === 'Enter') loginBtn.click();
+});
+
+// Show / hide password toggle
+pwToggle.addEventListener('click', () => {
+  const isPassword = passwordInput.type === 'password';
+  passwordInput.type = isPassword ? 'text' : 'password';
+  pwToggle.textContent = isPassword ? '🙈' : '👁';
 });
 
 function showLoginError(msg: string) {
@@ -236,9 +252,8 @@ async function lookupAndRender(slug: string) {
     await renderContactCard(result);
     showView('contact');
   } catch (err: unknown) {
-    const msg = err instanceof Error ? err.message : 'Unknown error';
     console.error('[AltLeads Panel] lookupAndRender error:', err);
-    showView('error', `Could not reach the CRM — ${msg}. Check your connection or try again.`);
+    showView('error', "Couldn't load the contact — check your connection and try again.");
   }
 }
 
@@ -247,17 +262,44 @@ async function lookupAndRender(slug: string) {
 // ---------------------------------------------------------------------------
 
 async function renderContactCard(result: ContactPanelResult) {
-  // Load additional detail if the user can view it (owned/admin/QC)
-  const detail = result.can_view_details
-    ? await fetchContactDetail(result.contact_id)
-    : null;
+  // Render the header immediately (name + company already known from match result)
+  // so the panel feels alive while background fetches complete.
+  const isDNCEarly =
+    result.contact_status === 'do_not_contact' ||
+    result.company_status === 'do_not_contact' ||
+    result.company_status === 'DNC' ||
+    (result.company_status?.toLowerCase().includes('do not contact') ?? false);
 
-  const leads     = await fetchContactLeads(result.contact_id);
-  const status    = currentProjectId
-    ? await fetchContactStatus(result.contact_id, currentProjectId)
-    : null;
-  const activities = await fetchActivityFeed(result.contact_id, 3);
-  const tasks     = await fetchTasks(result.contact_id);
+  contactCard.innerHTML = `
+    <div class="contact-card">
+      <div class="name">
+        ${esc(result.full_name)}
+        ${isDNCEarly
+          ? '<span class="badge badge-red">DO NOT CONTACT</span>'
+          : result.can_view_details
+            ? '<span class="badge badge-green">In CRM</span>'
+            : '<span class="badge badge-gray">In CRM</span>'
+        }
+      </div>
+      <div class="company">${esc(result.company_name ?? '—')}</div>
+    </div>
+    <div class="skeleton-card">
+      <div class="skeleton-line field"></div>
+      <div class="skeleton-line field-short"></div>
+      <div class="skeleton-line field"></div>
+    </div>
+  `;
+  showView('contact');
+
+  // Parallelize all independent fetches (none depend on each other)
+  const [detail, leads, status, activities, tasks, openRequest] = await Promise.all([
+    result.can_view_details ? fetchContactDetail(result.contact_id) : Promise.resolve(null),
+    fetchContactLeads(result.contact_id),
+    currentProjectId ? fetchContactStatus(result.contact_id, currentProjectId) : Promise.resolve(null),
+    fetchActivityFeed(result.contact_id, 3),
+    fetchTasks(result.contact_id),
+    result.can_view_details ? getOpenRequestForContact(result.contact_id) : Promise.resolve(null),
+  ]);
 
   // Determine DNC from both contact_status and company_status
   const isDNC =
@@ -286,6 +328,9 @@ async function renderContactCard(result: ContactPanelResult) {
   // ---- OWNED CARD (can_view_details = true) ----
   if (result.can_view_details) {
     html += renderOwnedCard(result, detail, status);
+    // Research request section — compute missing detail fields
+    const missingFields = computeMissingFields(result, detail);
+    html += renderResearchRequestSection(result.contact_id, openRequest, missingFields);
     html += renderLeads(leads);
     html += renderTasks(tasks);
     html += renderActivity(activities);
@@ -310,6 +355,8 @@ async function renderContactCard(result: ContactPanelResult) {
   // Wire up click-to-reveal for masked PII fields (owned card only)
   if (result.can_view_details) {
     wireMaskReveal(contactCard);
+    // Wire up research request buttons
+    wireResearchRequestButtons(result, detail);
   }
 }
 
@@ -473,10 +520,10 @@ function renderNonOwnedCard(
     </div>
   `;
 
-  // "Request this company" button (disabled — ALT-283 workflow not built yet)
+  // "Request this company" button (disabled — workflow not built yet; intentional owner decision)
   const dncNote = isDNC
     ? ' — DNC companies cannot be requested'
-    : ' — request flow coming soon (ALT-283)';
+    : ' — request flow coming soon';
 
   html += `
     <div class="request-section">
@@ -555,6 +602,253 @@ function renderActivity(activities: Awaited<ReturnType<typeof fetchActivityFeed>
     `;
   });
   return html;
+}
+
+// ---------------------------------------------------------------------------
+// Research request section — owned card only
+// ---------------------------------------------------------------------------
+
+/** The detail fields we track for "missing" detection. */
+const DETAIL_FIELDS = ['email', 'mobile_no', 'linkedin_url', 'designation'] as const;
+type DetailField = typeof DETAIL_FIELDS[number];
+
+/**
+ * Compute which detail fields are absent from the contact so we can label
+ * the request clearly (e.g. "Missing: email, mobile").
+ */
+function computeMissingFields(
+  result: ContactPanelResult,
+  detail: Awaited<ReturnType<typeof fetchContactDetail>>
+): DetailField[] {
+  const email      = detail?.email ?? result.email;
+  const mobileNo   = detail?.mobile_no ?? result.mobile_no;
+  const linkedinUrl = detail?.linkedin_url ?? result.linkedin_url;
+  const designation = detail?.designation ?? null;
+
+  const missing: DetailField[] = [];
+  if (!email)       missing.push('email');
+  if (!mobileNo)    missing.push('mobile_no');
+  if (!linkedinUrl) missing.push('linkedin_url');
+  if (!designation) missing.push('designation');
+  return missing;
+}
+
+/**
+ * Render the "Contact details" research-request section for an owned card.
+ *
+ * States:
+ *  open request  → "Requested <relative date> · <status>" + Re-request button
+ *  no open req   → "Request contact details" button (or re-verification if nothing is missing)
+ *  backend_not_ready → muted "Research queue not set up yet" note
+ *  error         → muted "Could not check request status" note
+ */
+function renderResearchRequestSection(
+  contactId: number,
+  openRequest: Awaited<ReturnType<typeof getOpenRequestForContact>>,
+  missingFields: DetailField[]
+): string {
+  const missingLabel = missingFields.length > 0
+    ? missingFields.map((f) => f === 'mobile_no' ? 'mobile' : f === 'linkedin_url' ? 'LinkedIn' : f).join(', ')
+    : null;
+
+  let html = `<div class="section-title">Research request</div>`;
+  html += `<div id="research-request-section" class="research-request-box" data-contact-id="${contactId}">`;
+
+  // Error / degraded states
+  if (openRequest && 'tag' in openRequest) {
+    const r = openRequest as ResearchRequestResult;
+    if (r.tag === 'backend_not_ready') {
+      html += `<div class="rr-note rr-muted">This feature isn't switched on yet.</div>`;
+    } else if (r.tag === 'forbidden') {
+      html += `<div class="rr-note rr-muted">You don't have permission to do this yet.</div>`;
+    } else {
+      html += `<div class="rr-note rr-muted">Something went wrong — please try again.</div>`;
+    }
+    html += `</div>`;
+    return html;
+  }
+
+  if (openRequest && !('tag' in openRequest)) {
+    // Open request exists
+    const relDate = formatRelativeDate(openRequest.requested_at);
+    const statusLabel = openRequest.status === 'in_progress' ? 'in progress' : openRequest.status;
+    html += `
+      <div class="rr-status">
+        Requested ${esc(relDate)} &middot; <span class="rr-badge rr-badge-${esc(openRequest.status)}">${esc(statusLabel)}</span>
+      </div>
+    `;
+    if (openRequest.fields_needed) {
+      html += `<div class="rr-fields">Fields: ${esc(openRequest.fields_needed)}</div>`;
+    }
+    html += `
+      <button id="rr-rerequest-btn" class="btn-rr-secondary">
+        Re-request
+      </button>
+    `;
+  } else {
+    // No open request
+    if (missingLabel) {
+      html += `<div class="rr-missing">Missing: <strong>${esc(missingLabel)}</strong></div>`;
+    }
+    const btnLabel = missingFields.length === 0 ? 'Request re-verification' : 'Request contact details';
+    html += `
+      <button id="rr-request-btn" class="btn-rr-primary">
+        ${btnLabel}
+      </button>
+    `;
+  }
+
+  html += `<div id="rr-feedback" class="rr-feedback hidden"></div>`;
+  html += `</div>`;
+  return html;
+}
+
+/**
+ * Wire click handlers for the research request / re-request buttons.
+ * Called after contactCard.innerHTML is set.
+ */
+function wireResearchRequestButtons(
+  result: ContactPanelResult,
+  detail: Awaited<ReturnType<typeof fetchContactDetail>>
+) {
+  if (!currentProfile) return;
+
+  const requestedBy = String(currentProfile.user_id);
+  const contactId   = result.contact_id;
+
+  // "Request contact details" button
+  const requestBtn = document.getElementById('rr-request-btn') as HTMLButtonElement | null;
+  if (requestBtn) {
+    requestBtn.addEventListener('click', async () => {
+      if (!requestBtn) return;
+      requestBtn.disabled = true;
+      requestBtn.textContent = 'Requesting…';
+      setRRFeedback('');
+
+      const missingFields = computeMissingFields(result, detail);
+      const fieldsNeeded = missingFields.length > 0
+        ? missingFields.join(',')
+        : 'email,mobile_no,linkedin_url,designation';
+
+      const res = await createResearchRequest({
+        contactId,
+        companyId:    result.company_id,
+        linkedinUrl:  result.linkedin_url ?? (detail?.linkedin_url ?? null),
+        linkedinClean: detail?.linkedin_clean ?? null,
+        projectId:    currentProjectId,
+        fieldsNeeded,
+        requestedBy,
+      });
+
+      if ('tag' in res) {
+        requestBtn.disabled = false;
+        requestBtn.textContent = 'Request contact details';
+        const r = res as ResearchRequestResult;
+        if (r.tag === 'backend_not_ready') {
+          setRRFeedback("This feature isn't switched on yet.", 'error');
+        } else if (r.tag === 'forbidden') {
+          setRRFeedback("You don't have permission to do this yet.", 'error');
+        } else {
+          setRRFeedback('Something went wrong — please try again.', 'error');
+        }
+      } else {
+        // Success — replace button area with success state
+        const section = document.getElementById('research-request-section');
+        if (section) {
+          section.innerHTML = `
+            <div class="rr-status">
+              Requested just now &middot; <span class="rr-badge rr-badge-pending">pending</span>
+            </div>
+            <div class="rr-fields">Fields: ${esc(fieldsNeeded)}</div>
+            <div class="rr-success">Requested ✓ — pending with research team</div>
+          `;
+        }
+      }
+    });
+  }
+
+  // "Re-request" button
+  const rerequestBtn = document.getElementById('rr-rerequest-btn') as HTMLButtonElement | null;
+  if (rerequestBtn) {
+    rerequestBtn.addEventListener('click', async () => {
+      rerequestBtn.disabled = true;
+      rerequestBtn.textContent = 'Requesting…';
+      setRRFeedback('');
+
+      // Get current open request id from the DOM (we stored contactId on the section)
+      const openReq = await getOpenRequestForContact(contactId);
+
+      if (!openReq || 'tag' in openReq) {
+        // No open request — fall back to creating a new one
+        const missingFields = computeMissingFields(result, detail);
+        const fieldsNeeded = missingFields.length > 0
+          ? missingFields.join(',')
+          : 'email,mobile_no,linkedin_url,designation';
+
+        const res = await createResearchRequest({
+          contactId,
+          companyId:    result.company_id,
+          linkedinUrl:  result.linkedin_url ?? (detail?.linkedin_url ?? null),
+          linkedinClean: detail?.linkedin_clean ?? null,
+          projectId:    currentProjectId,
+          fieldsNeeded,
+          requestedBy,
+        });
+
+        if ('tag' in res) {
+          rerequestBtn.disabled = false;
+          rerequestBtn.textContent = 'Re-request';
+          setRRFeedback('Something went wrong — please try again.', 'error');
+        } else {
+          const section = document.getElementById('research-request-section');
+          if (section) {
+            section.innerHTML = `
+              <div class="rr-status">
+                Requested just now &middot; <span class="rr-badge rr-badge-pending">pending</span>
+              </div>
+              <div class="rr-success">Requested ✓ — pending with research team</div>
+            `;
+          }
+        }
+        return;
+      }
+
+      const res = await reRequest(openReq.request_id, requestedBy);
+      if ('tag' in res) {
+        rerequestBtn.disabled = false;
+        rerequestBtn.textContent = 'Re-request';
+        const r = res as ResearchRequestResult;
+        if (r.tag === 'backend_not_ready') {
+          setRRFeedback("This feature isn't switched on yet.", 'error');
+        } else if (r.tag === 'forbidden') {
+          setRRFeedback("You don't have permission to do this yet.", 'error');
+        } else {
+          setRRFeedback('Something went wrong — please try again.', 'error');
+        }
+      } else {
+        const section = document.getElementById('research-request-section');
+        if (section) {
+          section.innerHTML = `
+            <div class="rr-status">
+              Re-requested just now &middot; <span class="rr-badge rr-badge-pending">pending</span>
+            </div>
+            <div class="rr-success">Requested ✓ — pending with research team</div>
+          `;
+        }
+      }
+    });
+  }
+}
+
+/** Set the feedback text below the button. */
+function setRRFeedback(msg: string, type: 'success' | 'error' | '' = '') {
+  const el = document.getElementById('rr-feedback');
+  if (!el) return;
+  el.textContent = msg;
+  el.className = 'rr-feedback';
+  if (type === 'error') el.classList.add('rr-feedback-error');
+  if (type === 'success') el.classList.add('rr-feedback-success');
+  el.classList.toggle('hidden', !msg);
 }
 
 // ---------------------------------------------------------------------------
@@ -649,6 +943,27 @@ function formatDate(iso: string): string {
   }
 }
 
+/**
+ * Format an ISO date string as a human-friendly relative label
+ * (e.g. "2 days ago", "just now", "5 Jun 2026").
+ */
+function formatRelativeDate(iso: string): string {
+  try {
+    const d = new Date(iso);
+    const diffMs = Date.now() - d.getTime();
+    const diffMin = Math.floor(diffMs / 60_000);
+    if (diffMin < 2)  return 'just now';
+    if (diffMin < 60) return `${diffMin} min ago`;
+    const diffH = Math.floor(diffMin / 60);
+    if (diffH < 24)   return `${diffH}h ago`;
+    const diffD = Math.floor(diffH / 24);
+    if (diffD < 7)    return `${diffD} day${diffD === 1 ? '' : 's'} ago`;
+    return d.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
+  } catch {
+    return iso;
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Boot: check session, then show the right view
 // ---------------------------------------------------------------------------
@@ -665,5 +980,7 @@ function formatDate(iso: string): string {
   } else {
     setAuthUI(null);
     showView('login');
+    // Autofocus email field so user can start typing immediately
+    emailInput.focus();
   }
 })();

@@ -141,6 +141,19 @@ export interface ResearchRequest {
   fulfilled_at: string | null;
 }
 
+/**
+ * Discriminated union returned by researchRequests.ts helpers when an
+ * operation cannot complete.  The caller maps each tag to a friendly UI state.
+ *
+ * - 'backend_not_ready' → Postgres 42P01 — table does not exist yet.
+ * - 'forbidden'         → Postgres 42501 / PGRST301 — RLS denied the write.
+ * - 'error'             → Any other failure; message carries details.
+ */
+export type ResearchRequestResult =
+  | { tag: 'backend_not_ready' }
+  | { tag: 'forbidden' }
+  | { tag: 'error'; message: string };
+
 // ---------------------------------------------------------------------------
 // Extension messaging (background ↔ side panel)
 // ---------------------------------------------------------------------------

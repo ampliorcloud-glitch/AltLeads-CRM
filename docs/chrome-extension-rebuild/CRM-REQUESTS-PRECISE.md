@@ -103,7 +103,7 @@ CREATE INDEX IF NOT EXISTS idx_crr_status         ON public.contact_research_req
 CREATE INDEX IF NOT EXISTS idx_crr_linkedin_clean ON public.contact_research_request(linkedin_clean);
 CREATE INDEX IF NOT EXISTS idx_crr_project        ON public.contact_research_request(project_id);
 ```
-**RLS:** enable RLS; the research team needs to **see all open requests** and **update status + fill the linked contact**. Pair this with the role decision in Request 5. Suggested (pending role decision): SELECT/UPDATE for users in the research role (or admin); INSERT for anyone authenticated (so an agent can raise a request).
+**RLS:** enable RLS, wired to the now-approved `RESEARCH` role (REQUEST 5): **SELECT + UPDATE** for `RESEARCH` + `ADMIN` (work the queue); **INSERT** for any authenticated user (so an Ext-1 agent can raise/re-request — REQUEST 6).
 **Acceptance:** a research user can list pending requests and mark one done; an outreach agent can insert a request. **Rollback:** `DROP TABLE public.contact_research_request;` (additive).
 
 > Note: "is the info already there to edit?" is **computed by the extension** at open time (it reads the contact's current `email`/`mobile_no`/`linkedin_url` and shows what's filled vs. missing) — no extra column needed.
@@ -121,13 +121,22 @@ Mohit will test with the **admin** account `mohit@amplior.com` (sees everything)
 
 ---
 
-## REQUEST 5 — DECISION NEEDED (for the owner): research-team role
+## REQUEST 5 — Add a `RESEARCH` role · **OWNER APPROVED 2026-06-22**
 
-Extension 2's users are the research/back-office team, distinct from outreach agents. Pick one:
-- **(a) Add a `RESEARCH` role** (`role_master` id 7) with RLS granting it read of the research queue + write to fill contacts it's working. Cleanest long-term.
-- **(b) No new role** — designate specific existing users (e.g. a flag or a fixed allow-list) for research access.
+Owner approved option (a): **add a `RESEARCH` role.** Extension 2's users are the research/back-office team, distinct from outreach agents, with their **own logins**.
+- **Add to `role_master`: id `7`, name `RESEARCH`.** Set `is_web=true` (they sign into a web-based extension).
+- **RLS on `contact_research_request`:** `RESEARCH` role + `ADMIN` → SELECT + UPDATE (work the queue: pending→in_progress→done/not_found). Any authenticated user → INSERT (so an Ext-1 agent can raise a request — see REQUEST 6).
+- **Fill-the-contact write:** a `RESEARCH` user must be able to **UPDATE `contact_master` PII columns** (`email`, `mobile_no`, `alt_mobile_no`, `linkedin_url`, `designation`, and re-derive `linkedin_clean`) for the contact they're fulfilling — **regardless of `created_by`**. This intersects **ALT-152**: implement it as part of the assignment-write model (grant `RESEARCH` a project-scoped PII-update path even though it doesn't own the row). **Validate with a throwaway RESEARCH login before prod** (this is exactly the kind of cross-role RLS change that has bitten before).
 
-This also intersects **ALT-152**: filling a contact's missing fields is a **write**, so research users hit the same `created_by` owner-only write gate. The role/RLS for research must allow them to **update contacts they're fulfilling** (likely: research role can update `contact_master` PII columns regardless of owner, scoped to project). Flag this with ALT-152's assignment-write fix so they're solved together.
+---
+
+## REQUEST 6 — Ext 1 raises / re-requests research (INSERT + re-open contract) · ties to R3/R5
+
+Extension 1 now lets an outreach agent **Request** (and **Re-request**) contact details for a matched contact. This is the feed for the Extension-2 queue (without it, R3's queue is empty).
+- **Request** → INSERT a `contact_research_request`: `status='pending'`, `requested_by` = the agent's `profiles.user_id` as text, `fields_needed` = the missing fields (e.g. `'email,mobile'`), `contact_id`/`company_id`/`linkedin_url`/`linkedin_clean`/`project_id` set.
+- **Re-request** → re-open the existing open row: `status='pending'`, bump `requested_at=now()`, append a note (`updated_by`/`updated_date`). If none open, insert fresh.
+- **RLS:** INSERT for any authenticated user; UPDATE-to-re-open allowed for the original `requested_by` (or any authenticated — low risk).
+- **Acceptance:** an AGENT in Ext 1 inserts + re-requests; the row shows up in the RESEARCH queue (Ext 2). Until R3 lands, the extension catches `42P01` and shows "research backend not ready" — no crash.
 
 ---
 
@@ -137,6 +146,7 @@ This also intersects **ALT-152**: filling a contact's missing fields is a **writ
 - [ ] R2: create `find_contact_for_panel` RPC; **test masking with a non-owner login before granting**.
 - [ ] R3: create `contact_research_request` (after checking none exists) + RLS.
 - [ ] R4: provision + return the 2 test logins (+ the 3 test LinkedIn URLs).
-- [ ] R5: get the owner's research-role decision; wire RLS accordingly (with ALT-152).
+- [ ] R5: **ADD `RESEARCH` role** (`role_master` id 7, `is_web=true`) + wire its RLS (owner APPROVED 2026-06-22; validate with a throwaway RESEARCH login, esp. the `contact_master` PII-update path that ties to ALT-152).
+- [ ] R6: confirm INSERT/re-open RLS so Ext-1 agents can Request + Re-request research (feeds the R3 queue).
 
 Nothing here deletes or alters existing data except the safe lowercasing in R1b. Apply in a transaction; keep the previews.

@@ -1,55 +1,65 @@
 /**
  * data-research/src/sidepanel.ts  —  Data Research extension panel
  *
- * The research / back-office team's tool.  Shows:
+ * The research / back-office team's tool.  Purpose: fill MISSING contact
+ * details (full_name, designation, email, mobile_no, alt_mobile_no,
+ * linkedin_url) contact-by-contact.
  *
- *  QUEUE VIEW (default, non-LinkedIn tab):
- *    - List of open contact_research_request rows (pending + in_progress),
- *      newest first.  Each row shows: requester name (resolved from user_id),
- *      when requested, target (contact name/company OR linkedin_url),
- *      fields_needed, status.
- *    - Click a row → DETAIL VIEW for that request.
+ * VIEWS
+ * ─────
+ * QUEUE VIEW (default, non-LinkedIn tab)
+ *   Lists open contact_research_request rows (pending + in_progress), newest
+ *   first.  Each row shows requester name, when requested, target contact /
+ *   LinkedIn slug, fields_needed, status.  Clicking a row opens DETAIL VIEW.
  *
- *  DETAIL VIEW (per request):
- *    - Shows the linked contact's CURRENT data (from contact_master_masked).
- *    - Clearly marks each of email / mobile_no / linkedin_url / designation as
- *      FILLED or MISSING — answering "is the info already there?".
- *    - Edit form for the MISSING fields.
- *    - SAVE → writes to contact_master (re-derives linkedin_clean) AND marks
- *      the request done.  42501 (permission) errors surface a friendly message.
- *    - MARK NOT FOUND → marks the request status='not_found'.
- *    - BACK → returns to queue.
+ * DETAIL VIEW (per request / per contact)
+ *   Shows ONLY the 6 contact-detail fields — full_name, designation, email,
+ *   mobile_no, alt_mobile_no, linkedin_url — each clearly PRESENT or MISSING.
+ *   Inline fill/edit form for all 6 fields.
+ *   SAVE → updateContactDetails() + fulfillRequest() (mark done).
+ *   MARK NOT FOUND → markNotFound().
+ *   BACK → returns to queue.
+ *   NO associated records (leads / tasks / activity / per-project status) —
+ *   research team does not need them.
  *
- *  PROFILE CONTEXT (when active tab is a LinkedIn /in/ profile):
- *    - Shows current slug + any matching CRM contact + any open request for
- *      that slug.
- *    - Optional: pre-fill a "Raise request" form with the LinkedIn slug.
+ * PROFILE CONTEXT (active tab is a LinkedIn /in/ profile)
+ *   Background service worker detects tab.url slug (NO content script / DOM
+ *   reading — compliance).  Panel shows a banner: slug + CRM match.
+ *   Clicking "Open details" opens DETAIL VIEW for that contact.
  *
- *  RAISE REQUEST (optional affordance):
- *    - Insert a row into contact_research_request for the current slug.
- *
- * Backend dependency: contact_research_request table (REQUEST 3 / ALT-282 R3).
- * If it doesn't exist, the queue shows a friendly "backend not ready" state.
- * The contact write path is RLS-gated; until the research role/ALT-152 land,
- * saves may return 42501 — shown as a friendly permission error, never crash.
+ * DEFENSIVE throughout:
+ *   42P01 → "backend not ready" (table missing)
+ *   42501 → "permission — RESEARCH role/RLS not enabled yet"
+ *   Never crash.
  */
 
 import { signIn, signOut, getSessionAndProfile } from '@shared/auth';
 import { findContactDup } from '@shared/rpc';
-import { fetchContactDetail, fetchProjects } from '@shared/contactData';
+import { fetchContactDetail } from '@shared/contactData';
 import { normalizeLinkedinSlug } from '@shared/normalizeLinkedin';
 import { getSupabaseClient } from '@shared/supabaseClient';
-import type { BgMessage, UserProfile, ResearchRequest, ContactDetail } from '@shared/types';
+import {
+  listOpenRequests,
+  fulfillRequest,
+  markNotFound,
+  updateContactDetails,
+} from '@shared/researchRequests';
+import type {
+  BgMessage,
+  UserProfile,
+  ResearchRequest,
+  ContactDetail,
+} from '@shared/types';
+import type { OpenRequestRow } from '@shared/researchRequests';
 
 // ---------------------------------------------------------------------------
 // State
 // ---------------------------------------------------------------------------
 
 let currentProfile: UserProfile | null = null;
-let currentSlug: string | null = null;           // slug from active LinkedIn tab (or null)
-let openRequestId: number | null = null;         // request currently in detail view
-let detailContact: ContactDetail | null = null;  // contact loaded for detail view
-let detailRequest: ResearchRequest | null = null;// request loaded for detail view
+let currentSlug: string | null = null;    // slug from active LinkedIn tab (or null)
+let detailContact: ContactDetail | null = null;
+let detailRequest: OpenRequestRow | null = null;
 
 // ---------------------------------------------------------------------------
 // DOM refs
@@ -57,50 +67,41 @@ let detailRequest: ResearchRequest | null = null;// request loaded for detail vi
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 
-const loginSection     = $('login-section');
-const emailInput       = $<HTMLInputElement>('email-input');
-const passwordInput    = $<HTMLInputElement>('password-input');
-const loginBtn         = $<HTMLButtonElement>('login-btn');
-const loginError       = $('login-error');
+const loginSection  = $('login-section');
+const emailInput    = $<HTMLInputElement>('email-input');
+const passwordInput = $<HTMLInputElement>('password-input');
+const loginBtn      = $<HTMLButtonElement>('login-btn');
+const loginError    = $('login-error');
+const pwToggle      = $<HTMLButtonElement>('pw-toggle');
 
-const mainSection      = $('main-section');   // shown when authenticated
-const authStatus       = $('auth-status');
-const signoutBtn       = $<HTMLButtonElement>('signout-btn');
-const refreshBtn       = $<HTMLButtonElement>('refresh-btn');
+const mainSection   = $('main-section');
+const authStatus    = $('auth-status');
+const signoutBtn    = $<HTMLButtonElement>('signout-btn');
+const refreshBtn    = $<HTMLButtonElement>('refresh-btn');
 
-const queueView        = $('queue-view');
-const queueContent     = $('queue-content');
-const profileBanner    = $('profile-banner');  // shown when on a LinkedIn profile
+const profileBanner = $('profile-banner');
 
-const detailView       = $('detail-view');
-const detailContent    = $('detail-content');
-const backBtn          = $<HTMLButtonElement>('back-btn');
+const queueView     = $('queue-view');
+const queueContent  = $('queue-content');
 
-const raiseView        = $('raise-view');
-const raiseForm        = $('raise-form');
-const raiseLinkedin    = $<HTMLInputElement>('raise-linkedin');
-const raiseFields      = $<HTMLInputElement>('raise-fields');
-const raiseNotes       = $<HTMLTextAreaElement>('raise-notes');
-const raiseSubmitBtn   = $<HTMLButtonElement>('raise-submit-btn');
-const raiseCancelBtn   = $<HTMLButtonElement>('raise-cancel-btn');   // the "← Cancel" at top
-const raiseCancelBtn2  = $<HTMLButtonElement>('raise-cancel-btn2');  // the second cancel in btn-row
-const raiseMsg         = $('raise-msg');
+const detailView    = $('detail-view');
+const detailContent = $('detail-content');
+const backBtn       = $<HTMLButtonElement>('back-btn');
 
 // ---------------------------------------------------------------------------
-// View helpers (three top-level views: login / main / raise)
+// View helpers
 // ---------------------------------------------------------------------------
 
-type TopView = 'login' | 'main' | 'raise';
+type TopView = 'login' | 'main';
 type MainSubView = 'queue' | 'detail';
 
 function showTopView(view: TopView) {
   loginSection.classList.toggle('hidden', view !== 'login');
-  mainSection.classList.toggle('hidden', view !== 'main');
-  raiseView.classList.toggle('hidden', view !== 'raise');
+  mainSection.classList.toggle('hidden',  view !== 'main');
 }
 
 function showMainSub(sub: MainSubView) {
-  queueView.classList.toggle('hidden', sub !== 'queue');
+  queueView.classList.toggle('hidden',  sub !== 'queue');
   detailView.classList.toggle('hidden', sub !== 'detail');
 }
 
@@ -121,16 +122,16 @@ function setAuthUI(profile: UserProfile | null) {
 // ---------------------------------------------------------------------------
 
 loginBtn.addEventListener('click', async () => {
-  const email = emailInput.value.trim();
+  const email    = emailInput.value.trim();
   const password = passwordInput.value;
   if (!email || !password) { showLoginError('Please enter email and password.'); return; }
 
-  loginBtn.disabled = true;
+  loginBtn.disabled    = true;
   loginBtn.textContent = 'Signing in…';
   loginError.classList.add('hidden');
 
   const result = await signIn(email, password);
-  loginBtn.disabled = false;
+  loginBtn.disabled    = false;
   loginBtn.textContent = 'Sign in';
 
   if (!result.ok || !result.profile) {
@@ -146,7 +147,16 @@ loginBtn.addEventListener('click', async () => {
   queryCurrentTab();
 });
 
+// Allow Enter to submit from either field
+emailInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') loginBtn.click(); });
 passwordInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') loginBtn.click(); });
+
+// Show / hide password toggle
+pwToggle.addEventListener('click', () => {
+  const isPassword = passwordInput.type === 'password';
+  passwordInput.type = isPassword ? 'text' : 'password';
+  pwToggle.textContent = isPassword ? '🙈' : '👁';
+});
 
 function showLoginError(msg: string) {
   loginError.textContent = msg;
@@ -160,7 +170,7 @@ function showLoginError(msg: string) {
 signoutBtn.addEventListener('click', async () => {
   await signOut();
   currentProfile = null;
-  currentSlug = null;
+  currentSlug    = null;
   setAuthUI(null);
   showTopView('login');
 });
@@ -179,7 +189,6 @@ refreshBtn.addEventListener('click', async () => {
 // ---------------------------------------------------------------------------
 
 backBtn.addEventListener('click', async () => {
-  openRequestId = null;
   detailContact = null;
   detailRequest = null;
   showMainSub('queue');
@@ -187,7 +196,7 @@ backBtn.addEventListener('click', async () => {
 });
 
 // ---------------------------------------------------------------------------
-// Resolve a user_id (numeric bigint as text) to a display name
+// Resolve user_id → display name (cached)
 // ---------------------------------------------------------------------------
 
 const userNameCache = new Map<string, string>();
@@ -197,10 +206,10 @@ async function resolveUserName(userId: string | null): Promise<string> {
   if (userNameCache.has(userId)) return userNameCache.get(userId)!;
 
   const supabase = getSupabaseClient();
-  // profiles: id = auth.uid (uuid), user_id = bigint
+
   const { data } = await supabase
     .from('profiles')
-    .select('full_name, user_id')
+    .select('full_name')
     .eq('user_id', parseInt(userId, 10))
     .maybeSingle();
 
@@ -210,63 +219,53 @@ async function resolveUserName(userId: string | null): Promise<string> {
 }
 
 // ---------------------------------------------------------------------------
-// Research queue (contact_research_request table)
+// Research queue
 // ---------------------------------------------------------------------------
 
 async function loadQueue() {
   queueContent.innerHTML = spinner('Loading research queue…');
 
-  const supabase = getSupabaseClient();
+  const result = await listOpenRequests(50);
 
-  const { data, error } = await supabase
-    .from('contact_research_request')
-    .select(
-      'request_id, contact_id, company_id, linkedin_url, linkedin_clean, ' +
-      'project_id, fields_needed, status, notes, requested_by, requested_at'
-    )
-    .in('status', ['pending', 'in_progress'])
-    .order('requested_at', { ascending: false })
-    .limit(30);
-
-  if (error) {
-    if (error.code === '42P01' || error.message?.toLowerCase().includes('does not exist')) {
-      queueContent.innerHTML = backendNotReadyMsg();
+  if ('tag' in result) {
+    if (result.tag === 'backend_not_ready') {
+      console.warn('[AltLeads Research] Queue backend not ready (contact_research_request table missing)');
+      queueContent.innerHTML = infoMsg("This feature isn't switched on yet — contact your admin.");
+    } else if (result.tag === 'forbidden') {
+      console.warn('[AltLeads Research] Queue forbidden (42501 / role not enabled)');
+      queueContent.innerHTML = errorMsg("You don't have permission to view the queue yet — contact your admin.");
     } else {
-      queueContent.innerHTML = errorMsg(`Queue error: ${esc(error.message)}`);
+      console.error('[AltLeads Research] Queue error:', (result as { tag: string; message?: string }).message);
+      queueContent.innerHTML = errorMsg('Something went wrong loading the queue — please try again.');
     }
     return;
   }
 
-  const rows = (data ?? []) as ResearchRequest[];
-  if (rows.length === 0) {
-    queueContent.innerHTML = `
-      <div class="info-banner">
-        No pending research requests.
-        <div style="margin-top:6px;font-size:11px;color:#888;">
-          All caught up!  Raise a new request from a LinkedIn profile.
-        </div>
-      </div>`;
+  if (result.length === 0) {
+    queueContent.innerHTML = infoMsg('No pending research requests — all caught up!');
     return;
   }
 
-  // Resolve requester names asynchronously then re-render
+  // Resolve requester names, then render
   const enriched = await Promise.all(
-    rows.map(async (r) => ({
+    result.map(async (r) => ({
       ...r,
       requesterName: await resolveUserName(r.requested_by),
     }))
   );
 
-  let html = `<div class="section-label">Open requests (${enriched.length})</div>`;
+  let html = `<div class="section-title">Open requests (${enriched.length})</div>`;
   enriched.forEach((r) => {
-    const statusBadge = r.status === 'in_progress' ? 'badge-orange' : 'badge-gray';
-    const target = r.linkedin_clean ?? r.linkedin_url ?? (r.contact_id ? `Contact #${r.contact_id}` : '—');
+    const statusCls = r.status === 'in_progress' ? 'badge-orange' : 'badge-gray';
+    const target    = r.linkedin_clean ?? r.linkedin_url
+      ?? (r.contact_id ? `Contact #${r.contact_id}` : '—');
     const when = r.requested_at ? formatDate(r.requested_at) : '—';
+
     html += `
       <div class="queue-row" data-req="${r.request_id}">
         <div class="req-header">
           <span class="req-id">#${r.request_id}</span>
-          <span class="badge ${statusBadge}">${esc(r.status)}</span>
+          <span class="badge ${statusCls}">${esc(r.status)}</span>
         </div>
         <div class="req-target">${esc(target)}</div>
         <div class="req-meta">
@@ -281,305 +280,333 @@ async function loadQueue() {
 
   queueContent.innerHTML = html;
 
-  // Wire click handlers
   queueContent.querySelectorAll<HTMLElement>('.queue-row').forEach((el) => {
     el.addEventListener('click', () => {
       const reqId = parseInt(el.dataset['req'] ?? '0', 10);
-      if (reqId) openDetail(reqId);
+      if (reqId) {
+        const row = enriched.find(r => r.request_id === reqId) ?? null;
+        openDetailByRequestRow(reqId, row);
+      }
     });
   });
 }
 
 // ---------------------------------------------------------------------------
-// Detail view — open a request
+// Open detail view from a queue row
 // ---------------------------------------------------------------------------
 
-async function openDetail(requestId: number) {
-  openRequestId = requestId;
+async function openDetailByRequestRow(requestId: number, row: OpenRequestRow | null) {
   showMainSub('detail');
-  detailContent.innerHTML = spinner('Loading request…');
+  detailContent.innerHTML = spinner('Loading contact…');
 
-  const supabase = getSupabaseClient();
+  // If the row wasn't passed (e.g. called from banner), re-fetch it
+  if (!row) {
+    const supabase = getSupabaseClient();
+    const { data, error } = await supabase
+      .from('contact_research_request')
+      .select(
+        'request_id, contact_id, company_id, linkedin_url, linkedin_clean, ' +
+        'project_id, fields_needed, status, notes, requested_by, requested_at'
+      )
+      .eq('request_id', requestId)
+      .maybeSingle();
 
-  // 1. Load the research request
-  const { data: reqData, error: reqErr } = await supabase
-    .from('contact_research_request')
-    .select('*')
-    .eq('request_id', requestId)
-    .maybeSingle();
-
-  if (reqErr || !reqData) {
-    detailContent.innerHTML = errorMsg(
-      reqErr?.code === '42P01'
-        ? backendNotReadyMsg()
-        : `Failed to load request: ${esc(reqErr?.message ?? 'Not found')}`
-    );
-    return;
+    if (error || !data) {
+      detailContent.innerHTML = errorMsg(
+        error?.code === '42P01'
+          ? 'Backend not ready (contact_research_request table not yet deployed).'
+          : `Failed to load request: ${esc(error?.message ?? 'Not found')}`
+      );
+      return;
+    }
+    row = data as OpenRequestRow;
   }
 
-  detailRequest = reqData as ResearchRequest;
+  detailRequest = row;
 
-  // 2. Load the linked contact (if any)
-  detailContact = detailRequest.contact_id
-    ? await fetchContactDetail(detailRequest.contact_id)
+  // Load the linked contact detail
+  detailContact = row.contact_id
+    ? await fetchContactDetail(row.contact_id)
     : null;
 
   renderDetailView();
 }
 
+// Open detail view directly from a LinkedIn profile match (no existing request)
+async function openDetailByContact(contactId: number) {
+  showMainSub('detail');
+  detailContent.innerHTML = spinner('Loading contact…');
+  detailRequest = null;
+  detailContact = await fetchContactDetail(contactId);
+  renderDetailView();
+}
+
+// ---------------------------------------------------------------------------
+// Detail view renderer — CONTACT-DETAILS-ONLY (6 fields)
+// ---------------------------------------------------------------------------
+
 function renderDetailView() {
-  if (!detailRequest) return;
-  const req = detailRequest;
   const contact = detailContact;
+  const req     = detailRequest;
 
-  // --- Section 1: request summary ---
-  const requesterDisplay = req.requested_by ? `User ${req.requested_by}` : '—';
-  const when = req.requested_at ? formatDate(req.requested_at) : '—';
-  const statusBadge = statusBadgeClass(req.status);
+  let html = '';
 
-  let html = `
-    <div class="detail-card">
-      <div class="detail-header">
-        Request #${req.request_id}
-        <span class="badge ${statusBadge}">${esc(req.status)}</span>
-      </div>
-      <div class="field-row">
-        <span class="label">Requested by</span>
-        <span class="value">${esc(requesterDisplay)}</span>
-      </div>
-      <div class="field-row">
-        <span class="label">When</span>
-        <span class="value">${esc(when)}</span>
-      </div>
-      <div class="field-row">
-        <span class="label">Fields needed</span>
-        <span class="value">${esc(req.fields_needed ?? '—')}</span>
-      </div>
-      ${req.notes ? `
+  // ---- Request summary (if opened from queue) ----
+  if (req) {
+    const statusCls = statusBadgeClass(req.status);
+    const when      = req.requested_at ? formatDate(req.requested_at) : '—';
+    html += `
+      <div class="contact-card">
+        <div class="card-header">
+          Request #${req.request_id}
+          <span class="badge ${statusCls}">${esc(req.status)}</span>
+        </div>
+        <div class="field-row">
+          <span class="label">Requested by</span>
+          <span class="value">${esc(req.requested_by ? `User ${req.requested_by}` : '—')}</span>
+        </div>
+        <div class="field-row">
+          <span class="label">When</span>
+          <span class="value">${esc(when)}</span>
+        </div>
+        <div class="field-row">
+          <span class="label">Fields needed</span>
+          <span class="value">${esc(req.fields_needed ?? '—')}</span>
+        </div>
+        ${req.notes ? `
         <div class="field-row">
           <span class="label">Notes</span>
           <span class="value">${esc(req.notes)}</span>
         </div>` : ''}
-      <div class="field-row">
-        <span class="label">LinkedIn</span>
-        <span class="value">${esc(req.linkedin_url ?? req.linkedin_clean ?? '—')}</span>
-      </div>
-    </div>
-  `;
-
-  // --- Section 2: "Is the info already there?" ---
-  html += `<div class="section-label">Contact data check</div>`;
-
-  if (!contact) {
-    html += `
-      <div class="info-banner">
-        No CRM contact linked to this request.
-        ${req.contact_id ? `(Contact #${req.contact_id} not found or not accessible)` : 'No contact_id set on this request.'}
-      </div>
-    `;
-  } else {
-    // Show which fields are filled vs missing
-    html += `
-      <div class="detail-card">
-        <div class="field-row">
-          <span class="label">Name</span>
-          <span class="value">${esc(contact.full_name)}</span>
-        </div>
-        <div class="field-row">
-          <span class="label">Company</span>
-          <span class="value">${esc(contact.company_name ?? '—')}</span>
-        </div>
-      </div>
-      <div class="section-label">Field status</div>
-      <div class="detail-card">
-        ${fieldStatusRow('Email', contact.email)}
-        ${fieldStatusRow('Mobile', contact.mobile_no)}
-        ${fieldStatusRow('LinkedIn URL', contact.linkedin_url)}
-        ${fieldStatusRow('Designation', contact.designation)}
       </div>
     `;
   }
 
-  // --- Section 3: edit form for missing fields ---
-  if (req.status !== 'done' && req.status !== 'not_found') {
-    const emailVal  = contact?.email ?? '';
-    const mobileVal = contact?.mobile_no ?? '';
-    const liVal     = contact?.linkedin_url ?? req.linkedin_url ?? '';
-    const desigVal  = contact?.designation ?? '';
+  // ---- No contact linked ----
+  if (!contact) {
+    html += `<div class="info-msg">No CRM contact linked to this request.</div>`;
 
-    if (contact) {
+    if (req && req.status !== 'done' && req.status !== 'not_found') {
       html += `
-        <div class="section-label">Fill missing fields</div>
-        <div class="detail-card" id="fill-form">
-          <div id="fill-msg" class="hidden"></div>
-          <div class="form-group">
-            <label>Email ${contact.email ? '<span class="filled-badge">filled</span>' : '<span class="missing-badge">missing</span>'}</label>
-            <input type="email" id="fill-email" value="${esc(emailVal)}"
-              placeholder="work@company.com" class="fill-input" />
-          </div>
-          <div class="form-group">
-            <label>Mobile ${contact.mobile_no ? '<span class="filled-badge">filled</span>' : '<span class="missing-badge">missing</span>'}</label>
-            <input type="tel" id="fill-mobile" value="${esc(mobileVal)}"
-              placeholder="+91 98765 43210" class="fill-input" />
-          </div>
-          <div class="form-group">
-            <label>LinkedIn URL ${contact.linkedin_url ? '<span class="filled-badge">filled</span>' : '<span class="missing-badge">missing</span>'}</label>
-            <input type="url" id="fill-linkedin" value="${esc(liVal)}"
-              placeholder="https://www.linkedin.com/in/slug" class="fill-input" />
-          </div>
-          <div class="form-group">
-            <label>Designation ${contact.designation ? '<span class="filled-badge">filled</span>' : '<span class="missing-badge">missing</span>'}</label>
-            <input type="text" id="fill-designation" value="${esc(desigVal)}"
-              placeholder="e.g. Head of Procurement" class="fill-input" />
-          </div>
-          <div class="btn-row">
-            <button id="save-btn" class="btn-primary">Save &amp; mark done</button>
-            <button id="not-found-btn" class="btn-secondary">Mark not found</button>
-          </div>
+        <div class="btn-row">
+          <button id="not-found-btn" class="btn-secondary">Mark not found</button>
         </div>
-      `;
-    } else {
-      // No contact linked — still allow raising a new request or marking not_found
-      html += `
-        <div class="section-label">Actions</div>
-        <div class="detail-card" id="fill-form">
-          <div id="fill-msg" class="hidden"></div>
-          <p style="font-size:12px;color:#888;margin-bottom:10px;">
-            No contact is linked to this request.  Mark as not found, or link a contact manually in the CRM.
-          </p>
-          <div class="btn-row">
-            <button id="not-found-btn" class="btn-secondary">Mark not found</button>
-          </div>
-        </div>
+        <div id="fill-msg" style="display:none;"></div>
       `;
     }
+    detailContent.innerHTML = html;
+    wireDetailButtons(req, null);
+    return;
+  }
+
+  // ---- Contact name + company header card ----
+  html += `<div class="section-title">Contact details</div>`;
+  html += `<div class="contact-card">`;
+  html += `
+    <div class="name">
+      ${esc(contact.full_name)}
+      <span class="badge badge-blue">In CRM</span>
+    </div>
+  `;
+  if (contact.company_name) {
+    html += `<div class="company">${esc(contact.company_name)}</div>`;
+  }
+  html += `</div>`;
+
+  // ---- Field status grid (PRESENT / MISSING) for all 6 fields ----
+  html += `<div class="contact-card">`;
+  html += fieldStatusRow('Name',        contact.full_name);
+  html += fieldStatusRow('Designation', contact.designation);
+  html += fieldStatusRow('Email',       contact.email);
+  html += fieldStatusRow('Mobile',      contact.mobile_no);
+  html += fieldStatusRow('Alt mobile',  contact.alt_mobile_no);
+  html += fieldStatusRow('LinkedIn',    contact.linkedin_url);
+  html += `</div>`;
+
+  // ---- Fill / edit form (shown unless request is already closed) ----
+  const isClosed = req && (req.status === 'done' || req.status === 'not_found');
+
+  if (!isClosed) {
+    html += `<div class="section-title">Fill / edit details</div>`;
+    html += `
+      <div class="contact-card" id="fill-form">
+        <div id="fill-msg" style="display:none;"></div>
+        <div class="form-group">
+          <label>Full name
+            ${contact.full_name
+              ? '<span class="filled-badge">present</span>'
+              : '<span class="missing-badge">missing</span>'}
+          </label>
+          <input type="text" id="fill-name"
+            value="${esc(contact.full_name ?? '')}"
+            placeholder="Full name" class="fill-input" />
+        </div>
+        <div class="form-group">
+          <label>Designation
+            ${contact.designation
+              ? '<span class="filled-badge">present</span>'
+              : '<span class="missing-badge">missing</span>'}
+          </label>
+          <input type="text" id="fill-designation"
+            value="${esc(contact.designation ?? '')}"
+            placeholder="e.g. Head of Procurement" class="fill-input" />
+        </div>
+        <div class="form-group">
+          <label>Email
+            ${contact.email
+              ? '<span class="filled-badge">present</span>'
+              : '<span class="missing-badge">missing</span>'}
+          </label>
+          <input type="email" id="fill-email"
+            value="${esc(contact.email ?? '')}"
+            placeholder="work@company.com" class="fill-input" />
+        </div>
+        <div class="form-group">
+          <label>Mobile
+            ${contact.mobile_no
+              ? '<span class="filled-badge">present</span>'
+              : '<span class="missing-badge">missing</span>'}
+          </label>
+          <input type="tel" id="fill-mobile"
+            value="${esc(contact.mobile_no ?? '')}"
+            placeholder="+91 98765 43210" class="fill-input" />
+        </div>
+        <div class="form-group">
+          <label>Alt mobile
+            ${contact.alt_mobile_no
+              ? '<span class="filled-badge">present</span>'
+              : '<span class="missing-badge">missing</span>'}
+          </label>
+          <input type="tel" id="fill-alt-mobile"
+            value="${esc(contact.alt_mobile_no ?? '')}"
+            placeholder="+91 98765 43210" class="fill-input" />
+        </div>
+        <div class="form-group">
+          <label>LinkedIn URL
+            ${contact.linkedin_url
+              ? '<span class="filled-badge">present</span>'
+              : '<span class="missing-badge">missing</span>'}
+          </label>
+          <input type="url" id="fill-linkedin"
+            value="${esc(contact.linkedin_url ?? (req?.linkedin_url ?? ''))}"
+            placeholder="https://www.linkedin.com/in/slug" class="fill-input" />
+        </div>
+        <div class="btn-row">
+          <button id="save-btn" class="btn-primary">Save${req ? ' &amp; mark done' : ''}</button>
+          ${req ? '<button id="not-found-btn" class="btn-secondary">Mark not found</button>' : ''}
+        </div>
+      </div>
+    `;
   } else {
     // Closed request — show final status
     html += `
-      <div class="info-banner" style="background:#f0fdf4;border-color:#bbf7d0;color:#16a34a;">
-        This request is ${req.status}.
-        ${req.fulfilled_at ? `Fulfilled ${formatDate(req.fulfilled_at)}.` : ''}
+      <div class="info-msg info-msg-green">
+        This request is <strong>${esc(req!.status)}</strong>.
       </div>
     `;
   }
 
   detailContent.innerHTML = html;
+  wireDetailButtons(req, contact);
+}
 
-  // Wire save and not-found buttons (they may not exist for closed requests)
-  const saveBtn = document.getElementById('save-btn');
-  const notFoundBtn = document.getElementById('not-found-btn');
+// ---------------------------------------------------------------------------
+// Wire save / not-found buttons
+// ---------------------------------------------------------------------------
 
-  if (saveBtn) {
-    saveBtn.addEventListener('click', () => handleSave(req));
+function wireDetailButtons(req: OpenRequestRow | null, contact: ContactDetail | null) {
+  const saveBtn     = document.getElementById('save-btn')      as HTMLButtonElement | null;
+  const notFoundBtn = document.getElementById('not-found-btn') as HTMLButtonElement | null;
+
+  if (saveBtn && contact) {
+    saveBtn.addEventListener('click', () => handleSave(req, contact));
   }
-  if (notFoundBtn) {
+  if (notFoundBtn && req) {
     notFoundBtn.addEventListener('click', () => handleNotFound(req));
   }
 }
 
 // ---------------------------------------------------------------------------
-// Save — fill contact fields + mark request done
+// Save — write contact fields + optionally mark request done
 // ---------------------------------------------------------------------------
 
-async function handleSave(req: ResearchRequest) {
+async function handleSave(req: OpenRequestRow | null, contact: ContactDetail) {
   if (!currentProfile) return;
+
   const saveBtn = document.getElementById('save-btn') as HTMLButtonElement | null;
-  const fillMsg = document.getElementById('fill-msg');
   if (saveBtn) { saveBtn.disabled = true; saveBtn.textContent = 'Saving…'; }
-  if (fillMsg) { fillMsg.className = 'hidden'; fillMsg.textContent = ''; }
+  setFillMsg('');
 
-  const emailEl = document.getElementById('fill-email') as HTMLInputElement | null;
-  const mobileEl = document.getElementById('fill-mobile') as HTMLInputElement | null;
-  const liEl = document.getElementById('fill-linkedin') as HTMLInputElement | null;
-  const desigEl = document.getElementById('fill-designation') as HTMLInputElement | null;
+  const nameVal      = (document.getElementById('fill-name')       as HTMLInputElement | null)?.value.trim() || null;
+  const desigVal     = (document.getElementById('fill-designation') as HTMLInputElement | null)?.value.trim() || null;
+  const emailVal     = (document.getElementById('fill-email')       as HTMLInputElement | null)?.value.trim() || null;
+  const mobileVal    = (document.getElementById('fill-mobile')      as HTMLInputElement | null)?.value.trim() || null;
+  const altMobileVal = (document.getElementById('fill-alt-mobile')  as HTMLInputElement | null)?.value.trim() || null;
+  const liVal        = (document.getElementById('fill-linkedin')    as HTMLInputElement | null)?.value.trim() || null;
 
-  const email = emailEl?.value.trim() || null;
-  const mobile = mobileEl?.value.trim() || null;
-  const linkedinUrl = liEl?.value.trim() || null;
-  const designation = desigEl?.value.trim() || null;
-
-  const supabase = getSupabaseClient();
   const userId = String(currentProfile.user_id);
-  const now = new Date().toISOString();
 
-  // --- 1. Update contact_master if we have a linked contact ---
-  if (req.contact_id) {
-    // Build only the fields we want to write (avoid overwriting filled fields with empty strings)
-    type ContactUpdate = {
-      updated_by: string;
-      updated_date: string;
-      email?: string;
-      mobile_no?: string;
-      linkedin_url?: string;
-      linkedin_clean?: string;
-      designation?: string;
-    };
-    const updates: ContactUpdate = {
-      updated_by: userId,
-      updated_date: now,
-    };
-    if (email) updates.email = email;
-    if (mobile) updates.mobile_no = mobile;
-    if (linkedinUrl) {
-      updates.linkedin_url = linkedinUrl;
-      // Re-derive linkedin_clean using the spec-compliant normalizer
-      const slug = normalizeLinkedinSlug(linkedinUrl);
-      if (slug) updates.linkedin_clean = slug;
-    }
-    if (designation) updates.designation = designation;
+  // 1. Write contact fields (only pass non-empty values)
+  const contactResult = await updateContactDetails(
+    contact.contact_id,
+    {
+      full_name:     nameVal,
+      designation:   desigVal,
+      email:         emailVal,
+      mobile_no:     mobileVal,
+      alt_mobile_no: altMobileVal,
+      linkedin_url:  liVal,
+    },
+    userId
+  );
 
-    const { error: contactErr } = await supabase
-      .from('contact_master')
-      .update(updates)
-      .eq('contact_id', req.contact_id);
-
-    if (contactErr) {
-      const userMsg = contactErr.code === '42501'
-        ? 'Permission denied — your role cannot edit this contact yet (research write-path not unlocked; see ALT-152). The request status was NOT changed.'
-        : `Failed to update contact: ${contactErr.message}`;
-      showFillMsg(userMsg, 'error');
-      if (saveBtn) { saveBtn.disabled = false; saveBtn.textContent = 'Save & mark done'; }
-      return;
-    }
-  }
-
-  // --- 2. Mark the research request as done ---
-  const { error: reqErr } = await supabase
-    .from('contact_research_request')
-    .update({
-      status: 'done',
-      fulfilled_by: userId,
-      fulfilled_at: now,
-      updated_by: userId,
-      updated_date: now,
-    })
-    .eq('request_id', req.request_id);
-
-  if (reqErr) {
-    if (reqErr.code === '42P01') {
-      showFillMsg(backendNotReadyMsg(), 'error');
-    } else if (reqErr.code === '42501') {
-      showFillMsg('Permission denied — your role cannot update research requests yet. Contact your admin.', 'error');
-    } else {
-      showFillMsg(`Failed to update request: ${reqErr.message}`, 'error');
-    }
-    if (saveBtn) { saveBtn.disabled = false; saveBtn.textContent = 'Save & mark done'; }
+  if ('tag' in contactResult) {
+    console.error('[AltLeads Research] updateContactDetails error:', contactResult);
+    const msg = contactResult.tag === 'forbidden'
+      ? "You don't have permission to edit contacts yet — contact your admin. The request was not changed."
+      : contactResult.tag === 'backend_not_ready'
+        ? "This feature isn't switched on yet — contact your admin."
+        : 'Something went wrong saving the contact — please try again.';
+    setFillMsg(msg, 'error');
+    if (saveBtn) { saveBtn.disabled = false; saveBtn.textContent = 'Save' + (req ? ' & mark done' : ''); }
     return;
   }
 
-  // Success — update local state and re-render
-  if (detailRequest) {
-    detailRequest = { ...detailRequest, status: 'done', fulfilled_by: userId, fulfilled_at: now };
-    if (detailContact && (email || mobile || linkedinUrl || designation)) {
-      detailContact = {
-        ...detailContact,
-        email: email ?? detailContact.email,
-        mobile_no: mobile ?? detailContact.mobile_no,
-        linkedin_url: linkedinUrl ?? detailContact.linkedin_url,
-        designation: designation ?? detailContact.designation,
-      };
+  // 2. Mark the request done (if opened from a queue request)
+  if (req) {
+    const reqResult = await fulfillRequest(req.request_id, userId);
+    if ('tag' in reqResult) {
+      console.error('[AltLeads Research] fulfillRequest error:', reqResult);
+      const msg = reqResult.tag === 'forbidden'
+        ? "Details saved ✓ — but couldn't close the request (permission not yet set up). Please contact your admin."
+        : reqResult.tag === 'backend_not_ready'
+          ? "Details saved ✓ — but couldn't close the request (feature not switched on yet)."
+          : "Details saved ✓ — but the request status couldn't be updated. Please try again.";
+      setFillMsg(msg, 'error');
+      if (saveBtn) { saveBtn.disabled = false; saveBtn.textContent = 'Save & mark done'; }
+      return;
     }
+    detailRequest = { ...req, status: 'done' };
   }
+
+  // 3. Update local contact state and re-render with success confirmation
+  detailContact = {
+    ...contact,
+    full_name:     nameVal     ?? contact.full_name,
+    designation:   desigVal    ?? contact.designation,
+    email:         emailVal    ?? contact.email,
+    mobile_no:     mobileVal   ?? contact.mobile_no,
+    alt_mobile_no: altMobileVal ?? contact.alt_mobile_no,
+    linkedin_url:  liVal       ?? contact.linkedin_url,
+    linkedin_clean: liVal
+      ? (normalizeLinkedinSlug(liVal) ?? contact.linkedin_clean)
+      : contact.linkedin_clean,
+  };
+
+  // Show "Saved ✓" banner at the top of detailContent before re-render
+  detailContent.innerHTML = `<div class="save-success-banner">Saved ✓</div>` + detailContent.innerHTML;
+  // Brief pause so the confirmation registers, then re-render the updated state
+  await new Promise<void>((r) => setTimeout(r, 800));
   renderDetailView();
 }
 
@@ -587,60 +614,46 @@ async function handleSave(req: ResearchRequest) {
 // Mark not found
 // ---------------------------------------------------------------------------
 
-async function handleNotFound(req: ResearchRequest) {
+async function handleNotFound(req: OpenRequestRow) {
   if (!currentProfile) return;
+
   const notFoundBtn = document.getElementById('not-found-btn') as HTMLButtonElement | null;
   if (notFoundBtn) { notFoundBtn.disabled = true; notFoundBtn.textContent = 'Saving…'; }
 
-  const supabase = getSupabaseClient();
-  const userId = String(currentProfile.user_id);
-  const now = new Date().toISOString();
+  const result = await markNotFound(req.request_id, String(currentProfile.user_id));
 
-  const { error } = await supabase
-    .from('contact_research_request')
-    .update({
-      status: 'not_found',
-      fulfilled_by: userId,
-      fulfilled_at: now,
-      updated_by: userId,
-      updated_date: now,
-    })
-    .eq('request_id', req.request_id);
-
-  if (error) {
-    if (error.code === '42P01') {
-      showFillMsg(backendNotReadyMsg(), 'error');
-    } else if (error.code === '42501') {
-      showFillMsg('Permission denied — cannot update research requests yet.', 'error');
-    } else {
-      showFillMsg(`Error: ${error.message}`, 'error');
-    }
+  if ('tag' in result) {
+    console.error('[AltLeads Research] markNotFound error:', result);
+    const msg = result.tag === 'forbidden'
+      ? "You don't have permission to do this yet — contact your admin."
+      : result.tag === 'backend_not_ready'
+        ? "This feature isn't switched on yet — contact your admin."
+        : 'Something went wrong — please try again.';
+    setFillMsg(msg, 'error');
     if (notFoundBtn) { notFoundBtn.disabled = false; notFoundBtn.textContent = 'Mark not found'; }
     return;
   }
 
-  if (detailRequest) {
-    detailRequest = { ...detailRequest, status: 'not_found', fulfilled_by: userId, fulfilled_at: now };
-  }
+  detailRequest = { ...req, status: 'not_found' };
   renderDetailView();
 }
 
-function showFillMsg(msg: string, type: 'error' | 'info') {
+function setFillMsg(msg: string, type: 'error' | 'info' | '' = '') {
   const el = document.getElementById('fill-msg');
   if (!el) return;
   el.textContent = msg;
-  el.className = type === 'error' ? 'msg-error' : 'msg-info';
+  el.className   = type === 'error' ? 'msg-error' : type === 'info' ? 'msg-info' : '';
+  el.style.display = msg ? 'block' : 'none';
 }
 
 // ---------------------------------------------------------------------------
-// Profile context (shown as a banner when active tab is a LinkedIn /in/ URL)
+// Profile banner (active tab = LinkedIn /in/ URL)
 // ---------------------------------------------------------------------------
 
 async function renderProfileBanner(slug: string) {
   profileBanner.classList.remove('hidden');
 
-  // Lazy lookup
-  let bannerHtml = `
+  let html = `
     <div class="profile-banner-inner">
       <span class="banner-slug">LinkedIn: <strong>${esc(slug)}</strong></span>
   `;
@@ -648,36 +661,27 @@ async function renderProfileBanner(slug: string) {
   try {
     const contact = await findContactDup(slug);
     if (contact) {
-      bannerHtml += `<span class="banner-match">Found: ${esc(contact.full_name)} @ ${esc(contact.company_name ?? '—')}</span>`;
+      html += `
+        <span class="banner-match">${esc(contact.full_name)} @ ${esc(contact.company_name ?? '—')}</span>
+        <button id="banner-open-btn" class="btn-raise"
+          data-contact="${contact.contact_id}">Open details</button>
+      `;
     } else {
-      bannerHtml += `<span class="banner-no-match">Not in CRM</span>`;
-    }
-
-    // Check if there's already an open request for this slug
-    const supabase = getSupabaseClient();
-    const { data: existingReq } = await supabase
-      .from('contact_research_request')
-      .select('request_id, status')
-      .eq('linkedin_clean', slug)
-      .in('status', ['pending', 'in_progress'])
-      .maybeSingle()
-      .catch(() => ({ data: null }));
-
-    if (existingReq) {
-      bannerHtml += `<span class="banner-req">Open request #${(existingReq as { request_id: number }).request_id}</span>`;
-    } else {
-      bannerHtml += `<button id="raise-from-banner" class="btn-raise">+ Raise request</button>`;
+      html += `<span class="banner-no-match">Not in CRM</span>`;
     }
   } catch {
-    // Degrade silently — the banner still shows the slug
+    // Degrade silently
   }
 
-  bannerHtml += '</div>';
-  profileBanner.innerHTML = bannerHtml;
+  html += '</div>';
+  profileBanner.innerHTML = html;
 
-  const raiseBtn = document.getElementById('raise-from-banner');
-  if (raiseBtn) {
-    raiseBtn.addEventListener('click', () => openRaiseForm(slug));
+  const openBtn = document.getElementById('banner-open-btn') as HTMLButtonElement | null;
+  if (openBtn) {
+    openBtn.addEventListener('click', () => {
+      const cid = parseInt(openBtn.dataset['contact'] ?? '0', 10);
+      if (cid) openDetailByContact(cid);
+    });
   }
 }
 
@@ -687,94 +691,11 @@ function clearProfileBanner() {
 }
 
 // ---------------------------------------------------------------------------
-// Raise request form
-// ---------------------------------------------------------------------------
-
-function openRaiseForm(prefillSlug?: string) {
-  raiseLinkedin.value = prefillSlug
-    ? `https://www.linkedin.com/in/${prefillSlug}`
-    : '';
-  raiseFields.value = '';
-  raiseNotes.value = '';
-  raiseMsg.className = 'hidden';
-  raiseMsg.textContent = '';
-  showTopView('raise');
-}
-
-raiseCancelBtn.addEventListener('click', () => {
-  showTopView('main');
-  showMainSub('queue');
-});
-
-raiseCancelBtn2.addEventListener('click', () => {
-  showTopView('main');
-  showMainSub('queue');
-});
-
-raiseSubmitBtn.addEventListener('click', async () => {
-  if (!currentProfile) return;
-
-  const url = raiseLinkedin.value.trim();
-  const fields = raiseFields.value.trim();
-  const notes = raiseNotes.value.trim();
-
-  if (!url && !fields) {
-    raiseMsg.textContent = 'Please enter at least a LinkedIn URL or fields needed.';
-    raiseMsg.className = 'msg-error';
-    return;
-  }
-
-  raiseSubmitBtn.disabled = true;
-  raiseSubmitBtn.textContent = 'Submitting…';
-  raiseMsg.className = 'hidden';
-
-  const slug = normalizeLinkedinSlug(url) || null;
-  const supabase = getSupabaseClient();
-  const userId = String(currentProfile.user_id);
-  const now = new Date().toISOString();
-
-  const { error } = await supabase
-    .from('contact_research_request')
-    .insert({
-      linkedin_url: url || null,
-      linkedin_clean: slug,
-      fields_needed: fields || null,
-      notes: notes || null,
-      requested_by: userId,
-      requested_at: now,
-      status: 'pending',
-      created_by: userId,
-      created_date: now,
-    });
-
-  raiseSubmitBtn.disabled = false;
-  raiseSubmitBtn.textContent = 'Submit request';
-
-  if (error) {
-    if (error.code === '42P01') {
-      raiseMsg.textContent = 'Backend not ready — ask the CRM team to apply REQUEST 3 (contact_research_request table).';
-    } else if (error.code === '42501') {
-      raiseMsg.textContent = 'Permission denied — your role cannot raise research requests yet.';
-    } else {
-      raiseMsg.textContent = `Error: ${error.message}`;
-    }
-    raiseMsg.className = 'msg-error';
-    return;
-  }
-
-  // Success — return to queue
-  showTopView('main');
-  showMainSub('queue');
-  await loadQueue();
-});
-
-// ---------------------------------------------------------------------------
 // Background messages (URL watcher)
 // ---------------------------------------------------------------------------
 
 chrome.runtime.onMessage.addListener((message: BgMessage) => {
   if (!currentProfile) return;
-
   if (message.type === 'TAB_URL') {
     currentSlug = message.slug;
     renderProfileBanner(message.slug);
@@ -826,11 +747,11 @@ function spinner(label: string): string {
 }
 
 function errorMsg(msg: string): string {
-  return `<div class="msg-error">${typeof msg === 'string' ? esc(msg) : msg}</div>`;
+  return `<div class="msg-error">${esc(msg)}</div>`;
 }
 
-function backendNotReadyMsg(): string {
-  return 'Backend not ready — ask the CRM team to apply REQUEST 3 (contact_research_request table, ALT-282 R3).';
+function infoMsg(msg: string): string {
+  return `<div class="info-msg">${esc(msg)}</div>`;
 }
 
 function fieldStatusRow(label: string, value: string | null | undefined): string {
@@ -840,7 +761,7 @@ function fieldStatusRow(label: string, value: string | null | undefined): string
       <span class="label">${esc(label)}</span>
       <span class="value">
         ${filled
-          ? `<span class="filled-badge">filled</span> <span style="color:#374151;">${esc(value!)}</span>`
+          ? `<span class="filled-badge">present</span> <span style="color:#374151;">${esc(value!)}</span>`
           : `<span class="missing-badge">missing</span>`}
       </span>
     </div>`;
@@ -856,9 +777,8 @@ function statusBadgeClass(status: string): string {
   }
 }
 
-// Suppress TS unused import warning — fetchProjects is a shared helper available
-// for future project-scoped queue filtering.
-void fetchProjects;
+// Suppress unused type warning — ResearchRequest is used as a type import for consumers
+void (null as unknown as ResearchRequest);
 
 // ---------------------------------------------------------------------------
 // Boot
@@ -876,5 +796,7 @@ void fetchProjects;
   } else {
     setAuthUI(null);
     showTopView('login');
+    // Autofocus email field so user can start typing immediately
+    emailInput.focus();
   }
 })();

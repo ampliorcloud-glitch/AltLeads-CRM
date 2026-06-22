@@ -56,18 +56,25 @@ function postToPanel(msg: BgMessage): void {
 
 // ---------------------------------------------------------------------------
 // 3. Listen for SPA navigation on the active tab (URL change without reload)
+//    Debounced 300ms so rapid LinkedIn SPA navigations don't thrash.
 // ---------------------------------------------------------------------------
 
-chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
+let debounceTimer: ReturnType<typeof setTimeout> | null = null;
+
+chrome.tabs.onUpdated.addListener((tabId, changeInfo) => {
   // Only act when the URL changes on the active tab.
   // changeInfo.url fires on SPA pushState — exactly what we need for LinkedIn.
   if (!changeInfo.url) return;
 
-  chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
-    if (tabs[0]?.id === tabId) {
-      processTabUrl(changeInfo.url);
-    }
-  });
+  if (debounceTimer !== null) clearTimeout(debounceTimer);
+  debounceTimer = setTimeout(() => {
+    debounceTimer = null;
+    chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+      if (tabs[0]?.id === tabId) {
+        processTabUrl(changeInfo.url);
+      }
+    });
+  }, 300);
 });
 
 // ---------------------------------------------------------------------------

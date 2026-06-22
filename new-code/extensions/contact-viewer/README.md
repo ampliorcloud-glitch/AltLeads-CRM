@@ -53,6 +53,20 @@ Shared code from `../shared/` is aliased as `@shared/*` and bundled in.
 
 ---
 
+## Request / Re-request contact details (Phase 1.5)
+
+On the **owned contact card**, below the contact detail fields, a "Research request" section now appears:
+
+- **Missing fields detected:** the section computes which of `email`, `mobile`, `LinkedIn URL`, and `designation` are absent and shows them (e.g. "Missing: email, mobile").
+- **No open request → "Request contact details" button:** clicking it creates a `contact_research_request` row with `status='pending'`, `requested_by` = the logged-in user's `profiles.user_id`, and `fields_needed` set to the missing fields. On success, the section shows "Requested ✓ — pending with research team". If nothing is missing, the button reads "Request re-verification" and requests all detail fields.
+- **Open request exists → "Requested X ago · pending/in progress"** + a secondary **"Re-request"** button that re-opens the row (`status='pending'`, `requested_at=now()`).
+- **Degraded states** (never crash):
+  - *Backend not ready* (Postgres 42P01 — table not yet created): "Research queue not set up yet."
+  - *Permission error* (RLS 42501): "Permission denied — cannot submit request."
+  - *Network / other error*: "Request failed — please try again."
+
+The only write this extension performs is to `contact_research_request`. It never writes to `contact_master`.
+
 ## Known TODOs
 
 - **find_contact_for_panel RPC (ALT-282):** The non-owned card's enriched fields (company status, last activity, owner name) require this RPC on the CRM side. Until it is deployed, the extension falls back to `find_contact_dup` and shows name + company only.

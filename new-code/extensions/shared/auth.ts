@@ -37,12 +37,23 @@ export async function signIn(email: string, password: string): Promise<SignInRes
 
   const { data, error } = await supabase.auth.signInWithPassword({ email, password });
   if (error || !data.user) {
-    return { ok: false, error: error?.message ?? 'Sign-in failed' };
+    // Map raw Supabase errors to friendly copy; keep technical detail in console
+    console.error('[AltLeads] signIn error:', error?.message);
+    const raw = error?.message ?? '';
+    let friendly: string;
+    if (raw.toLowerCase().includes('invalid login credentials') || raw.toLowerCase().includes('invalid email or password')) {
+      friendly = 'Wrong email or password — please try again.';
+    } else if (raw.toLowerCase().includes('network') || raw.toLowerCase().includes('fetch') || raw === '') {
+      friendly = "Couldn't reach the server — check your connection and retry.";
+    } else {
+      friendly = "Couldn't reach the server — check your connection and retry.";
+    }
+    return { ok: false, error: friendly };
   }
 
   const profile = await loadProfile();
   if (!profile) {
-    return { ok: false, error: 'Signed in but CRM profile not found. Contact your admin.' };
+    return { ok: false, error: 'Your account was found but your CRM profile is missing. Contact your admin.' };
   }
 
   return { ok: true, profile };
