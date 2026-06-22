@@ -24,8 +24,12 @@ import {
   PhoneOutgoing,
   CalendarPlus,
   ListPlus,
+  UserCheck,
 } from 'lucide-react';
 import { AppShell } from '../components/layout/AppShell';
+import { ReassignModal } from '../components/common/ReassignModal';
+import { reassignCompany, fetchAssignableUsers, fetchUserLabel } from '../data/assignment';
+import type { UserOption } from '../data/wishlist';
 import { StageBadge } from '../components/ui/Badge';
 import { CreateTaskModal, type TaskAssociation } from '../components/tasks/CreateTaskModal';
 import { LogCallModal, type CallAssociation } from '../components/calls/LogCallModal';
@@ -258,6 +262,14 @@ function AccountPanel({ companyId, projectId, actorId }: AccountPanelProps) {
   const [saveError, setSaveError] = useState<string | null>(null);
   const [saveOk, setSaveOk] = useState(false);
 
+  // Per-project owner + reassignment (ALT-288)
+  const { canReassign } = useAuth();
+  const [ownerName, setOwnerName] = useState('');
+  const [showReassign, setShowReassign] = useState(false);
+  const [reassignSaving, setReassignSaving] = useState(false);
+  const [reassignError, setReassignError] = useState<string | null>(null);
+  const [reassignOwners, setReassignOwners] = useState<UserOption[]>([]);
+
   // Dropdown options
   const [accountStatusOpts, setAccountStatusOpts] = useState<DropdownOption[]>([]);
   const [feasibilityOpts, setFeasibilityOpts] = useState<DropdownOption[]>([]);
@@ -302,6 +314,40 @@ function AccountPanel({ companyId, projectId, actorId }: AccountPanelProps) {
     });
     return () => { cancelled = true; };
   }, [companyId, projectId]);
+
+  // Resolve the per-project owner's display name whenever it changes.
+  useEffect(() => {
+    let cancelled = false;
+    fetchUserLabel(status?.owner_user_id ?? null).then((n) => { if (!cancelled) setOwnerName(n); });
+    return () => { cancelled = true; };
+  }, [status?.owner_user_id]);
+
+  const openReassign = async () => {
+    if (!projectId) return;
+    setReassignError(null);
+    setReassignOwners([]);
+    setShowReassign(true);
+    const owners = await fetchAssignableUsers(status?.owner_user_id ?? null);
+    setReassignOwners(owners);
+  };
+
+  const handleReassign = async (newUserId: number) => {
+    if (!projectId) return;
+    setReassignSaving(true);
+    setReassignError(null);
+    const res = await reassignCompany({
+      companyId,
+      projectId,
+      newUserId,
+      actor: actorId ?? '',
+      isReassign: status?.owner_user_id != null,
+    });
+    setReassignSaving(false);
+    if (res?.error) { setReassignError(res.error); return; }
+    setShowReassign(false);
+    const refreshed = await getCompanyStatus(companyId, projectId);
+    setStatus(refreshed);
+  };
 
   async function handleSave() {
     if (!projectId) return;
@@ -354,6 +400,28 @@ function AccountPanel({ companyId, projectId, actorId }: AccountPanelProps) {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+      {/* Owner (this project) + reassign (ALT-288) */}
+      <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', gap: 8 }}>
+        <div>
+          <label style={labelStyle}>Owner (this project)</label>
+          <div style={{ fontSize: 13, color: ownerName ? '#18181b' : '#9ca3af' }}>
+            {ownerName || 'Unassigned'}
+          </div>
+        </div>
+        {canReassign && (
+          <button
+            type="button"
+            onClick={openReassign}
+            className="inline-flex items-center gap-1.5 border border-zinc-300 hover:border-zinc-400 bg-white hover:bg-zinc-50 text-zinc-700 font-medium transition-colors"
+            style={{ fontSize: 12, padding: '5px 10px', height: 30, borderRadius: 6 }}
+            title="Assign this company (in this project) to a salesperson"
+          >
+            <UserCheck size={13} />
+            {ownerName ? 'Change owner' : 'Assign owner'}
+          </button>
+        )}
+      </div>
+
       {/* Row 1: account_status + feasibility + decision_power */}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8 }}>
         <div>
@@ -480,6 +548,19 @@ function AccountPanel({ companyId, projectId, actorId }: AccountPanelProps) {
           <span style={{ fontSize: 11, color: '#9ca3af' }}>Status saved</span>
         )}
       </div>
+
+      {showReassign && (
+        <ReassignModal
+          entityLabel="Company"
+          ownerLabel="Owner"
+          currentOwnerId={status?.owner_user_id ?? null}
+          owners={reassignOwners}
+          saving={reassignSaving}
+          error={reassignError}
+          onConfirm={handleReassign}
+          onClose={() => setShowReassign(false)}
+        />
+      )}
     </div>
   );
 }

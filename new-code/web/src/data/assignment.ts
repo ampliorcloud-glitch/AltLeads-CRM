@@ -129,6 +129,17 @@ export async function fetchAssignableUsers(currentOwnerId?: number | null): Prom
     .sort((a, b) => a.label.localeCompare(b.label));
 }
 
+/** Resolve a single user's display label (full_name, or "User #id" fallback). */
+export async function fetchUserLabel(userId: number | null | undefined): Promise<string> {
+  if (userId == null) return '';
+  const { data } = await supabase
+    .from('user_master')
+    .select('full_name')
+    .eq('user_id', userId)
+    .maybeSingle();
+  return ((data as { full_name: string | null } | null)?.full_name ?? '').trim() || `User #${userId}`;
+}
+
 /* ── lead / meeting reassignment ─────────────────────────────────────────── */
 
 /** Raw owner write on lead_report (all active report rows for the lead). */
@@ -285,4 +296,111 @@ export async function reassignLeadsBulk(
         ? firstErr ?? `${failed} could not be reassigned (no permission or no active report row).`
         : null,
   };
+}
+
+/* ── company / contact reassignment (per-project owner_user_id) ──────────── */
+
+/**
+ * Set the per-project owner of a COMPANY (company_project_status.owner_user_id).
+ * Upserts on (company_id, project_id) — the status row may not exist yet for this
+ * project. The owner_user_id column already exists (was dormant); this is the
+ * first writer. Reassigning to someone else passes RLS only for admin/manager
+ * (WITH CHECK on the new owner_user_id).
+ */
+export async function reassignCompany(input: {
+  companyId: number;
+  projectId: number;
+  newUserId: number;
+  actor: string;
+  companyName?: string;
+  isReassign?: boolean;
+}): Promise<{ error: string } | null> {
+  const actorErr = assertNumericActor(input.actor);
+  if (actorErr) return actorErr;
+
+  const now = new Date().toISOString();
+  const { data: existing } = await supabase
+    .from('company_project_status')
+    .select('company_id')
+    .eq('company_id', input.companyId)
+    .eq('project_id', input.projectId)
+    .maybeSingle();
+
+  const row: Record<string, unknown> = {
+    company_id: input.companyId,
+    project_id: input.projectId,
+    owner_user_id: input.newUserId,
+    updated_by: input.actor,
+    updated_date: now,
+  };
+  if (!existing) {
+    row.created_by = input.actor;
+    row.created_date = now;
+  }
+
+  const { error } = await supabase
+    .from('company_project_status')
+    .upsert(row, { onConflict: 'company_id,project_id' });
+  if (error) return { error: mapWriteError(error) };
+
+  fireOwnerNotify({
+    recipientUserId: input.newUserId,
+    actor: input.actor,
+    isReassign: input.isReassign ?? false,
+    recordName: input.companyName,
+    route: `/companies/${input.companyId}`,
+    entityWord: 'company',
+  });
+  return null;
+}
+
+/**
+ * Set the per-project owner of a CONTACT (contact_project_status.owner_user_id).
+ * Upserts on (contact_id, project_id). Same authorization model as reassignCompany.
+ */
+export async function reassignContact(input: {
+  contactId: number;
+  projectId: number;
+  newUserId: number;
+  actor: string;
+  contactName?: string;
+  isReassign?: boolean;
+}): Promise<{ error: string } | null> {
+  const actorErr = assertNumericActor(input.actor);
+  if (actorErr) return actorErr;
+
+  const now = new Date().toISOString();
+  const { data: existing } = await supabase
+    .from('contact_project_status')
+    .select('contact_id')
+    .eq('contact_id', input.contactId)
+    .eq('project_id', input.projectId)
+    .maybeSingle();
+
+  const row: Record<string, unknown> = {
+    contact_id: input.contactId,
+    project_id: input.projectId,
+    owner_user_id: input.newUserId,
+    updated_by: input.actor,
+    updated_date: now,
+  };
+  if (!existing) {
+    row.created_by = input.actor;
+    row.created_date = now;
+  }
+
+  const { error } = await supabase
+    .from('contact_project_status')
+    .upsert(row, { onConflict: 'contact_id,project_id' });
+  if (error) return { error: mapWriteError(error) };
+
+  fireOwnerNotify({
+    recipientUserId: input.newUserId,
+    actor: input.actor,
+    isReassign: input.isReassign ?? false,
+    recordName: input.contactName,
+    route: `/contacts/${input.contactId}`,
+    entityWord: 'contact',
+  });
+  return null;
 }

@@ -19,9 +19,13 @@ import {
   PhoneOutgoing,
   CalendarPlus,
   ListPlus,
+  UserCheck,
 } from 'lucide-react';
 import { AppShell } from '../components/layout/AppShell';
 import { useAuth } from '../contexts/AuthContext';
+import { ReassignModal } from '../components/common/ReassignModal';
+import { reassignContact, fetchAssignableUsers, fetchUserLabel } from '../data/assignment';
+import type { UserOption } from '../data/wishlist';
 import { CreateTaskModal, type TaskAssociation } from '../components/tasks/CreateTaskModal';
 import { LogCallModal, type CallAssociation } from '../components/calls/LogCallModal';
 import type { TaskType } from '../data/tasks';
@@ -222,7 +226,7 @@ function QuickTaskActions({
 export function ContactDetailPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const { profile, canCreateData } = useAuth();
+  const { profile, canCreateData, canReassign } = useAuth();
 
   const contactId = id ? Number(id) : null;
 
@@ -269,6 +273,47 @@ export function ContactDetailPage() {
   const [savingStatus, setSavingStatus] = useState(false);
   const [statusError, setStatusError] = useState<string | null>(null);
   const [statusSuccess, setStatusSuccess] = useState(false);
+
+  // Per-project owner + reassignment (ALT-288)
+  const [ownerName, setOwnerName] = useState('');
+  const [showReassign, setShowReassign] = useState(false);
+  const [reassignSaving, setReassignSaving] = useState(false);
+  const [reassignError, setReassignError] = useState<string | null>(null);
+  const [reassignOwners, setReassignOwners] = useState<UserOption[]>([]);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetchUserLabel(projectStatus?.owner_user_id ?? null).then((n) => { if (!cancelled) setOwnerName(n); });
+    return () => { cancelled = true; };
+  }, [projectStatus?.owner_user_id]);
+
+  const openReassign = async () => {
+    if (!projectId) return;
+    setReassignError(null);
+    setReassignOwners([]);
+    setShowReassign(true);
+    const owners = await fetchAssignableUsers(projectStatus?.owner_user_id ?? null);
+    setReassignOwners(owners);
+  };
+
+  const handleReassign = async (newUserId: number) => {
+    if (!contactId || !projectId) return;
+    setReassignSaving(true);
+    setReassignError(null);
+    const res = await reassignContact({
+      contactId,
+      projectId,
+      newUserId,
+      actor: profile?.user_id != null ? String(profile.user_id) : '',
+      contactName: contact?.full_name || undefined,
+      isReassign: projectStatus?.owner_user_id != null,
+    });
+    setReassignSaving(false);
+    if (res?.error) { setReassignError(res.error); return; }
+    setShowReassign(false);
+    const refreshed = await getContactStatus(contactId, projectId);
+    setProjectStatus(refreshed);
+  };
 
   // Activity timeline
   const [activity, setActivity] = useState<Interaction[]>([]);
@@ -846,6 +891,28 @@ export function ContactDetailPage() {
             }
           >
             <div className="space-y-3">
+              {/* Owner (this project) + reassign (ALT-288) */}
+              {projectId && (
+                <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', gap: 8 }}>
+                  <div>
+                    <label style={{ fontSize: 11, color: '#6B7280', fontWeight: 500 }}>Owner (this project)</label>
+                    <div style={{ fontSize: 13, color: ownerName ? '#18181b' : '#9ca3af' }}>{ownerName || 'Unassigned'}</div>
+                  </div>
+                  {canReassign && (
+                    <button
+                      type="button"
+                      onClick={openReassign}
+                      className="inline-flex items-center gap-1.5 border border-zinc-300 hover:border-zinc-400 bg-white hover:bg-zinc-50 text-zinc-700 font-medium transition-colors"
+                      style={{ fontSize: 12, padding: '5px 10px', height: 30, borderRadius: 6 }}
+                      title="Assign this contact (in this project) to a salesperson"
+                    >
+                      <UserCheck size={13} />
+                      {ownerName ? 'Change owner' : 'Assign owner'}
+                    </button>
+                  )}
+                </div>
+              )}
+
               {/* Current status badge */}
               {projectStatus?.contact_status && (
                 <div style={{ marginBottom: 4 }}>
@@ -937,6 +1004,19 @@ export function ContactDetailPage() {
                 {savingStatus ? <Loader2 size={12} className="animate-spin" /> : <Save size={12} />}
                 Save status
               </button>
+
+              {showReassign && (
+                <ReassignModal
+                  entityLabel="Contact"
+                  ownerLabel="Owner"
+                  currentOwnerId={projectStatus?.owner_user_id ?? null}
+                  owners={reassignOwners}
+                  saving={reassignSaving}
+                  error={reassignError}
+                  onConfirm={handleReassign}
+                  onClose={() => setShowReassign(false)}
+                />
+              )}
             </div>
           </SectionCard>
         </div>
