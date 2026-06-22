@@ -90,6 +90,18 @@
 | K2 | Open full record | In the drawer → **Open full record →** | Navigates to the full Contact detail page | ⬜ | |
 | K3 | Close | Press Esc / click the backdrop / click ✕ | Drawer closes, you're back on the list | ⬜ | |
 | K4 | Is this the right shape? | Eyeball the drawer contents/size | Tell me what to add/remove — this is the pattern I'll copy to Companies/Leads/Meetings | ⬜ | |
+| K5 | **Project selector in the drawer** | In the Contact drawer → change the project dropdown in the "Project Status" block | Owner + status reload for that project (like the full record) | ⬜ | |
+| K6 | **Edit status in the drawer** | Set a Contact Status / Description / Comments → **Save status** | Saves + toast (as ADMIN it works now; a non-owner agent will see "you can only edit records you own" until RLS is applied — expected) | ⬜ | |
+| K7 | **Assign owner from the drawer** | **Assign owner** → pick a person | Owner updates in the drawer | ⬜ | |
+
+## L. Views — Table / Grid switcher (all 4 lists)
+
+| # | What to test | Steps | Expected | Result | Notes |
+|---|---|---|---|---|---|
+| L1 | Switch to Grid | Any list (Leads/Companies/Contacts/Meetings) → the Table/Grid toggle in the toolbar → **Grid** | Records render as cards (avatar + name + key fields + a status/owner chip) | ⬜ | |
+| L2 | Card click | Click a card | Same as clicking a row — Contacts opens the preview drawer; others open the detail page | ⬜ | |
+| L3 | Choice sticks | Pick Grid, reload the page | It remembers Grid for that list (saved per user) | ⬜ | |
+| L4 | Table still works | Toggle back to **Table** | The normal table returns; filters/pagination/bulk select unaffected | ⬜ | |
 
 ---
 

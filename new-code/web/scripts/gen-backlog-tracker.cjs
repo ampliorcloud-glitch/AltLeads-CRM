@@ -2395,10 +2395,10 @@ const TICKETS = [
       created: d(2026,6,22), updated: d(2026,6,22), finished: null, owner:'Ankit', notes,
     });
     return [
-      V('ALT-324','EPIC: Multiple list views per module — view switcher (Table / Grid / Kanban)','Feature','P2','Planned',
+      V('ALT-324','EPIC: Multiple list views per module — view switcher (Table / Grid / Kanban)','Feature','P2','In Progress',
         'Ankit 2026-06-22: every module (Companies, Contacts, Leads, Meetings, Wishlist) should offer multiple VIEWS via a switcher, persisted per-user like column prefs. Table (current) + Grid (cards) + Kanban (board). HubSpot/Zoho parity. Sub: ALT-325 (grid), ALT-326 (kanban per module), ALT-329 (calendar/map/split research).'),
-      V('ALT-325','Grid / card view (shared component) + wire to Companies/Contacts/Leads','Feature','P2','Planned',
-        'Reusable <CardGrid> rendering records as cards (avatar, name, key fields, owner/status chip, quick actions). Driven by the same column/field catalogue. Wire behind the ALT-324 view switcher.'),
+      V('ALT-325','Grid / card view (shared component) + wire to Companies/Contacts/Leads','Feature','P2','In Progress',
+        'SHIPPED 2026-06-22 (build green): ViewSwitcher + CardGrid wired into all 4 lists; view persisted per user+entity; card-click matches row behavior (Contacts→preview). Remaining: per-module bespoke cards + row-select on cards. // Reusable <CardGrid> rendering records as cards (avatar, name, key fields, owner/status chip, quick actions). Driven by the same column/field catalogue. Wire behind the ALT-324 view switcher.'),
       V('ALT-326','Kanban for Companies (account_status) / Contacts (contact_status) / Meetings (meeting_status)','Feature','P2','Planned',
         'Extend the ALT-292 kanban components (KanbanBoard/Column/Card) to group Companies by account_status, Contacts by contact_status, Meetings by meeting_status. Reuse the read-only board first; drag-to-change-status after the per-entity status writers (already exist: upsertCompanyStatus/upsertContactStatus, meeting status).'),
       V('ALT-327','EPIC: Right-hand record PREVIEW PANEL (slide-over) on row click — all modules','Feature','P1','In Progress',
