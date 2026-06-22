@@ -35,7 +35,12 @@ import {
   Plus,
   RefreshCw,
   AlertCircle,
+  UserCheck,
 } from 'lucide-react';
+import { ReassignModal } from '../components/common/ReassignModal';
+import { reassignCompaniesBulk, fetchAssignableUsers } from '../data/assignment';
+import type { UserOption } from '../data/wishlist';
+import { useToast } from '../components/ui/Toast';
 
 // TODO visibility: per-project status/notes are owner + admin only (security pass).
 
@@ -209,8 +214,9 @@ const EXPORT_COLUMNS: ExportColumn<ExportRow>[] = [
 
 export function CompaniesPage() {
   const navigate = useNavigate();
-  const { profile, canCreateData } = useAuth();
+  const { profile, canCreateData, canReassign } = useAuth();
   const userId = profile?.user_id ?? null;
+  const toast = useToast();
 
   const [filters, setFilters] = useState<Filters>(defaultFilters);
   const [sorting, setSorting] = useState<SortingState>([]);
@@ -231,6 +237,35 @@ export function CompaniesPage() {
   // competing controls (review ALT-273B M9). May still be overridden locally.
   const { selectedProjectId } = useProjectScope();
   const [projectId, setProjectId] = useState<number | null>(selectedProjectId);
+
+  // Bulk reassign (ALT-291) — per-project owner_user_id for the selected companies.
+  const [showReassign, setShowReassign] = useState(false);
+  const [reassignSaving, setReassignSaving] = useState(false);
+  const [reassignError, setReassignError] = useState<string | null>(null);
+  const [reassignOwners, setReassignOwners] = useState<UserOption[]>([]);
+
+  const openBulkReassign = async () => {
+    setReassignError(null);
+    setReassignOwners([]);
+    setShowReassign(true);
+    setReassignOwners(await fetchAssignableUsers(null));
+  };
+  const handleBulkReassign = async (newUserId: number) => {
+    if (projectId == null) { setReassignError('Select a project first (top-bar selector).'); return; }
+    const ids = [...sel.selectedIds].map(Number).filter((n) => !isNaN(n));
+    setReassignSaving(true);
+    setReassignError(null);
+    const res = await reassignCompaniesBulk(ids, projectId, newUserId, profile?.user_id != null ? String(profile.user_id) : '');
+    setReassignSaving(false);
+    if (res.ok === 0 && res.error) { setReassignError(res.error); return; }
+    setShowReassign(false);
+    sel.clear();
+    toast.success(
+      res.failed > 0
+        ? `Reassigned ${res.ok}; ${res.failed} skipped (no permission).`
+        : `Reassigned ${res.ok} compan${res.ok === 1 ? 'y' : 'ies'} — the new owner was notified.`,
+    );
+  };
   useEffect(() => { setProjectId(selectedProjectId); }, [selectedProjectId]);
 
   // Per-project statuses keyed by numeric company_id.
@@ -592,6 +627,19 @@ export function CompaniesPage() {
             )}
           </p>
           <div className="flex items-center gap-2">
+            {/* Bulk reassign selected companies (ALT-291) — needs an active project */}
+            {canReassign && sel.count > 0 && projectId != null && (
+              <button
+                onClick={openBulkReassign}
+                className="inline-flex items-center gap-1.5 border border-zinc-300 hover:border-zinc-400 bg-white hover:bg-zinc-50 text-zinc-700 font-medium rounded-md transition-colors"
+                style={{ fontSize: 13, padding: '6px 12px', height: 34 }}
+                title="Assign the selected companies (in this project) to a salesperson"
+              >
+                <UserCheck size={14} />
+                Reassign ({sel.count})
+              </button>
+            )}
+
             {/* Column customizer */}
             <ColumnCustomizer
               entity="companies"
@@ -872,6 +920,20 @@ export function CompaniesPage() {
           )}
         </div>
       </div>
+
+      {showReassign && (
+        <ReassignModal
+          entityLabel="Company"
+          ownerLabel="Owner"
+          count={sel.count}
+          currentOwnerId={null}
+          owners={reassignOwners}
+          saving={reassignSaving}
+          error={reassignError}
+          onConfirm={handleBulkReassign}
+          onClose={() => setShowReassign(false)}
+        />
+      )}
     </AppShell>
   );
 }

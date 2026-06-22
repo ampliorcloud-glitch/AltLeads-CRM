@@ -404,3 +404,119 @@ export async function reassignContact(input: {
   });
   return null;
 }
+
+/* ── bulk reassignment (one summary notify per new owner) ────────────────── */
+
+/** Upsert owner_user_id on a per-project status row (company/contact). */
+async function upsertOwner(
+  table: 'company_project_status' | 'contact_project_status',
+  idCol: 'company_id' | 'contact_id',
+  recordId: number,
+  projectId: number,
+  newUserId: number,
+  actor: string,
+): Promise<{ error?: string }> {
+  const now = new Date().toISOString();
+  const { data: existing } = await supabase
+    .from(table)
+    .select(idCol)
+    .eq(idCol, recordId)
+    .eq('project_id', projectId)
+    .maybeSingle();
+  const row: Record<string, unknown> = {
+    [idCol]: recordId,
+    project_id: projectId,
+    owner_user_id: newUserId,
+    updated_by: actor,
+    updated_date: now,
+  };
+  if (!existing) {
+    row.created_by = actor;
+    row.created_date = now;
+  }
+  const { error } = await supabase.from(table).upsert(row, { onConflict: `${idCol},project_id` });
+  return { error: error ? mapWriteError(error) : undefined };
+}
+
+type BulkResult = { ok: number; failed: number; error: string | null };
+
+function summarize(ok: number, failed: number, firstErr: string | null): BulkResult {
+  return {
+    ok,
+    failed,
+    error: failed > 0 ? firstErr ?? `${failed} could not be reassigned (no permission).` : null,
+  };
+}
+
+export async function reassignMeetingsBulk(
+  meetingIds: number[],
+  newUserId: number,
+  actor: string,
+): Promise<BulkResult> {
+  const actorErr = assertNumericActor(actor);
+  if (actorErr) return { ok: 0, failed: meetingIds.length, error: actorErr.error };
+  let ok = 0, failed = 0;
+  let firstErr: string | null = null;
+  for (const mId of meetingIds) {
+    const leadId = await fetchMeetingLeadId(mId);
+    if (leadId == null) { failed += 1; if (!firstErr) firstErr = 'Some meetings have no linked lead.'; continue; }
+    const res = await writeLeadOwner(leadId, newUserId, actor);
+    if (res.error || res.affected === 0) { failed += 1; if (!firstErr) firstErr = res.error ?? null; }
+    else ok += 1;
+  }
+  if (ok > 0) {
+    fireOwnerNotify({
+      recipientUserId: newUserId, actor, isReassign: true,
+      recordName: `${ok} meeting${ok === 1 ? '' : 's'}`, route: '/meetings', entityWord: 'lead',
+    });
+  }
+  return summarize(ok, failed, firstErr);
+}
+
+export async function reassignCompaniesBulk(
+  companyIds: number[],
+  projectId: number,
+  newUserId: number,
+  actor: string,
+): Promise<BulkResult> {
+  const actorErr = assertNumericActor(actor);
+  if (actorErr) return { ok: 0, failed: companyIds.length, error: actorErr.error };
+  let ok = 0, failed = 0;
+  let firstErr: string | null = null;
+  for (const cId of companyIds) {
+    const res = await upsertOwner('company_project_status', 'company_id', cId, projectId, newUserId, actor);
+    if (res.error) { failed += 1; if (!firstErr) firstErr = res.error; }
+    else ok += 1;
+  }
+  if (ok > 0) {
+    fireOwnerNotify({
+      recipientUserId: newUserId, actor, isReassign: true,
+      recordName: `${ok} compan${ok === 1 ? 'y' : 'ies'}`, route: '/companies', entityWord: 'company',
+    });
+  }
+  return summarize(ok, failed, firstErr);
+}
+
+export async function reassignContactsBulk(
+  contactIds: number[],
+  projectId: number,
+  newUserId: number,
+  actor: string,
+): Promise<BulkResult> {
+  const actorErr = assertNumericActor(actor);
+  if (actorErr) return { ok: 0, failed: contactIds.length, error: actorErr.error };
+  let ok = 0, failed = 0;
+  let firstErr: string | null = null;
+  for (const cId of contactIds) {
+    const res = await upsertOwner('contact_project_status', 'contact_id', cId, projectId, newUserId, actor);
+    if (res.error) { failed += 1; if (!firstErr) firstErr = res.error; }
+    else ok += 1;
+  }
+  if (ok > 0) {
+    fireOwnerNotify({
+      recipientUserId: newUserId, actor, isReassign: true,
+      recordName: `${ok} contact${ok === 1 ? '' : 's'}`, route: '/contacts', entityWord: 'contact',
+    });
+  }
+  return summarize(ok, failed, firstErr);
+}

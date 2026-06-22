@@ -18,6 +18,10 @@ import { useIsSalesShell } from '../contexts/SalesShellContext';
 import { useProjectScope } from '../contexts/ProjectContext';
 import { useRowSelection } from '../components/ui/useRowSelection';
 import { ExportButton } from '../components/ui/ExportButton';
+import { ReassignModal } from '../components/common/ReassignModal';
+import { reassignLeadsBulk, fetchAssignableUsers } from '../data/assignment';
+import type { UserOption } from '../data/wishlist';
+import { useToast } from '../components/ui/Toast';
 import { MultiSelectFilter } from '../components/ui/MultiSelectFilter';
 import { formatDate } from '../data/meetings';
 import { Skeleton } from '../components/ui/Skeleton';
@@ -40,6 +44,7 @@ import {
   Plus,
   RefreshCw,
   AlertCircle,
+  UserCheck,
 } from 'lucide-react';
 
 const columnHelper = createColumnHelper<RealLead>();
@@ -231,8 +236,9 @@ const PAGE_SIZE_OPTIONS = [25, 50, 100];
 
 export function LeadsPage() {
   const navigate = useNavigate();
-  const { profile, canCreateData } = useAuth();
+  const { profile, canCreateData, canReassign } = useAuth();
   const userId = profile?.user_id ?? null;
+  const toast = useToast();
   // When reused inside the Sales Portal, keep navigation within /sales/*.
   const isSalesShell = useIsSalesShell();
   const leadBase = isSalesShell ? '/sales/leads' : '/leads';
@@ -274,6 +280,35 @@ export function LeadsPage() {
   const [loadError, setLoadError] = useState<string | null>(null);
   // Bump to re-run the load effect (Retry on error). ALT-215 #12.
   const [reloadKey, setReloadKey] = useState(0);
+
+  // Bulk reassign (ALT-291)
+  const [showReassign, setShowReassign] = useState(false);
+  const [reassignSaving, setReassignSaving] = useState(false);
+  const [reassignError, setReassignError] = useState<string | null>(null);
+  const [reassignOwners, setReassignOwners] = useState<UserOption[]>([]);
+
+  const openBulkReassign = async () => {
+    setReassignError(null);
+    setReassignOwners([]);
+    setShowReassign(true);
+    setReassignOwners(await fetchAssignableUsers(null));
+  };
+  const handleBulkReassign = async (newUserId: number) => {
+    const ids = [...sel.selectedIds].map(Number).filter((n) => !isNaN(n));
+    setReassignSaving(true);
+    setReassignError(null);
+    const res = await reassignLeadsBulk(ids, newUserId, profile?.user_id != null ? String(profile.user_id) : '');
+    setReassignSaving(false);
+    if (res.ok === 0 && res.error) { setReassignError(res.error); return; }
+    setShowReassign(false);
+    sel.clear();
+    setReloadKey((k) => k + 1);
+    toast.success(
+      res.failed > 0
+        ? `Reassigned ${res.ok}; ${res.failed} skipped (no permission or no report row).`
+        : `Reassigned ${res.ok} lead${res.ok === 1 ? '' : 's'} — the new owner was notified.`,
+    );
+  };
 
   useEffect(() => {
     let cancelled = false;
@@ -699,6 +734,19 @@ export function LeadsPage() {
             )}
           </p>
           <div className="flex items-center gap-2">
+            {/* Bulk reassign selected leads (ALT-291) */}
+            {canReassign && sel.count > 0 && (
+              <button
+                onClick={openBulkReassign}
+                className="inline-flex items-center gap-1.5 border border-zinc-300 hover:border-zinc-400 bg-white hover:bg-zinc-50 text-zinc-700 font-medium rounded-md transition-colors"
+                style={{ fontSize: 13, padding: '6px 12px', height: 34 }}
+                title="Reassign the selected leads to a salesperson"
+              >
+                <UserCheck size={14} />
+                Reassign ({sel.count})
+              </button>
+            )}
+
             {/* Column customizer */}
             <ColumnCustomizer
               entity="leads"
@@ -984,6 +1032,20 @@ export function LeadsPage() {
           )}
         </div>
       </div>
+
+      {showReassign && (
+        <ReassignModal
+          entityLabel="Lead"
+          ownerLabel="Salesperson"
+          count={sel.count}
+          currentOwnerId={null}
+          owners={reassignOwners}
+          saving={reassignSaving}
+          error={reassignError}
+          onConfirm={handleBulkReassign}
+          onClose={() => setShowReassign(false)}
+        />
+      )}
     </AppShell>
   );
 }

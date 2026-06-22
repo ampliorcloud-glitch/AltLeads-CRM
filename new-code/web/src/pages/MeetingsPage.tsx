@@ -43,7 +43,12 @@ import {
   CheckCircle2,
   RefreshCw,
   AlertCircle,
+  UserCheck,
 } from 'lucide-react';
+import { ReassignModal } from '../components/common/ReassignModal';
+import { reassignMeetingsBulk, fetchAssignableUsers } from '../data/assignment';
+import type { UserOption } from '../data/wishlist';
+import { useToast } from '../components/ui/Toast';
 
 const columnHelper = createColumnHelper<MeetingRow>();
 const PAGE_SIZE = 25;
@@ -224,8 +229,9 @@ function DateRangeFilter({
 
 export function MeetingsPage() {
   const navigate = useNavigate();
-  const { profile } = useAuth();
+  const { profile, canReassign } = useAuth();
   const userId = profile?.user_id ?? null;
+  const toast = useToast();
 
   // In the Sales Portal shell, open the "mobile-ditto" sales meeting record
   // (/sales/meetings/:id) — never the internal /meetings/:id screen (ALT-275).
@@ -259,6 +265,35 @@ export function MeetingsPage() {
   const [loadError, setLoadError] = useState<string | null>(null);
   // Bump to re-run the load effect (Retry on error). ALT-215 #12.
   const [reloadKey, setReloadKey] = useState(0);
+
+  // Bulk reassign (ALT-291) — reassigns each selected meeting's underlying lead.
+  const [showReassign, setShowReassign] = useState(false);
+  const [reassignSaving, setReassignSaving] = useState(false);
+  const [reassignError, setReassignError] = useState<string | null>(null);
+  const [reassignOwners, setReassignOwners] = useState<UserOption[]>([]);
+
+  const openBulkReassign = async () => {
+    setReassignError(null);
+    setReassignOwners([]);
+    setShowReassign(true);
+    setReassignOwners(await fetchAssignableUsers(null));
+  };
+  const handleBulkReassign = async (newUserId: number) => {
+    const ids = [...sel.selectedIds].map(Number).filter((n) => !isNaN(n));
+    setReassignSaving(true);
+    setReassignError(null);
+    const res = await reassignMeetingsBulk(ids, newUserId, profile?.user_id != null ? String(profile.user_id) : '');
+    setReassignSaving(false);
+    if (res.ok === 0 && res.error) { setReassignError(res.error); return; }
+    setShowReassign(false);
+    sel.clear();
+    setReloadKey((k) => k + 1);
+    toast.success(
+      res.failed > 0
+        ? `Reassigned ${res.ok}; ${res.failed} skipped.`
+        : `Reassigned ${res.ok} meeting${res.ok === 1 ? '' : 's'} — the new owner was notified.`,
+    );
+  };
 
   useEffect(() => {
     let cancelled = false;
@@ -622,6 +657,17 @@ export function MeetingsPage() {
             )}
           </p>
           <div className="flex items-center gap-2">
+            {canReassign && sel.count > 0 && (
+              <button
+                onClick={openBulkReassign}
+                className="inline-flex items-center gap-1.5 border border-zinc-300 hover:border-zinc-400 bg-white hover:bg-zinc-50 text-zinc-700 font-medium rounded-md transition-colors"
+                style={{ fontSize: 13, padding: '6px 12px', height: 34 }}
+                title="Reassign the selected meetings' leads to a salesperson"
+              >
+                <UserCheck size={14} />
+                Reassign ({sel.count})
+              </button>
+            )}
             <ColumnCustomizer
               entity="meetings"
               userId={userId}
@@ -809,6 +855,20 @@ export function MeetingsPage() {
           )}
         </div>
       </div>
+
+      {showReassign && (
+        <ReassignModal
+          entityLabel="Meeting"
+          ownerLabel="Salesperson"
+          count={sel.count}
+          currentOwnerId={null}
+          owners={reassignOwners}
+          saving={reassignSaving}
+          error={reassignError}
+          onConfirm={handleBulkReassign}
+          onClose={() => setShowReassign(false)}
+        />
+      )}
     </AppShell>
   );
 }

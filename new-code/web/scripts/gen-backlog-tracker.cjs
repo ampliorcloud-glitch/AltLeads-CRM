@@ -2264,10 +2264,10 @@ const TICKETS = [
   {
     id:'ALT-291', title:'Bulk-action toolbar on lists (bulk reassign / bulk status / bulk add-to-project)',
     type:'Feature', module:'UX', wave:'Wave 2',
-    priority:'P2', status:'Planned',
+    priority:'P2', status:'In Progress',
     created: d(2026,6,22), updated: d(2026,6,22), finished: null,
     owner:'Ankit',
-    notes:'Tier-2 UX gap. Lists already have multi-select + Excel export; add a bulk-action bar on the same selection: Bulk reassign (reuses ALT-289/290 write), Bulk status-change, Bulk add-to-project. Daily driver for a calling team processing lists. Each bulk write is RLS-checked per row (partial-success summary + friendly 42501 surfacing). Distinct from ALT-159 (export→edit→import UPDATE, admin-only) — this is in-app selection→action. Builds on the existing list selection state + ConfirmDialog/Toast.'
+    notes:'Tier-2 UX gap. BULK REASSIGN SHIPPED on ALL FOUR lists (Leads/Meetings/Companies/Contacts): a "Reassign (N)" button appears in the list toolbar when rows are selected + canReassign, opening ReassignModal (bulk wording) → data/assignment.ts reassignLeadsBulk / reassignMeetingsBulk / reassignCompaniesBulk / reassignContactsBulk (RLS-checked per row, partial-success toast, one summary notify to the new owner). Companies/Contacts bulk needs an active project (button hidden when scope=All). REMAINING (this ticket stays In Progress): bulk STATUS-change + bulk ADD-TO-PROJECT. Distinct from ALT-159 (export→edit→import). Build green; STAGED RLS gates the manager-only enforcement.'
   },
   {
     id:'ALT-292', title:'Kanban pipeline board — drag leads across stages',
