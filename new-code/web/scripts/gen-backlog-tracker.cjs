@@ -2384,6 +2384,34 @@ const TICKETS = [
     });
   })()),
 
+  // ══════════════════════════════════════════════════════════════════════
+  // EPIC: Views & Preview (2026-06-22, Ankit) — multiple list views per module
+  //   + right-hand record preview panel. Informed by live HubSpot data pull.
+  //   See docs/product/VIEWS-AND-PREVIEW-PLAN.md.
+  // ══════════════════════════════════════════════════════════════════════
+  ...((() => {
+    const V = (id, title, type, priority, status, notes) => ({
+      id, title, type, module:'UX', wave:'Views & Preview', priority, status,
+      created: d(2026,6,22), updated: d(2026,6,22), finished: null, owner:'Ankit', notes,
+    });
+    return [
+      V('ALT-324','EPIC: Multiple list views per module — view switcher (Table / Grid / Kanban)','Feature','P2','Planned',
+        'Ankit 2026-06-22: every module (Companies, Contacts, Leads, Meetings, Wishlist) should offer multiple VIEWS via a switcher, persisted per-user like column prefs. Table (current) + Grid (cards) + Kanban (board). HubSpot/Zoho parity. Sub: ALT-325 (grid), ALT-326 (kanban per module), ALT-329 (calendar/map/split research).'),
+      V('ALT-325','Grid / card view (shared component) + wire to Companies/Contacts/Leads','Feature','P2','Planned',
+        'Reusable <CardGrid> rendering records as cards (avatar, name, key fields, owner/status chip, quick actions). Driven by the same column/field catalogue. Wire behind the ALT-324 view switcher.'),
+      V('ALT-326','Kanban for Companies (account_status) / Contacts (contact_status) / Meetings (meeting_status)','Feature','P2','Planned',
+        'Extend the ALT-292 kanban components (KanbanBoard/Column/Card) to group Companies by account_status, Contacts by contact_status, Meetings by meeting_status. Reuse the read-only board first; drag-to-change-status after the per-entity status writers (already exist: upsertCompanyStatus/upsertContactStatus, meeting status).'),
+      V('ALT-327','EPIC: Right-hand record PREVIEW PANEL (slide-over) on row click — all modules','Feature','P1','In Progress',
+        'Ankit 2026-06-22: clicking a row should open a right-hand slide-over PREVIEW (compact mobile/tablet-width "mini full record" with ALL key info) instead of navigating away; an "Open full record" button still goes to the detail page. Reusable RecordPreviewPanel shell. PILOT building now on Contacts (ALT-328). Roll out to Companies/Leads/Meetings/Wishlist next. HubSpot/Salesforce "preview drawer" pattern.'),
+      V('ALT-328','Preview content per module (compact all-info record)','Feature','P1','In Progress',
+        'Per-module compact record bodies for the ALT-327 panel: Contacts (PILOT, building), then Companies, Leads, Meetings, Wishlist. Each mirrors its full detail page but denser. Reuse existing data fns. Include HubSpot-style header (owner + lifecycle/status chips), quick contact actions, association counts, recent activity (see ALT-330).'),
+      V('ALT-329','Research + build additional views: Calendar, Map, Split','Feature','P3','Planned',
+        'Beyond Table/Grid/Kanban: CALENDAR view for Meetings + My Tasks (by date); MAP view for Companies by city/site (ties to site-feasibility ALT-277/278 — feasible/non-feasible per site + employee size per city group); SPLIT view (list + persistent right preview) as a default density option. Research which fit each module before building.'),
+      V('ALT-330','Detail + preview enrichment from HubSpot patterns','Feature','P2','Planned',
+        'From the live HubSpot pull (2026-06-22): add the high-signal fields HubSpot leads with — lifecycle stage + lead status chips, "last contacted"/last-activity timestamp + engagement counts (# calls/notes/touches), association counts (X contacts · Y leads · Z meetings), a lightweight "Next step" field, and a consistent quick-actions row (Call/Email/Task/Meeting/Log). Apply to both the preview panel and the full detail pages.'),
+    ];
+  })()),
+
   ...uxAuditTickets(),
 ];
 
