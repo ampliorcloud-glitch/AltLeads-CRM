@@ -42,6 +42,10 @@ export interface RealLead {
   industry: string;
   city: string;
   agent: string;
+  /** Assigned salesperson — lead_report.user_id (latest report) → user_master.full_name. */
+  salesperson: string;
+  /** Numeric user_id of the assigned salesperson (lead_report.user_id), or null. */
+  salespersonUserId: number | null;
   project: string;
   /** Numeric project id (lead_master.project_id) — the stable key for project scoping. */
   projectId: number | null;
@@ -57,6 +61,7 @@ export interface LeadsResult {
   industries: string[];
   cities: string[];
   agents: string[];
+  salespeople: string[];
   projects: string[];
   sources: string[];
   stages: string[];
@@ -106,7 +111,7 @@ interface CityRow { city_id: number; city_name: string; }
 interface UserRow { user_id: number; full_name: string | null; }
 interface ProjectRow { project_id: number; project_name: string | null; }
 interface SourceRow { source_id: number; source_name: string | null; }
-interface ReportRow { report_id: number; lead_id: number; stage_id: number; updated_date: string | null; }
+interface ReportRow { report_id: number; lead_id: number; stage_id: number; user_id: number | null; updated_date: string | null; }
 interface StageRow { stage_id: number; stage: string; }
 interface MeetingScheduleRow { report_id: number; meeting_id: number; }
 interface MeetingRow { meeting_id: number; meeting_date: string | null; }
@@ -174,7 +179,7 @@ async function chunkedIn<T>(
  */
 export async function fetchLeadsFallback(): Promise<LeadsResult> {
   const empty: LeadsResult = {
-    leads: [], industries: [], cities: [], agents: [], projects: [], sources: [], stages: [], error: null,
+    leads: [], industries: [], cities: [], agents: [], salespeople: [], projects: [], sources: [], stages: [], error: null,
   };
 
   // 1. ALL leads (not capped) — newest first.
@@ -206,7 +211,7 @@ export async function fetchLeadsFallback(): Promise<LeadsResult> {
   const reportsRes = leadIds.length > 0
     ? await fetchAll<ReportRow>(
         'lead_report',
-        'report_id, lead_id, stage_id, updated_date',
+        'report_id, lead_id, stage_id, user_id, updated_date',
         (q) => q.is('deleted_date', null).in('lead_id', leadIds).order('updated_date', { ascending: false, nullsFirst: false }),
       )
     : { rows: [] as ReportRow[], error: null };
@@ -292,6 +297,14 @@ export async function fetchLeadsFallback(): Promise<LeadsResult> {
     const report = latestReportMap.get(l.lead_id);
     const stageName = report?.stage_id != null ? (stageMap.get(report.stage_id) ?? '') : '';
 
+    // Assigned salesperson: lead_report.user_id (latest report) -> full_name.
+    // Distinct from `agent` (created_by, the internal owner). userMap is keyed by
+    // user_id-as-text and already covers every user_master row.
+    const salespersonUserId = report?.user_id ?? null;
+    const salespersonName = salespersonUserId != null
+      ? (userMap.get(String(salespersonUserId)) ?? '')
+      : '';
+
     let meetingDate: string | null = null;
     if (report) {
       const meetingId = reportMeetingMap.get(report.report_id);
@@ -311,6 +324,8 @@ export async function fetchLeadsFallback(): Promise<LeadsResult> {
       industry: industryName,
       city: cityName,
       agent: agentName,
+      salesperson: salespersonName,
+      salespersonUserId,
       project: projectName,
       projectId: l.project_id ?? null,
       source: sourceName,
@@ -328,6 +343,7 @@ export async function fetchLeadsFallback(): Promise<LeadsResult> {
     industries: uniq(mapped.map((l) => l.industry)),
     cities: uniq(mapped.map((l) => l.city)),
     agents: uniq(mapped.map((l) => l.agent)),
+    salespeople: uniq(mapped.map((l) => l.salesperson)),
     projects: uniq(mapped.map((l) => l.project)),
     sources: uniq(mapped.map((l) => l.source)),
     stages: uniq(mapped.map((l) => l.stage)),

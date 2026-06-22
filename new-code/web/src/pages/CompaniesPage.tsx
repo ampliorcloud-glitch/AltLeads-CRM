@@ -42,12 +42,14 @@ import {
 } from 'lucide-react';
 import { ReassignModal } from '../components/common/ReassignModal';
 import { reassignCompaniesBulk, fetchAssignableUsers } from '../data/assignment';
+import { fetchOptions, type DropdownOption } from '../data/dropdowns';
 import { BulkProjectModal } from '../components/common/BulkProjectModal';
 import { addCompaniesToProject } from '../data/bulkActions';
 import type { UserOption } from '../data/wishlist';
 import { useToast } from '../components/ui/Toast';
 import { RecordPreviewPanel } from '../components/common/RecordPreviewPanel';
 import { CompanyPreview } from '../components/companies/CompanyPreview';
+import { InlineAccountStatusCell } from '../components/companies/InlineAccountStatusCell';
 
 // TODO visibility: per-project status/notes are owner + admin only (security pass).
 
@@ -159,9 +161,16 @@ function fullUrl(webUrl: string): string {
 ------------------------------------------------------------------ */
 interface CompanyStatusLite {
   account_status: string | null;
+  owner_user_id: number | null;
+  // Resolved per-project owner display name (null = truly unassigned).
+  owner_name: string | null;
 }
 
-/** Batch-fetch account statuses for an array of company_ids within one project. */
+/**
+ * Batch-fetch account statuses + per-project owner for an array of company_ids
+ * within one project. Owner ids are resolved to display names in a single
+ * user_master lookup (not N round-trips), then attached to each row.
+ */
 async function fetchCompanyStatuses(
   projectId: number,
   companyIds: number[],
@@ -169,20 +178,41 @@ async function fetchCompanyStatuses(
   const out: Record<number, CompanyStatusLite> = {};
   if (!projectId || companyIds.length === 0) return out;
   const CHUNK = 200;
+  type Row = { company_id: number; account_status: string | null; owner_user_id: number | null };
+  const rows: Row[] = [];
   for (let i = 0; i < companyIds.length; i += CHUNK) {
     const slice = companyIds.slice(i, i + CHUNK);
     const { data, error } = await supabase
       .from('company_project_status')
-      .select('company_id, account_status')
+      .select('company_id, account_status, owner_user_id')
       .eq('project_id', projectId)
       .in('company_id', slice);
     if (error) {
       console.error('[CompaniesPage] fetchCompanyStatuses error', error);
       continue;
     }
-    for (const row of (data ?? []) as { company_id: number; account_status: string | null }[]) {
-      out[row.company_id] = { account_status: row.account_status ?? null };
+    rows.push(...((data ?? []) as Row[]));
+  }
+
+  // Resolve all distinct owner ids → full_name in one query.
+  const ownerIds = [...new Set(rows.map((r) => r.owner_user_id).filter((id): id is number => id != null))];
+  const nameById = new Map<number, string>();
+  if (ownerIds.length > 0) {
+    const { data: users } = await supabase
+      .from('user_master')
+      .select('user_id, full_name')
+      .in('user_id', ownerIds);
+    for (const u of (users ?? []) as { user_id: number; full_name: string | null }[]) {
+      nameById.set(u.user_id, (u.full_name ?? '').trim() || `User #${u.user_id}`);
     }
+  }
+
+  for (const row of rows) {
+    out[row.company_id] = {
+      account_status: row.account_status ?? null,
+      owner_user_id: row.owner_user_id ?? null,
+      owner_name: row.owner_user_id != null ? (nameById.get(row.owner_user_id) ?? `User #${row.owner_user_id}`) : null,
+    };
   }
   return out;
 }
@@ -223,6 +253,8 @@ export function CompaniesPage() {
   const navigate = useNavigate();
   const { profile, canCreateData, canReassign } = useAuth();
   const userId = profile?.user_id ?? null;
+  // actorId is the numeric user_id as text for audit columns / status writes.
+  const actorId = userId != null ? String(userId) : null;
   const toast = useToast();
 
   const [filters, setFilters] = useState<Filters>(defaultFilters);
@@ -298,6 +330,21 @@ export function CompaniesPage() {
   // Per-project statuses keyed by numeric company_id.
   const [statusMap, setStatusMap] = useState<Record<number, CompanyStatusLite>>({});
   const [statusLoading, setStatusLoading] = useState(false);
+  // account_status dropdown options (for the inline-editable status cell).
+  const [statusOptions, setStatusOptions] = useState<DropdownOption[]>([]);
+
+  // Inline status update — only called after a successful write; preserves the
+  // already-resolved owner fields for the row.
+  const handleStatusUpdated = useCallback((companyId: number, newStatus: string | null) => {
+    setStatusMap((prev) => ({
+      ...prev,
+      [companyId]: {
+        account_status: newStatus,
+        owner_user_id: prev[companyId]?.owner_user_id ?? null,
+        owner_name: prev[companyId]?.owner_name ?? null,
+      },
+    }));
+  }, []);
 
   // Column prefs driven by ColumnCustomizer.
   const [columnPrefs, setColumnPrefs] = useState<ColumnPref[]>(() => defaultColumnPrefs(ALL_COLUMNS));
@@ -328,6 +375,11 @@ export function CompaniesPage() {
     });
     return () => { cancelled = true; };
   }, [reloadKey]);
+
+  // Load account_status dropdown options once (for the inline status cell).
+  useEffect(() => {
+    fetchOptions('account_status').then(setStatusOptions);
+  }, []);
 
   const setFilter = <K extends keyof Filters>(key: K, value: Filters[K]) => {
     setFilters((prev) => ({ ...prev, [key]: value }));
@@ -525,10 +577,23 @@ export function CompaniesPage() {
       columnHelper.accessor('owner', {
         id: 'owner',
         header: 'Owner',
-        // Owner is always "Unassigned" for now. // TODO ownership
-        cell: (info) => (
-          <span className="text-zinc-400" style={{ fontSize: 13 }}>{info.getValue()}</span>
-        ),
+        enableSorting: false,
+        // Per-project owner resolved from company_project_status.owner_user_id
+        // (scoped to the selected project). "Unassigned" when no project is
+        // selected OR the row truly has no owner. (ALT-296 step B)
+        cell: ({ row }) => {
+          const numId = Number(row.original.id);
+          if (projectId == null) {
+            return <span className="text-zinc-400" style={{ fontSize: 13 }}>Unassigned</span>;
+          }
+          if (statusLoading && !(numId in statusMap)) {
+            return <Loader2 size={12} className="animate-spin text-zinc-300" />;
+          }
+          const name = statusMap[numId]?.owner_name ?? null;
+          return name
+            ? <span className="text-zinc-600" style={{ fontSize: 13 }}>{name}</span>
+            : <span className="text-zinc-400" style={{ fontSize: 13 }}>Unassigned</span>;
+        },
       }),
       // Account Status — per-project, batch-loaded for current page.
       columnHelper.display({
@@ -542,7 +607,16 @@ export function CompaniesPage() {
             return <Loader2 size={12} className="animate-spin text-zinc-300" />;
           }
           const status = statusMap[numId]?.account_status ?? null;
-          return <StatusBadge value={status} category="account_status" />;
+          return (
+            <InlineAccountStatusCell
+              companyId={numId}
+              projectId={projectId}
+              current={status}
+              options={statusOptions}
+              actorId={actorId}
+              onUpdated={handleStatusUpdated}
+            />
+          );
         },
       }),
     ];
@@ -554,7 +628,7 @@ export function CompaniesPage() {
       return visibleKeys.has(id);
     });
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [visibleKeys, statusMap, statusLoading, projectId, sel]);
+  }, [visibleKeys, statusMap, statusLoading, projectId, sel, statusOptions, actorId, handleStatusUpdated]);
 
   const table = useReactTable({
     data: filteredData,
@@ -745,7 +819,9 @@ export function CompaniesPage() {
             onCardClick={(row) => setPreviewId(Number(row.id))}
             emptyLabel={hasActiveFilters ? 'No companies match the current filters.' : 'No companies yet.'}
             renderCard={(row) => {
-              const status = projectId == null ? null : (statusMap[Number(row.id)]?.account_status ?? null);
+              const lite = projectId == null ? null : (statusMap[Number(row.id)] ?? null);
+              const status = lite?.account_status ?? null;
+              const ownerName = projectId == null ? null : (lite?.owner_name ?? null);
               return (
                 <CardShell
                   name={row.name || ''}
@@ -757,7 +833,7 @@ export function CompaniesPage() {
                   fields={[
                     { label: 'Industry', value: row.industry ?? '' },
                     { label: 'City', value: row.city ?? '' },
-                    { label: 'Owner', value: row.owner ?? '' },
+                    { label: 'Owner', value: ownerName ?? 'Unassigned' },
                     { label: 'Account Status', value: status ? <StatusBadge value={status} category="account_status" /> : '' },
                   ]}
                 />

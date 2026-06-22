@@ -115,6 +115,7 @@ interface Filters {
   leadDateTo: string;
   // Multi-value facets (OR within a facet; empty array = no filter).
   agentName: string[];
+  salesperson: string[];
   industry: string[];
   city: string[];
   project: string[];
@@ -129,6 +130,7 @@ const defaultFilters: Filters = {
   leadDateFrom: '',
   leadDateTo: '',
   agentName: [],
+  salesperson: [],
   industry: [],
   city: [],
   project: [],
@@ -148,6 +150,7 @@ const ALL_COLUMNS: ColDef[] = [
   { key: 'project',          header: 'Project',        defaultVisible: true },
   { key: 'city',             header: 'City',           defaultVisible: true },
   { key: 'agent',            header: 'Agent',          defaultVisible: true },
+  { key: 'salesperson',      header: 'Salesperson',    defaultVisible: true },
   { key: 'source',           header: 'Source',         defaultVisible: true },
   { key: 'stage',            header: 'Stage',          defaultVisible: true },
   { key: 'meetingDate',      header: 'Meeting Date',   defaultVisible: true },
@@ -169,6 +172,7 @@ const EXPORT_COLUMNS: ExportColumn[] = [
   { key: 'industry',          header: 'Industry' },
   { key: 'city',              header: 'City' },
   { key: 'agent',             header: 'Agent' },
+  { key: 'salesperson',       header: 'Salesperson' },
   { key: 'project',           header: 'Project' },
   { key: 'source',            header: 'Source' },
   { key: 'stage',             header: 'Stage' },
@@ -286,6 +290,7 @@ export function LeadsPage() {
   const [industries, setIndustries] = useState<string[]>([]);
   const [cities, setCities] = useState<string[]>([]);
   const [agents, setAgents] = useState<string[]>([]);
+  const [salespeople, setSalespeople] = useState<string[]>([]);
   const [projects, setProjects] = useState<string[]>([]);
   const [sources, setSources] = useState<string[]>([]);
   const [stages, setStages] = useState<string[]>([]);
@@ -333,6 +338,7 @@ export function LeadsPage() {
       setIndustries(result.industries);
       setCities(result.cities);
       setAgents(result.agents);
+      setSalespeople(result.salespeople);
       setProjects(result.projects);
       setSources(result.sources);
       setStages(result.stages);
@@ -361,7 +367,7 @@ export function LeadsPage() {
         const q = filters.search.toLowerCase();
         const searchable = [
           lead.company, lead.contactName, lead.contactEmail, lead.contactPhone,
-          lead.leadNumber, lead.industry, lead.city, lead.agent,
+          lead.leadNumber, lead.industry, lead.city, lead.agent, lead.salesperson,
           lead.project, lead.source, lead.stage,
         ].join(' ').toLowerCase();
         if (!searchable.includes(q)) return false;
@@ -370,6 +376,7 @@ export function LeadsPage() {
       if (filters.leadDateTo && lead.leadGeneratedDate > filters.leadDateTo) return false;
       // Multi-value facets: empty array = no filter; otherwise the row must match any selected value.
       if (filters.agentName.length && !filters.agentName.includes(lead.agent)) return false;
+      if (filters.salesperson.length && !filters.salesperson.includes(lead.salesperson)) return false;
       if (filters.industry.length && !filters.industry.includes(lead.industry)) return false;
       if (filters.city.length && !filters.city.includes(lead.city)) return false;
       if (filters.project.length && !filters.project.includes(lead.project)) return false;
@@ -493,6 +500,16 @@ export function LeadsPage() {
             return columnHelper.accessor('agent', {
               id: 'agent',
               header: 'Agent',
+              cell: (info) => (
+                <span className="text-zinc-700" style={{ fontSize: 13 }}>
+                  {info.getValue() || <span className="text-zinc-300">—</span>}
+                </span>
+              ),
+            });
+          case 'salesperson':
+            return columnHelper.accessor('salesperson', {
+              id: 'salesperson',
+              header: 'Salesperson',
               cell: (info) => (
                 <span className="text-zinc-700" style={{ fontSize: 13 }}>
                   {info.getValue() || <span className="text-zinc-300">—</span>}
@@ -670,6 +687,12 @@ export function LeadsPage() {
               options={agents}
             />
             <MultiSelectFilter
+              label="Salesperson"
+              selected={filters.salesperson}
+              onChange={(v) => setFilter('salesperson', v)}
+              options={salespeople}
+            />
+            <MultiSelectFilter
               label="Project"
               selected={filters.project}
               onChange={(v) => setFilter('project', v)}
@@ -839,6 +862,7 @@ export function LeadsPage() {
                   { label: 'Stage', value: row.stage ?? '' },
                   { label: 'City', value: row.city ?? '' },
                   { label: 'Agent', value: row.agent ?? '' },
+                  { label: 'Salesperson', value: row.salesperson ?? '' },
                 ]}
               />
             )}

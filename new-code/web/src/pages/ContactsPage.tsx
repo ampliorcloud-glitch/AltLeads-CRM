@@ -38,6 +38,7 @@ import {
 } from 'lucide-react';
 import { ReassignModal } from '../components/common/ReassignModal';
 import { reassignContactsBulk, fetchAssignableUsers } from '../data/assignment';
+import { supabase } from '../lib/supabase';
 import { BulkProjectModal } from '../components/common/BulkProjectModal';
 import { addContactsToProject } from '../data/bulkActions';
 import type { UserOption } from '../data/wishlist';
@@ -141,6 +142,9 @@ const defaultFilters: Filters = {
 // The index signature lets it satisfy Record<string,unknown> for the shared
 // generic components (ColumnCustomizer, ExportButton).
 interface ContactRow extends Contact, ContactStatusLite {
+  // Per-project owner display name (resolved from contact_project_status
+  // .owner_user_id). Empty string when no project / unassigned. ALT-296 step B.
+  owner_name: string;
   [key: string]: unknown;
 }
 
@@ -152,6 +156,9 @@ const ALL_COLUMNS: ColumnDef[] = [
   { key: 'linkedin_url',    header: 'LinkedIn',       defaultVisible: true },
   { key: 'phone_combined',  header: 'Phone',          defaultVisible: true },
   { key: 'contact_status',  header: 'Contact Status', defaultVisible: true },
+  // Per-project owner (contact_project_status.owner_user_id, resolved to a name).
+  // Project-gated like the status column. ALT-296 step B.
+  { key: 'owner_name',      header: 'Owner',          defaultVisible: true },
   { key: 'description',     header: 'Description',    defaultVisible: true },
   { key: 'comments',        header: 'Comments',       defaultVisible: true },
   // Hidden by default — reachable via customizer
@@ -171,6 +178,7 @@ const EXPORT_COLUMNS: ExportColumn[] = [
   { key: 'alt_mobile_no',  header: 'Alt Phone' },
   { key: 'designation',    header: 'Designation' },
   { key: 'contact_status', header: 'Contact Status' },
+  { key: 'owner_name',     header: 'Owner' },
   { key: 'description',    header: 'Description' },
   { key: 'comments',       header: 'Comments' },
 ];
@@ -341,6 +349,13 @@ export function ContactsPage() {
   useEffect(() => { setProjectId(selectedProjectId); }, [selectedProjectId]);
   const [statusMap, setStatusMap] = useState<Record<number, ContactStatusLite>>({});
   const [statusLoading, setStatusLoading] = useState(false);
+  // Per-project owner map: contact_id -> resolved owner display name.
+  // Built from contact_project_status.owner_user_id (same per-project rows that
+  // power the status column), with ids resolved to names via user_master.
+  // null owner_user_id (or a row that exists but is unassigned) → "Unassigned".
+  // ALT-296 step B. Lives separately from statusMap because the shared
+  // fetchContactStatuses() helper doesn't return owner_user_id.
+  const [ownerMap, setOwnerMap] = useState<Record<number, string>>({});
   // contact_status dropdown options
   const [statusOptions, setStatusOptions] = useState<DropdownOption[]>([]);
 
@@ -394,6 +409,62 @@ export function ContactsPage() {
     return () => { cancelled = true; };
   }, [projectId, allContacts]);
 
+  // Load per-project OWNER names whenever project or contacts change.
+  // Batches contact_project_status(contact_id, owner_user_id) in chunks (mirrors
+  // fetchContactStatuses' paging), then resolves the distinct owner_user_ids to
+  // names in a single user_master lookup. Kept in ContactsPage because the shared
+  // status helper can't be widened from here (single-file edit scope).
+  useEffect(() => {
+    if (!projectId || allContacts.length === 0) {
+      setOwnerMap({});
+      return;
+    }
+    let cancelled = false;
+    const ids = allContacts.map((c) => c.contact_id);
+
+    (async () => {
+      const ownerByContact: Record<number, number> = {};
+      const CHUNK = 200;
+      for (let i = 0; i < ids.length; i += CHUNK) {
+        const slice = ids.slice(i, i + CHUNK);
+        const { data, error } = await supabase
+          .from('contact_project_status')
+          .select('contact_id, owner_user_id')
+          .eq('project_id', projectId)
+          .in('contact_id', slice);
+        if (error) {
+          console.error('[ContactsPage] owner fetch error', error);
+          continue;
+        }
+        for (const row of (data ?? []) as { contact_id: number; owner_user_id: number | null }[]) {
+          if (row.owner_user_id != null) ownerByContact[row.contact_id] = row.owner_user_id;
+        }
+      }
+
+      // Resolve distinct owner ids → names in one query.
+      const distinctIds = [...new Set(Object.values(ownerByContact))];
+      const nameById = new Map<number, string>();
+      if (distinctIds.length > 0) {
+        const { data: users } = await supabase
+          .from('user_master')
+          .select('user_id, full_name')
+          .in('user_id', distinctIds);
+        ((users ?? []) as { user_id: number; full_name: string | null }[]).forEach((u) =>
+          nameById.set(u.user_id, (u.full_name ?? '').trim() || `User #${u.user_id}`),
+        );
+      }
+
+      if (cancelled) return;
+      const next: Record<number, string> = {};
+      for (const [cid, uid] of Object.entries(ownerByContact)) {
+        next[Number(cid)] = nameById.get(uid) ?? `User #${uid}`;
+      }
+      setOwnerMap(next);
+    })();
+
+    return () => { cancelled = true; };
+  }, [projectId, allContacts]);
+
   // TODO visibility: per-project status/notes are owner + admin only (security pass).
 
   const setFilter = <K extends keyof Filters>(key: K, value: Filters[K]) => {
@@ -444,6 +515,9 @@ export function ContactsPage() {
         contact_status: ps?.contact_status ?? null,
         description: ps?.description ?? null,
         comments: ps?.comments ?? null,
+        // Per-project owner name (resolved). Empty when unresolved; the cell /
+        // export render "Unassigned" when a project is selected but no owner.
+        owner_name: ownerMap[c.contact_id] ?? '',
       };
     });
 
@@ -469,7 +543,7 @@ export function ContactsPage() {
     }
 
     return enriched;
-  }, [allContacts, filters, statusMap, sort]);
+  }, [allContacts, filters, statusMap, ownerMap, sort]);
 
   // Pagination
   const totalRows = filteredData.length;
@@ -516,11 +590,21 @@ export function ContactsPage() {
   const exportColumns = useMemo<ExportColumn<ContactRow>[]>(() => {
     return columnPrefs
       .filter((p) => p.visible)
-      .flatMap((p) => {
-        const col = EXPORT_COLUMNS.find((ec) => ec.key === p.key);
-        return col ? [col] : [];
+      .flatMap<ExportColumn<ContactRow>>((p) => {
+        const col = EXPORT_COLUMNS.find((ec) => ec.key === p.key) as ExportColumn<ContactRow> | undefined;
+        if (!col) return [];
+        // Owner is project-gated like the status column: blank without a project,
+        // "Unassigned" when a project is selected but the row has no owner.
+        if (col.key === 'owner_name') {
+          return [{
+            ...col,
+            accessor: (row: ContactRow) =>
+              projectId == null ? '' : (row.owner_name || 'Unassigned'),
+          }];
+        }
+        return [col];
       });
-  }, [columnPrefs]);
+  }, [columnPrefs, projectId]);
 
   /* -------------------------------------------------------- render -- */
 
@@ -780,6 +864,8 @@ export function ContactsPage() {
                   { label: 'Designation', value: row.designation ?? '' },
                   { label: 'City', value: row.city_name ?? '' },
                   { label: 'Phone', value: row.mobile_no ?? row.alt_mobile_no ?? '' },
+                  // Per-project owner — only meaningful with a project selected.
+                  { label: 'Owner', value: projectId ? (row.owner_name || 'Unassigned') : '' },
                 ]}
               />
             )}
@@ -811,7 +897,7 @@ export function ContactsPage() {
                   {/* Dynamic columns */}
                   {columnPrefs.filter((p) => p.visible).map((p) => {
                     const col = ALL_COLUMNS.find((c) => c.key === p.key);
-                    const isSortable = !['linkedin_url', 'phone_combined', 'contact_status', 'description', 'comments'].includes(p.key);
+                    const isSortable = !['linkedin_url', 'phone_combined', 'contact_status', 'owner_name', 'description', 'comments'].includes(p.key);
                     const isSorted = isSortable && sort.key === p.key;
                     return (
                       <th
@@ -1037,6 +1123,21 @@ export function ContactsPage() {
                                       actorId={actorId}
                                       onUpdated={handleStatusUpdated}
                                     />
+                                  )}
+                                </td>
+                              );
+
+                            case 'owner_name':
+                              return (
+                                <td key={p.key} style={{ ...tdStyle, maxWidth: 160 }}>
+                                  {!projectId ? (
+                                    <span title="Select a project first" style={{ color: '#d1d5db' }}>—</span>
+                                  ) : statusLoading ? (
+                                    <Loader2 size={12} className="animate-spin text-zinc-300" />
+                                  ) : row.owner_name ? (
+                                    <span title={row.owner_name}>{row.owner_name}</span>
+                                  ) : (
+                                    <span style={{ color: '#9ca3af' }}>Unassigned</span>
                                   )}
                                 </td>
                               );
