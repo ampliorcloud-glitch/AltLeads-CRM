@@ -39,6 +39,8 @@ import { reassignContactsBulk, fetchAssignableUsers } from '../data/assignment';
 import { BulkProjectModal } from '../components/common/BulkProjectModal';
 import { addContactsToProject } from '../data/bulkActions';
 import type { UserOption } from '../data/wishlist';
+import { RecordPreviewPanel } from '../components/common/RecordPreviewPanel';
+import { ContactPreview } from '../components/contacts/ContactPreview';
 
 /* ------------------------------------------------------------------ */
 /*  Helpers                                                             */
@@ -345,6 +347,11 @@ export function ContactsPage() {
 
   // Row selection
   const sel = useRowSelection<number>();
+
+  // Row-click preview slide-over (ALT-327/328). Opening the panel replaces the
+  // old navigate-away behaviour; the full detail page stays reachable via the
+  // panel's "Open full record →" action.
+  const [previewId, setPreviewId] = useState<number | null>(null);
 
   // Load contacts
   useEffect(() => {
@@ -859,14 +866,14 @@ export function ContactsPage() {
                     return (
                       <tr
                         key={row.contact_id}
-                        role="link"
+                        role="button"
                         tabIndex={0}
-                        aria-label={`Open ${row.full_name || row.company_name || 'contact'}`}
-                        onClick={() => navigate(`/contacts/${row.contact_id}`)}
+                        aria-label={`Preview ${row.full_name || row.company_name || 'contact'}`}
+                        onClick={() => setPreviewId(row.contact_id)}
                         onKeyDown={(e) => {
                           if ((e.key === 'Enter' || e.key === ' ') && e.target === e.currentTarget) {
                             e.preventDefault();
-                            navigate(`/contacts/${row.contact_id}`);
+                            setPreviewId(row.contact_id);
                           }
                         }}
                         style={{
@@ -1122,6 +1129,17 @@ export function ContactsPage() {
           )}
         </div>
       </div>
+
+      {/* Row-click preview slide-over (ALT-327/328) */}
+      {previewId != null && (
+        <RecordPreviewPanel
+          title="Contact"
+          onClose={() => setPreviewId(null)}
+          onOpenFull={() => navigate(`/contacts/${previewId}`)}
+        >
+          <ContactPreview contactId={previewId} projectId={projectId} />
+        </RecordPreviewPanel>
+      )}
 
       {showReassign && (
         <ReassignModal
