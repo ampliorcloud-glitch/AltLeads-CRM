@@ -343,6 +343,10 @@ export async function reassignCompany(input: {
     .upsert(row, { onConflict: 'company_id,project_id' });
   if (error) return { error: mapWriteError(error) };
 
+  // Cascade: assigning a company also assigns ALL its contacts (in this project)
+  // to the same owner — assigning a company assigns its people too (Ankit, 2026-06-22).
+  await cascadeCompanyContacts(input.companyId, input.projectId, input.newUserId, input.actor);
+
   fireOwnerNotify({
     recipientUserId: input.newUserId,
     actor: input.actor,
@@ -438,6 +442,28 @@ async function upsertOwner(
   return { error: error ? mapWriteError(error) : undefined };
 }
 
+/**
+ * Cascade a company's owner onto every contact of that company (in one project).
+ * Returns the number of contacts (re)assigned. Best-effort per contact.
+ */
+async function cascadeCompanyContacts(
+  companyId: number,
+  projectId: number,
+  newUserId: number,
+  actor: string,
+): Promise<number> {
+  const { data: contacts } = await supabase
+    .from('contact_master')
+    .select('contact_id')
+    .eq('company_id', companyId);
+  let n = 0;
+  for (const c of (contacts ?? []) as { contact_id: number }[]) {
+    const res = await upsertOwner('contact_project_status', 'contact_id', c.contact_id, projectId, newUserId, actor);
+    if (!res.error) n += 1;
+  }
+  return n;
+}
+
 type BulkResult = { ok: number; failed: number; error: string | null };
 
 function summarize(ok: number, failed: number, firstErr: string | null): BulkResult {
@@ -486,7 +512,7 @@ export async function reassignCompaniesBulk(
   for (const cId of companyIds) {
     const res = await upsertOwner('company_project_status', 'company_id', cId, projectId, newUserId, actor);
     if (res.error) { failed += 1; if (!firstErr) firstErr = res.error; }
-    else ok += 1;
+    else { ok += 1; await cascadeCompanyContacts(cId, projectId, newUserId, actor); }
   }
   if (ok > 0) {
     fireOwnerNotify({

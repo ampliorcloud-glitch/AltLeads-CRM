@@ -2293,6 +2293,14 @@ const TICKETS = [
     owner:'Ankit',
     notes:'ANKIT 2026-06-22: after picking a project (e.g. DEMO) in the top-bar selector, opening a Company/Contact record still showed the FIRST project (AP North) per-project panel — ProjectSelect defaulted to rows[0] and never read the global selection. FIXED: ProjectSelect now defaults to the global selectedProjectId (ALT-273), falling back to first only when scope = All projects; CompanyDetailPage + ContactDetailPage seed their local projectId from the global selector and live-sync on change. Meetings are inherently single-project (no selector); My Tasks intentionally spans all projects (left as-is per owner).'
   },
+  {
+    id:'ALT-295', title:'Project access mode (admin): make project data public — Edit / View-only / Limited-view',
+    type:'Feature', module:'Access/Ownership', wave:'Wave 2',
+    priority:'P1', status:'Planned',
+    created: d(2026,6,22), updated: d(2026,6,22), finished: null,
+    owner:'Ankit',
+    notes:'ANKIT 2026-06-22: kill ownership ambiguity by giving Admin a per-PROJECT access mode in Project Settings (overrides per-record ownership) — "control & flexibility else we keep colliding on ambiguity." Modes: (1) Owner-scoped (current default — owner + upline edit, others limited); (2) Public · Edit (everyone in the project can edit everything); (3) Public · View-only (everyone sees ALL fields, no edit); (4) Public · Limited view (everyone sees NON-sensitive fields only — contact_status/designation/linkedin etc.; contact details email/phone + sensitive info MASKED). Maps onto the existing project_visibility_setting dials (ALT-134 view_scope/edit_scope) + the masking view can_see_contact_details (ALT-133) — needs a new "limited" masking tier. Build = Project Settings UI writing the dial + RLS/masking respect. STAGED RLS + throwaway-login validation before prod. Supersedes/extends ALT-134/ALT-174; record an ADR in DECISIONS.md.'
+  },
 
   ...uxAuditTickets(),
 ];
