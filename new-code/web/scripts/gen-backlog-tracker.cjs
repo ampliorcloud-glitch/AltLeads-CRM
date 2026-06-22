@@ -2077,18 +2077,18 @@ const TICKETS = [
   {
     id:'ALT-271', title:'Research: basic B2B CRM feature list (non-sales) via websearch',
     type:'Docs', module:'Docs', wave:'Roadmap',
-    priority:'P2', status:'Planned',
-    created: d(2026,6,21), updated: d(2026,6,21), finished: null,
+    priority:'P2', status:'Done',
+    created: d(2026,6,21), updated: d(2026,6,21), finished: d(2026,6,21),
     owner:'Claude',
-    notes:'OWNER 2026-06-21: AFTER the feedback items (#1-6) are fixed/built, web-search the basic B2B CRM features; IGNORE sales features but STILL create a separate list of them (invoice, quotes, etc.). Produce a categorized feature inventory to gap-check AltLeads against.'
+    notes:'OWNER 2026-06-21: web-search basic B2B CRM features; ignore sales features but still list them. DONE (doc docs/product/B2B-CRM-FEATURES.md): Section A = core/non-sales features mapped to our app (have/partial/gap) — top gaps: workflow automation, two-way email sync+tracking, custom report builder, kanban board, merge-duplicates, custom fields. Section B = sales-cycle features deliberately deferred (invoicing/quotes/CPQ/forecasting/commissions/marketing-automation/lead-scoring/ticketing/etc.). Grounded in 2026 HubSpot/Zoho/Salesforce/Pipedrive comparisons.'
   },
   {
     id:'ALT-272', title:'Global fuzzy search — grouped results (Leads/Companies/Contacts/Tasks/Meetings), Zoho/HubSpot-style',
     type:'Feature', module:'Web core', wave:'UX audit',
-    priority:'P1', status:'Planned',
-    created: d(2026,6,21), updated: d(2026,6,21), finished: null,
+    priority:'P1', status:'Done',
+    created: d(2026,6,21), updated: d(2026,6,21), finished: d(2026,6,21),
     owner:'Mohit',
-    notes:'OWNER (#7) 2026-06-21: enhance the EXISTING global search (Cmd-K CommandPalette / TopBar Search, ALT-188) -> always-visible search bar at the top of every screen; FUZZY matching; results GROUPED by type (All Leads / All Companies / All Contacts / All Tasks / All Meetings) like Zoho/HubSpot. Extend the search index (globalSearch.ts) to also include TASKS + MEETINGS; add group headers + per-group "see all"; keyboard nav across groups.'
+    notes:'OWNER (#7) 2026-06-21: enhance the EXISTING Cmd-K global search into GROUPED results. SHIPPED (commit 9fc6315): added TASKS + MEETINGS to globalSearch.ts (meetings via fetchMeetings; tasks via a direct RLS-scoped task read so the caller only sees their own/managed/admin). CommandPalette now renders fixed Zoho/HubSpot-style sections — Leads, Companies, Contacts, Tasks, Meetings — each with a count header; keyboard ↑/↓ walks the grouped list in display order, Enter opens the highlighted row; tasks open their associated record (or My Tasks). Index limit 24→40. FOLLOW-UP (future): always-visible inline results dropdown from the TopBar bar (currently the Cmd-K modal) + per-group "see all".'
   },
   {
     id:'ALT-273', title:'Global PROJECT selector (top bar) — pre-filters all modules/records; default in personal settings',

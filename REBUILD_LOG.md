@@ -843,3 +843,12 @@ Next wave: #8 global project selector (cross-cutting ProjectContext).
 - **Follow-ups (future):** date/user filters; also aggregate meetings/tasks/call_log (currently `interaction` only — the richest single source); pagination beyond 200.
 - **Session: 18 commits.** Remaining owner items: #1 advanced filters (ALT-270, partially via MultiSelectFilter), #7 grouped global search (ALT-272), ALT-271 websearch (LAST). Gated: portal DB (ALT-274), feasibility (ALT-277/278).
 - NOTE: sub-agent workflows are hitting the weekly/session limit; continuing DIRECT builds in the main loop while budget remains.
+
+---
+## 2026-06-21 (cont. 28) — #7 grouped search + #1 partial + ALT-271 research (weekly-limit sprint, DIRECT builds)
+- **ALT-272 #7 grouped global search DONE (commit 9fc6315):** Cmd-K palette now renders Zoho/HubSpot-style sections (Leads/Companies/Contacts/Tasks/Meetings) with count headers + cross-group keyboard nav; added Tasks (RLS-scoped read) + Meetings to globalSearch.ts index.
+- **ALT-271 research DONE (doc docs/product/B2B-CRM-FEATURES.md):** core B2B-CRM feature inventory mapped to our app (have/partial/gap) + a separate deferred sales-features list (invoice/quotes/forecasting/etc.) per owner. Top non-sales gaps: workflow automation, two-way email sync+tracking, custom report builder, kanban board, merge-duplicates, user-defined custom fields.
+- **#1 advanced filters (ALT-270):** PARTIAL — multi-select per-field filters live on Leads + Meetings; remaining = extend to Contacts/Companies/Tasks (tracked, not yet built).
+- **Session total: ~20 commits, NOTHING PUSHED.** Owner's full feedback batch (#1-#8) now addressed: #2 modal focus ✅, #3 one-click tasks ✅, #4 activity mirroring ✅, #5 admin timeline ✅, #6 Call module ✅(staged), #7 grouped search ✅, #8 project selector ✅; #1 advanced filters 🟡 partial; ALT-271 research ✅. Plus the full mobile Sales experience (ALT-275 record view + ALT-276 wishlist).
+- **GATED / awaiting owner:** ALT-274 portal DB apply (say "do the portal DB"); applying the staged migrations (task_job_run, call_log) on next deploy; ALT-277/278 site-feasibility (after portal, before live calling-agent handoff).
+- **NOTE for next session:** sub-agent workflows hit the weekly/session limit mid-sprint; the last several features were built DIRECTLY in the main loop. Resume by reading this log + the tracker.
