@@ -1,16 +1,22 @@
 /**
  * ContactPreview — compact "mini record" for a contact, rendered INSIDE the
- * generic RecordPreviewPanel (ALT-327/328). A denser mirror of ContactDetailPage:
- * header (avatar + name + designation + company), per-project Owner + Status chips,
- * quick contact methods (email / phone / LinkedIn with copy), key fields, linked
- * Leads + Colleagues counts, and a short recent-activity list.
+ * generic RecordPreviewPanel (ALT-327/328). A denser mirror of ContactDetailPage
+ * that now reaches PARITY with the full page's "Project Status" card:
+ * header (avatar + name + designation + company); a per-project selector (seeded
+ * from the global scope, ALT-294) that drives an EDITABLE status block — Owner
+ * (+ Assign/Change owner via ReassignModal), Contact Status dropdown, Description
+ * + Comments, and a Save button; plus quick contact methods, linked Leads +
+ * Colleagues, and a short recent-activity list.
  *
- * Read-only and dependency-light: it reuses the EXISTING data layer
- * (fetchContactById, fetchContactLeads, fetchContactInteractions from
- * data/contacts; getContactStatus from data/projectStatus; fetchCompanyContacts
- * from data/companies; fetchUserLabel from data/assignment) — no new data fns.
+ * Reuses the EXISTING data layer exactly like ContactDetailPage:
+ *   - getContactStatus / upsertContactStatus (data/projectStatus)
+ *   - reassignContact / fetchAssignableUsers / fetchUserLabel (data/assignment)
+ *   - fetchOptions('contact_status') (data/dropdowns) for the status dropdown
+ *   - ProjectSelect + useProjectScope for the project picker
+ *   - useAuth → profile.user_id (actor) + canReassign (gates Assign owner)
+ * No new data fns are introduced.
  */
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
   Loader2,
@@ -24,6 +30,8 @@ import {
   AlertCircle,
   Users,
   ClipboardList,
+  Save,
+  UserCheck,
 } from 'lucide-react';
 import {
   fetchContactById,
@@ -33,9 +41,19 @@ import {
   type ContactLead,
   type Interaction,
 } from '../../data/contacts';
-import { getContactStatus } from '../../data/projectStatus';
+import {
+  getContactStatus,
+  upsertContactStatus,
+  type ContactProjectStatus,
+} from '../../data/projectStatus';
 import { fetchCompanyContacts, type CompanyContact } from '../../data/companies';
-import { fetchUserLabel } from '../../data/assignment';
+import { reassignContact, fetchAssignableUsers, fetchUserLabel } from '../../data/assignment';
+import { fetchOptions, type DropdownOption } from '../../data/dropdowns';
+import type { UserOption } from '../../data/wishlist';
+import { useAuth } from '../../contexts/AuthContext';
+import { useProjectScope } from '../../contexts/ProjectContext';
+import { ProjectSelect } from '../ui/ProjectSelect';
+import { ReassignModal } from '../common/ReassignModal';
 import { CopyButton } from '../ui/CopyButton';
 import { StatusBadge } from '../ui/StatusBadge';
 import { StageBadge } from '../ui/Badge';
@@ -107,20 +125,55 @@ function describeInteraction(it: Interaction): string {
 
 export function ContactPreview({
   contactId,
-  projectId,
+  projectId: initialProjectId,
 }: {
   contactId: number;
   projectId?: number | null;
 }) {
+  const { profile, canReassign } = useAuth();
+  const { selectedProjectId } = useProjectScope();
+
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [contact, setContact] = useState<Contact | null>(null);
   const [leads, setLeads] = useState<ContactLead[]>([]);
   const [colleagues, setColleagues] = useState<CompanyContact[]>([]);
   const [activity, setActivity] = useState<Interaction[]>([]);
-  const [statusValue, setStatusValue] = useState<string | null>(null);
-  const [ownerName, setOwnerName] = useState<string>('');
 
+  // Per-project working panel — its OWN selector, seeded from the prop/global
+  // scope (ALT-294). Changing it re-loads that project's status, owner + draft.
+  const [projectId, setProjectId] = useState<number | null>(
+    initialProjectId ?? selectedProjectId,
+  );
+  // Keep in sync if the global top-bar scope resolves/changes after mount.
+  useEffect(() => {
+    if (selectedProjectId != null) setProjectId(selectedProjectId);
+  }, [selectedProjectId]);
+
+  const [projectStatus, setProjectStatus] = useState<ContactProjectStatus | null>(null);
+  const [statusOptions, setStatusOptions] = useState<DropdownOption[]>([]);
+  const [statusDraft, setStatusDraft] = useState<{
+    contact_status: string;
+    description: string;
+    comments: string;
+  }>({ contact_status: '', description: '', comments: '' });
+  const [savingStatus, setSavingStatus] = useState(false);
+  const [statusError, setStatusError] = useState<string | null>(null);
+  const [statusSuccess, setStatusSuccess] = useState(false);
+
+  // Per-project owner + reassignment (ALT-288)
+  const [ownerName, setOwnerName] = useState<string>('');
+  const [showReassign, setShowReassign] = useState(false);
+  const [reassignSaving, setReassignSaving] = useState(false);
+  const [reassignError, setReassignError] = useState<string | null>(null);
+  const [reassignOwners, setReassignOwners] = useState<UserOption[]>([]);
+
+  // Load contact_status dropdown options once (same source as the full page).
+  useEffect(() => {
+    fetchOptions('contact_status').then(setStatusOptions);
+  }, []);
+
+  // Core contact + associations.
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
@@ -129,8 +182,6 @@ export function ContactPreview({
     setLeads([]);
     setColleagues([]);
     setActivity([]);
-    setStatusValue(null);
-    setOwnerName('');
 
     (async () => {
       try {
@@ -154,16 +205,6 @@ export function ContactPreview({
         setLeads(ld);
         setColleagues(sib.filter((s) => s.id !== String(c.contact_id)));
         setActivity(acts);
-
-        // Per-project status + owner (only when a project is active).
-        if (projectId != null) {
-          const ps = await getContactStatus(c.contact_id, projectId);
-          if (cancelled) return;
-          setStatusValue(ps?.contact_status ?? null);
-          const label = await fetchUserLabel(ps?.owner_user_id ?? null);
-          if (cancelled) return;
-          setOwnerName(label);
-        }
       } catch {
         if (!cancelled) {
           setError('Could not load this contact.');
@@ -173,7 +214,89 @@ export function ContactPreview({
     })();
 
     return () => { cancelled = true; };
+  }, [contactId]);
+
+  // Per-project status + draft — reloads whenever the contact or project changes.
+  const loadProjectStatus = useCallback(async () => {
+    if (!contactId || projectId == null) {
+      setProjectStatus(null);
+      setStatusDraft({ contact_status: '', description: '', comments: '' });
+      return;
+    }
+    const ps = await getContactStatus(contactId, projectId);
+    setProjectStatus(ps);
+    setStatusDraft({
+      contact_status: ps?.contact_status ?? '',
+      description: ps?.description ?? '',
+      comments: ps?.comments ?? '',
+    });
   }, [contactId, projectId]);
+
+  useEffect(() => { loadProjectStatus(); }, [loadProjectStatus]);
+
+  // Resolve the owner label whenever the per-project owner changes.
+  useEffect(() => {
+    let cancelled = false;
+    fetchUserLabel(projectStatus?.owner_user_id ?? null).then((n) => {
+      if (!cancelled) setOwnerName(n);
+    });
+    return () => { cancelled = true; };
+  }, [projectStatus?.owner_user_id]);
+
+  /* ---- Save status (mirrors ContactDetailPage.saveProjectStatus) ---- */
+  async function saveProjectStatus() {
+    if (!contactId || projectId == null) return;
+    setSavingStatus(true);
+    setStatusError(null);
+    setStatusSuccess(false);
+    const actorId = profile?.user_id != null ? String(profile.user_id) : null;
+    const { error: err } = await upsertContactStatus(
+      contactId,
+      projectId,
+      {
+        contact_status: statusDraft.contact_status || null,
+        description: statusDraft.description.trim() || null,
+        comments: statusDraft.comments.trim() || null,
+      },
+      actorId,
+    );
+    setSavingStatus(false);
+    if (err) {
+      setStatusError(err);
+      return;
+    }
+    setStatusSuccess(true);
+    setTimeout(() => setStatusSuccess(false), 3000);
+    await loadProjectStatus();
+  }
+
+  /* ---- Assign / change owner (mirrors ContactDetailPage) ---- */
+  const openReassign = async () => {
+    if (projectId == null) return;
+    setReassignError(null);
+    setReassignOwners([]);
+    setShowReassign(true);
+    const owners = await fetchAssignableUsers(projectStatus?.owner_user_id ?? null);
+    setReassignOwners(owners);
+  };
+
+  const handleReassign = async (newUserId: number) => {
+    if (!contactId || projectId == null) return;
+    setReassignSaving(true);
+    setReassignError(null);
+    const res = await reassignContact({
+      contactId,
+      projectId,
+      newUserId,
+      actor: profile?.user_id != null ? String(profile.user_id) : '',
+      contactName: contact?.full_name || undefined,
+      isReassign: projectStatus?.owner_user_id != null,
+    });
+    setReassignSaving(false);
+    if (res?.error) { setReassignError(res.error); return; }
+    setShowReassign(false);
+    await loadProjectStatus();
+  };
 
   if (loading) {
     return (
@@ -247,26 +370,147 @@ export function ContactPreview({
         </div>
       </div>
 
-      {/* Owner + Status chips (per-project) */}
-      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 14 }}>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
-          <span style={{ fontSize: 10.5, color: '#9CA3AF', fontWeight: 500 }}>Owner (this project)</span>
-          {projectId == null ? (
-            <span style={{ fontSize: 12.5, color: '#9CA3AF' }}>Select a project</span>
-          ) : (
-            <span style={{ fontSize: 12.5, color: ownerName ? '#18181b' : '#9CA3AF', fontWeight: 500 }}>
-              {ownerName || 'Unassigned'}
-            </span>
-          )}
+      {/* Project Status — editable per-project block (parity with the full page) */}
+      <div style={{ border: '1px solid #E5E7EB', borderRadius: 10, padding: '12px 14px', background: '#fff' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginBottom: 10 }}>
+          <SectionTitle>Project Status</SectionTitle>
+          <ProjectSelect value={projectId} onChange={setProjectId} />
         </div>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
-          <span style={{ fontSize: 10.5, color: '#9CA3AF', fontWeight: 500 }}>Contact Status</span>
-          {projectId == null ? (
-            <span style={{ fontSize: 12.5, color: '#9CA3AF' }}>—</span>
-          ) : (
-            <StatusBadge value={statusValue} category="contact_status" />
-          )}
-        </div>
+
+        {projectId == null ? (
+          <p style={{ fontSize: 12.5, color: '#9CA3AF', margin: 0 }}>Select a project to view and edit status.</p>
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+
+            {/* Owner (this project) + Assign / Change owner */}
+            <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', gap: 8 }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0 }}>
+                <span style={{ fontSize: 10.5, color: '#9CA3AF', fontWeight: 500 }}>Owner (this project)</span>
+                <span style={{ fontSize: 12.5, color: ownerName ? '#18181b' : '#9CA3AF', fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {ownerName || 'Unassigned'}
+                </span>
+              </div>
+              {canReassign && (
+                <button
+                  type="button"
+                  onClick={openReassign}
+                  style={{
+                    display: 'inline-flex', alignItems: 'center', gap: 5, flexShrink: 0,
+                    fontSize: 11.5, fontWeight: 500,
+                    background: '#fff', color: '#374151',
+                    border: '1px solid #d4d4d8', borderRadius: 6,
+                    padding: '5px 10px', height: 28, cursor: 'pointer',
+                  }}
+                  title="Assign this contact (in this project) to a salesperson"
+                >
+                  <UserCheck size={13} />
+                  {ownerName ? 'Change owner' : 'Assign owner'}
+                </button>
+              )}
+            </div>
+
+            {/* Current status badge */}
+            {projectStatus?.contact_status && (
+              <div>
+                <StatusBadge value={projectStatus.contact_status} category="contact_status" />
+              </div>
+            )}
+
+            {/* Status dropdown */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+              <label style={{ fontSize: 10.5, color: '#6B7280', fontWeight: 500 }}>Contact Status</label>
+              <select
+                value={statusDraft.contact_status}
+                onChange={(e) => setStatusDraft((d) => ({ ...d, contact_status: e.target.value }))}
+                style={{
+                  fontSize: 13, padding: '6px 10px',
+                  border: '1px solid #d4d4d8', borderRadius: 6,
+                  background: '#fff', color: '#18181b', outline: 'none',
+                  cursor: 'pointer', height: 34, appearance: 'none', width: '100%',
+                }}
+                onFocus={(e) => { e.currentTarget.style.borderColor = '#1A7EE8'; }}
+                onBlur={(e) => { e.currentTarget.style.borderColor = '#d4d4d8'; }}
+              >
+                <option value="">— none —</option>
+                {statusOptions.map((o) => (
+                  <option key={o.option_id} value={o.value}>{o.label}</option>
+                ))}
+              </select>
+            </div>
+
+            {/* Description */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+              <label style={{ fontSize: 10.5, color: '#6B7280', fontWeight: 500 }}>Description</label>
+              <textarea
+                value={statusDraft.description}
+                onChange={(e) => setStatusDraft((d) => ({ ...d, description: e.target.value }))}
+                placeholder="Short description…"
+                rows={2}
+                style={{
+                  fontSize: 13, padding: '6px 10px', resize: 'vertical',
+                  border: '1px solid #d4d4d8', borderRadius: 6,
+                  background: '#fff', color: '#18181b', outline: 'none',
+                  fontFamily: 'inherit', width: '100%',
+                }}
+                onFocus={(e) => { e.currentTarget.style.borderColor = '#1A7EE8'; }}
+                onBlur={(e) => { e.currentTarget.style.borderColor = '#d4d4d8'; }}
+              />
+            </div>
+
+            {/* Comments */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+              <label style={{ fontSize: 10.5, color: '#6B7280', fontWeight: 500 }}>Comments</label>
+              <textarea
+                value={statusDraft.comments}
+                onChange={(e) => setStatusDraft((d) => ({ ...d, comments: e.target.value }))}
+                placeholder="Internal comments…"
+                rows={2}
+                style={{
+                  fontSize: 13, padding: '6px 10px', resize: 'vertical',
+                  border: '1px solid #d4d4d8', borderRadius: 6,
+                  background: '#fff', color: '#18181b', outline: 'none',
+                  fontFamily: 'inherit', width: '100%',
+                }}
+                onFocus={(e) => { e.currentTarget.style.borderColor = '#1A7EE8'; }}
+                onBlur={(e) => { e.currentTarget.style.borderColor = '#d4d4d8'; }}
+              />
+            </div>
+
+            {statusError && <p style={{ fontSize: 12, color: '#EF4444', margin: 0 }}>{statusError}</p>}
+            {statusSuccess && <p style={{ fontSize: 12, color: '#16A34A', margin: 0 }}>Status saved.</p>}
+
+            <button
+              type="button"
+              onClick={saveProjectStatus}
+              disabled={savingStatus || projectId == null}
+              style={{
+                display: 'inline-flex', alignItems: 'center', gap: 5, alignSelf: 'flex-start',
+                fontSize: 12, fontWeight: 500,
+                background: '#1A7EE8', color: '#fff',
+                border: 'none', borderRadius: 6,
+                padding: '6px 14px',
+                cursor: (savingStatus || projectId == null) ? 'not-allowed' : 'pointer',
+                opacity: (savingStatus || projectId == null) ? 0.6 : 1,
+              }}
+            >
+              {savingStatus ? <Loader2 size={12} className="animate-spin" /> : <Save size={12} />}
+              Save status
+            </button>
+          </div>
+        )}
+
+        {showReassign && (
+          <ReassignModal
+            entityLabel="Contact"
+            ownerLabel="Owner"
+            currentOwnerId={projectStatus?.owner_user_id ?? null}
+            owners={reassignOwners}
+            saving={reassignSaving}
+            error={reassignError}
+            onConfirm={handleReassign}
+            onClose={() => setShowReassign(false)}
+          />
+        )}
       </div>
 
       {/* Quick contact methods + key fields */}

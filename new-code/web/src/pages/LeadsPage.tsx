@@ -30,6 +30,8 @@ import {
   defaultColumnPrefs,
   reconcileColumns,
 } from '../components/ui/ColumnCustomizer';
+import { ViewSwitcher, useViewMode } from '../components/ui/ViewSwitcher';
+import { CardGrid, CardShell } from '../components/ui/CardGrid';
 import type { ColumnDef as ColDef, ExportColumn } from '../components/ui/columns';
 import type { ColumnPref } from '../data/views';
 import {
@@ -269,6 +271,9 @@ export function LeadsPage() {
 
   // Row multi-selection
   const sel = useRowSelection<string>();
+
+  // Table / Grid view (persisted per user + entity in localStorage).
+  const [view, setView] = useViewMode('leads', userId);
 
   const [allLeads, setAllLeads] = useState<RealLead[]>([]);
   const [industries, setIndustries] = useState<string[]>([]);
@@ -759,6 +764,9 @@ export function LeadsPage() {
               </button>
             )}
 
+            {/* Table / Grid view switcher */}
+            <ViewSwitcher value={view} onChange={setView} />
+
             {/* Column customizer */}
             <ColumnCustomizer
               entity="leads"
@@ -807,7 +815,31 @@ export function LeadsPage() {
           </div>
         </div>
 
+        {/* Grid (card) view */}
+        {view === 'grid' && !loading && !loadError && (
+          <CardGrid<RealLead>
+            rows={table.getRowModel().rows.map((r) => r.original)}
+            getKey={(row) => row.id}
+            onCardClick={(row) => navigate(`${leadBase}/${row.id}`)}
+            emptyLabel={hasActiveFilters ? 'No leads match the current filters.' : 'No leads yet.'}
+            renderCard={(row) => (
+              <CardShell
+                name={row.company || row.contactName || ''}
+                subtitle={row.contactName || undefined}
+                chip={row.stage ?? undefined}
+                fields={[
+                  { label: 'Company', value: row.company ?? '' },
+                  { label: 'Stage', value: row.stage ?? '' },
+                  { label: 'City', value: row.city ?? '' },
+                  { label: 'Agent', value: row.agent ?? '' },
+                ]}
+              />
+            )}
+          />
+        )}
+
         {/* Table */}
+        {(view === 'table' || loading || loadError) && (
         <div className="rounded-lg overflow-hidden" style={{ background: 'var(--color-surface)', border: '1px solid var(--border-color)' }}>
           <div className="overflow-x-auto">
             <table className="w-full">
@@ -1051,6 +1083,65 @@ export function LeadsPage() {
             </div>
           )}
         </div>
+        )}
+
+        {/* Grid-view pagination footer (table view has its own footer above) */}
+        {view === 'grid' && !loading && !loadError && totalRows > 0 && (
+          <div
+            className="flex items-center justify-between px-4 rounded-lg"
+            style={{ height: 44, background: 'var(--color-gray-50)', border: '1px solid var(--border-color)' }}
+          >
+            <div className="flex items-center gap-2">
+              <span className="text-zinc-500" style={{ fontSize: 12 }}>Rows per page</span>
+              <select
+                value={pageSize}
+                onChange={(e) => { table.setPageSize(Number(e.target.value)); table.setPageIndex(0); }}
+                style={{ ...inputBase, height: 28, paddingRight: 22, cursor: 'pointer', fontSize: 12 }}
+              >
+                {PAGE_SIZE_OPTIONS.map((sz) => <option key={sz} value={sz}>{sz}</option>)}
+              </select>
+            </div>
+            <div className="flex items-center gap-4">
+              <span className="text-zinc-500" style={{ fontSize: 12 }}>
+                Showing <span className="font-medium text-zinc-700">{firstRow}</span>–
+                <span className="font-medium text-zinc-700">{lastRow}</span> of{' '}
+                <span className="font-medium text-zinc-700">{totalRows}</span>
+              </span>
+              <div className="flex items-center gap-1.5">
+                <button
+                  onClick={() => table.previousPage()}
+                  disabled={!table.getCanPreviousPage()}
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: 4, height: 28, padding: '0 10px', fontSize: 12,
+                    border: '1px solid var(--border-input)', borderRadius: 'var(--radius-btn)',
+                    background: 'var(--color-surface)', color: 'var(--color-gray-600)',
+                    cursor: !table.getCanPreviousPage() ? 'not-allowed' : 'pointer', opacity: !table.getCanPreviousPage() ? 0.4 : 1,
+                  }}
+                  aria-label="Previous page"
+                >
+                  <ChevronLeft size={14} /> Prev
+                </button>
+                <span style={{ fontSize: 12, padding: '0 4px', color: 'var(--color-gray-500)' }}>
+                  Page <span style={{ fontWeight: 600, color: 'var(--color-gray-700)' }}>{pageIndex + 1}</span> of{' '}
+                  <span style={{ fontWeight: 600, color: 'var(--color-gray-700)' }}>{table.getPageCount()}</span>
+                </span>
+                <button
+                  onClick={() => table.nextPage()}
+                  disabled={!table.getCanNextPage()}
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: 4, height: 28, padding: '0 10px', fontSize: 12,
+                    border: '1px solid var(--border-input)', borderRadius: 'var(--radius-btn)',
+                    background: 'var(--color-surface)', color: 'var(--color-gray-600)',
+                    cursor: !table.getCanNextPage() ? 'not-allowed' : 'pointer', opacity: !table.getCanNextPage() ? 0.4 : 1,
+                  }}
+                  aria-label="Next page"
+                >
+                  Next <ChevronRight size={14} />
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
 
       {showReassign && (

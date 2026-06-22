@@ -19,6 +19,8 @@ import { useRowSelection } from '../components/ui/useRowSelection';
 import { ExportButton } from '../components/ui/ExportButton';
 import { MultiSelectFilter } from '../components/ui/MultiSelectFilter';
 import { ColumnCustomizer, defaultColumnPrefs, reconcileColumns } from '../components/ui/ColumnCustomizer';
+import { ViewSwitcher, useViewMode } from '../components/ui/ViewSwitcher';
+import { CardGrid, CardShell } from '../components/ui/CardGrid';
 import { StatusBadge } from '../components/ui/StatusBadge';
 import { ProjectSelect } from '../components/ui/ProjectSelect';
 import { Skeleton } from '../components/ui/Skeleton';
@@ -300,6 +302,9 @@ export function CompaniesPage() {
 
   // Row selection.
   const sel = useRowSelection<string>();
+
+  // Table / Grid view (persisted per user + entity in localStorage).
+  const [view, setView] = useViewMode('companies', userId);
 
   /* ---- load companies ---- */
   useEffect(() => {
@@ -676,6 +681,9 @@ export function CompaniesPage() {
               </button>
             )}
 
+            {/* Table / Grid view switcher */}
+            <ViewSwitcher value={view} onChange={setView} />
+
             {/* Column customizer */}
             <ColumnCustomizer
               entity="companies"
@@ -722,7 +730,37 @@ export function CompaniesPage() {
           </div>
         </div>
 
+        {/* Grid (card) view */}
+        {view === 'grid' && !loading && !loadError && (
+          <CardGrid<Company>
+            rows={table.getRowModel().rows.map((r) => r.original)}
+            getKey={(row) => row.id}
+            onCardClick={(row) => navigate(`/companies/${row.id}`)}
+            emptyLabel={hasActiveFilters ? 'No companies match the current filters.' : 'No companies yet.'}
+            renderCard={(row) => {
+              const status = projectId == null ? null : (statusMap[Number(row.id)]?.account_status ?? null);
+              return (
+                <CardShell
+                  name={row.name || ''}
+                  subtitle={row.domainClean || undefined}
+                  tag={row.isDemo ? (
+                    <span style={{ fontSize: 9, fontWeight: 600, letterSpacing: 0.4, background: '#F3F4F6', color: '#9CA3AF', borderRadius: 3, padding: '1px 5px', textTransform: 'uppercase' }}>Demo</span>
+                  ) : undefined}
+                  chip={status ?? undefined}
+                  fields={[
+                    { label: 'Industry', value: row.industry ?? '' },
+                    { label: 'City', value: row.city ?? '' },
+                    { label: 'Owner', value: row.owner ?? '' },
+                    { label: 'Account Status', value: status ? <StatusBadge value={status} category="account_status" /> : '' },
+                  ]}
+                />
+              );
+            }}
+          />
+        )}
+
         {/* Table */}
+        {(view === 'table' || loading || loadError) && (
         <div className="rounded-lg overflow-hidden" style={{ background: 'var(--color-surface)', border: '1px solid var(--border-color)' }}>
           <div className="overflow-x-auto">
             <table className="w-full">
@@ -962,6 +1000,65 @@ export function CompaniesPage() {
             </div>
           )}
         </div>
+        )}
+
+        {/* Grid-view pagination footer (table view has its own footer above) */}
+        {view === 'grid' && !loading && !loadError && totalRows > 0 && (
+          <div
+            className="flex items-center justify-between px-4 rounded-lg"
+            style={{ height: 44, background: 'var(--color-gray-50)', border: '1px solid var(--border-color)' }}
+          >
+            <div className="flex items-center gap-2">
+              <span className="text-zinc-500" style={{ fontSize: 12 }}>Rows per page</span>
+              <select
+                value={pageSize}
+                onChange={(e) => { table.setPageSize(Number(e.target.value)); table.setPageIndex(0); }}
+                style={{ ...inputBase, height: 28, paddingRight: 22, cursor: 'pointer', fontSize: 12 }}
+              >
+                {PAGE_SIZE_OPTIONS.map((sz) => <option key={sz} value={sz}>{sz}</option>)}
+              </select>
+            </div>
+            <div className="flex items-center gap-4">
+              <span className="text-zinc-500" style={{ fontSize: 12 }}>
+                Showing <span className="font-medium text-zinc-700">{firstRow}</span>–
+                <span className="font-medium text-zinc-700">{lastRow}</span> of{' '}
+                <span className="font-medium text-zinc-700">{totalRows}</span>
+              </span>
+              <div className="flex items-center gap-1.5">
+                <button
+                  onClick={() => table.previousPage()}
+                  disabled={!table.getCanPreviousPage()}
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: 4, height: 28, padding: '0 10px', fontSize: 12,
+                    border: '1px solid var(--border-input)', borderRadius: 'var(--radius-btn)',
+                    background: 'var(--color-surface)', color: 'var(--color-gray-600)',
+                    cursor: !table.getCanPreviousPage() ? 'not-allowed' : 'pointer', opacity: !table.getCanPreviousPage() ? 0.4 : 1,
+                  }}
+                  aria-label="Previous page"
+                >
+                  <ChevronLeft size={14} /> Prev
+                </button>
+                <span style={{ fontSize: 12, padding: '0 4px', color: 'var(--color-gray-500)' }}>
+                  Page <span style={{ fontWeight: 600, color: 'var(--color-gray-700)' }}>{pageIndex + 1}</span> of{' '}
+                  <span style={{ fontWeight: 600, color: 'var(--color-gray-700)' }}>{table.getPageCount()}</span>
+                </span>
+                <button
+                  onClick={() => table.nextPage()}
+                  disabled={!table.getCanNextPage()}
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: 4, height: 28, padding: '0 10px', fontSize: 12,
+                    border: '1px solid var(--border-input)', borderRadius: 'var(--radius-btn)',
+                    background: 'var(--color-surface)', color: 'var(--color-gray-600)',
+                    cursor: !table.getCanNextPage() ? 'not-allowed' : 'pointer', opacity: !table.getCanNextPage() ? 0.4 : 1,
+                  }}
+                  aria-label="Next page"
+                >
+                  Next <ChevronRight size={14} />
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
 
       {showReassign && (

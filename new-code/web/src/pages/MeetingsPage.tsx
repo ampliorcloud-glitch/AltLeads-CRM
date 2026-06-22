@@ -29,6 +29,8 @@ import {
   defaultColumnPrefs,
   reconcileColumns,
 } from '../components/ui/ColumnCustomizer';
+import { ViewSwitcher, useViewMode } from '../components/ui/ViewSwitcher';
+import { CardGrid, CardShell } from '../components/ui/CardGrid';
 import type { ColumnDef as ColDef, ExportColumn } from '../components/ui/columns';
 import type { ColumnPref } from '../data/views';
 import {
@@ -254,6 +256,9 @@ export function MeetingsPage() {
   const [colPrefs, setColPrefs] = useState<ColumnPref[]>(() => defaultColumnPrefs(ALL_COLUMNS));
 
   const sel = useRowSelection<string>();
+
+  // Table / Grid view (persisted per user + entity in localStorage).
+  const [view, setView] = useViewMode('meetings', userId);
 
   const [allMeetings, setAllMeetings] = useState<MeetingRow[]>([]);
   const [agents, setAgents] = useState<string[]>([]);
@@ -668,6 +673,7 @@ export function MeetingsPage() {
                 Reassign ({sel.count})
               </button>
             )}
+            <ViewSwitcher value={view} onChange={setView} />
             <ColumnCustomizer
               entity="meetings"
               userId={userId}
@@ -688,7 +694,34 @@ export function MeetingsPage() {
           </div>
         </div>
 
+        {/* Grid (card) view */}
+        {view === 'grid' && !loading && !loadError && (
+          <CardGrid<MeetingRow>
+            rows={rowsOnPage.map((r) => r.original)}
+            getKey={(row) => row.id}
+            onCardClick={(row) => navigate(`${meetingBase}/${row.id}`)}
+            emptyLabel={hasActiveFilters ? 'No meetings match the current filters.' : 'No meetings found.'}
+            renderCard={(row) => {
+              const title = row.name || row.company || row.leadName || '';
+              return (
+                <CardShell
+                  name={title}
+                  subtitle={[row.company, row.city].filter(Boolean).join(' · ') || undefined}
+                  chip={<MeetingStatusBadge status={row.status} />}
+                  fields={[
+                    { label: 'Company', value: row.company ?? '' },
+                    { label: 'Meeting Date', value: row.meetingDate ? formatDate(row.meetingDate) : '' },
+                    { label: 'Salesperson', value: row.salesperson ?? '' },
+                    { label: 'Status', value: row.status ?? '' },
+                  ]}
+                />
+              );
+            }}
+          />
+        )}
+
         {/* Table */}
+        {(view === 'table' || loading || loadError) && (
         <div className="bg-white border border-zinc-200 rounded-lg overflow-hidden">
           <div className="overflow-x-auto">
             <table className="w-full">
@@ -860,6 +893,39 @@ export function MeetingsPage() {
             </div>
           )}
         </div>
+        )}
+
+        {/* Grid-view pagination footer (table view has its own footer above) */}
+        {view === 'grid' && !loading && !loadError && filteredData.length > 0 && (
+          <div className="flex items-center justify-between border border-zinc-200 rounded-lg px-4 py-2.5" style={{ background: '#F9FAFB' }}>
+            <p className="text-zinc-500" style={{ fontSize: 12 }}>
+              Showing <span className="font-medium text-zinc-700">{firstRow}</span>–
+              <span className="font-medium text-zinc-700">{lastRow}</span> of{' '}
+              <span className="font-medium text-zinc-700">{filteredData.length}</span>
+            </p>
+            <div className="flex items-center gap-2">
+              <span className="text-zinc-500" style={{ fontSize: 12 }}>Page {pageIndex + 1} of {pageCount}</span>
+              <button
+                onClick={() => table.previousPage()}
+                disabled={!table.getCanPreviousPage()}
+                className="flex items-center justify-center border border-zinc-300 hover:border-zinc-400 bg-white text-zinc-600 rounded-md transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                style={{ width: 28, height: 28 }}
+                aria-label="Previous page"
+              >
+                <ChevronLeft size={15} />
+              </button>
+              <button
+                onClick={() => table.nextPage()}
+                disabled={!table.getCanNextPage()}
+                className="flex items-center justify-center border border-zinc-300 hover:border-zinc-400 bg-white text-zinc-600 rounded-md transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                style={{ width: 28, height: 28 }}
+                aria-label="Next page"
+              >
+                <ChevronRight size={15} />
+              </button>
+            </div>
+          </div>
+        )}
       </div>
 
       {showReassign && (
