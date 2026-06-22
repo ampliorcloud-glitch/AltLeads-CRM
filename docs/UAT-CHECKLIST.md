@@ -74,6 +74,14 @@
 |---|---|---|---|---|---|
 | I1 | Change contact status in the list | Contacts list → pick a project up top → in a row's **Status** cell, change the dropdown | Saves immediately (no opening the record); the change sticks on reload | ⬜ | |
 
+## J. Quick wins (just shipped)
+
+| # | What to test | Steps | Expected | Result | Notes |
+|---|---|---|---|---|---|
+| J1 | Sticky table headers | Open any list (Leads/Companies/Contacts/Meetings) with many rows → scroll down | The column header row stays pinned at the top while rows scroll under it | ⬜ | |
+| J2 | Client enable/disable works | Admin → Clients tab → toggle a client's status | The toggle actually changes status (confirm on disable) + toast; previously it did nothing | ⬜ | |
+| J3 | Add-User roles complete | Admin → Users → Add User → open the Role dropdown | Shows all roles from the database (not a hardcoded 6); a newly added role would appear | ⬜ | |
+
 ---
 
 ## F. Held back — DO NOT expect these yet (here so you know the plan)
