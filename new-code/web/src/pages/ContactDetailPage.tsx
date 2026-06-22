@@ -51,6 +51,7 @@ import { supabase } from '../lib/supabase';
 import { SectionCard } from '../components/admin/primitives';
 import { SearchSelect, type SearchSelectOption } from '../components/ui/SearchSelect';
 import { ProjectSelect } from '../components/ui/ProjectSelect';
+import { useProjectScope } from '../contexts/ProjectContext';
 import { DispositionForm } from '../components/ui/DispositionForm';
 import { ActivityTimeline } from '../components/ui/ActivityTimeline';
 import { StatusBadge } from '../components/ui/StatusBadge';
@@ -251,7 +252,13 @@ export function ContactDetailPage() {
 
   // Per-project working panel state
   // TODO visibility: per-project status/notes are owner + admin only (security pass)
-  const [projectId, setProjectId] = useState<number | null>(null);
+  // Seeded from + synced with the GLOBAL top-bar project selector (ALT-273) so the
+  // contact's per-project view opens in the project the user picked, not "the first".
+  const { selectedProjectId } = useProjectScope();
+  const [projectId, setProjectId] = useState<number | null>(selectedProjectId);
+  useEffect(() => {
+    if (selectedProjectId != null) setProjectId(selectedProjectId);
+  }, [selectedProjectId]);
   const [projectStatus, setProjectStatus] = useState<ContactProjectStatus | null>(null);
   const [statusOptions, setStatusOptions] = useState<DropdownOption[]>([]);
   const [statusDraft, setStatusDraft] = useState<{

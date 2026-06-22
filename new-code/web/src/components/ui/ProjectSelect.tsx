@@ -14,6 +14,7 @@
 import React, { useEffect, useState } from 'react';
 import { ChevronDown } from 'lucide-react';
 import { fetchProjects, type ProjectOption } from '../../data/companies';
+import { useProjectScope } from '../../contexts/ProjectContext';
 
 interface Props {
   value: number | null;
@@ -24,6 +25,9 @@ interface Props {
 export function ProjectSelect({ value, onChange, disabled = false }: Props) {
   const [projects, setProjects] = useState<ProjectOption[]>([]);
   const [loading, setLoading] = useState(true);
+  // The global top-bar project selection (ALT-273) — the default for any
+  // per-project view so a record opens in the project the user picked.
+  const { selectedProjectId } = useProjectScope();
 
   useEffect(() => {
     let cancelled = false;
@@ -31,16 +35,26 @@ export function ProjectSelect({ value, onChange, disabled = false }: Props) {
       if (cancelled) return;
       setProjects(rows);
       setLoading(false);
-      // Default to the first project when nothing is selected yet.
-      if (value == null && rows.length > 0) {
-        onChange(rows[0].id);
-      }
     });
     return () => {
       cancelled = true;
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // When nothing is chosen yet, default to the GLOBAL selection (top-bar), so a
+  // record opens in the project the user picked — not always "the first project"
+  // (the old bug: pick DEMO, open a company, still see AP-North). Falls back to
+  // the first accessible project when the global scope is "All projects" (null).
+  // Re-runs if the global selection resolves after mount (e.g. a hard refresh).
+  useEffect(() => {
+    if (value != null || projects.length === 0) return;
+    const def =
+      selectedProjectId != null && projects.some((p) => p.id === selectedProjectId)
+        ? selectedProjectId
+        : projects[0].id;
+    onChange(def);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [value, projects, selectedProjectId]);
 
   return (
     <div className="relative inline-flex items-center">

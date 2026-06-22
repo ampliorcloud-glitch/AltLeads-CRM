@@ -2285,6 +2285,14 @@ const TICKETS = [
     owner:'Ankit',
     notes:'Tier-3 polish. Dedup exists on CREATE (find_contact_dup, company domain/CIN dedup) but there is NO way to MERGE two existing duplicate records — pick a survivor, re-point children (leads/meetings/contacts/interactions/statuses), soft-delete the loser, audit the merge. Admin-gated (data-altering). Pairs with the bulk tooling.'
   },
+  {
+    id:'ALT-294', title:'BUG: record detail per-project view ignored the global project selector (defaulted to first project)',
+    type:'Bug', module:'UX', wave:'Wave 2',
+    priority:'P1', status:'Done',
+    created: d(2026,6,22), updated: d(2026,6,22), finished: d(2026,6,22),
+    owner:'Ankit',
+    notes:'ANKIT 2026-06-22: after picking a project (e.g. DEMO) in the top-bar selector, opening a Company/Contact record still showed the FIRST project (AP North) per-project panel — ProjectSelect defaulted to rows[0] and never read the global selection. FIXED: ProjectSelect now defaults to the global selectedProjectId (ALT-273), falling back to first only when scope = All projects; CompanyDetailPage + ContactDetailPage seed their local projectId from the global selector and live-sync on change. Meetings are inherently single-project (no selector); My Tasks intentionally spans all projects (left as-is per owner).'
+  },
 
   ...uxAuditTickets(),
 ];

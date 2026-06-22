@@ -32,6 +32,7 @@ import { LogCallModal, type CallAssociation } from '../components/calls/LogCallM
 import type { TaskType } from '../data/tasks';
 import { StatusBadge } from '../components/ui/StatusBadge';
 import { ProjectSelect } from '../components/ui/ProjectSelect';
+import { useProjectScope } from '../contexts/ProjectContext';
 import { DispositionForm } from '../components/ui/DispositionForm';
 import { ActivityTimeline } from '../components/ui/ActivityTimeline';
 import {
@@ -1156,8 +1157,14 @@ export function CompanyDetailPage() {
   const [notFound, setNotFound] = useState(false);
   const [tab, setTab] = useState<TabKey>('contacts');
 
-  // Shared project selection — lifted to page level so header + contacts tab stay in sync
-  const [projectId, setProjectId] = useState<number | null>(null);
+  // Shared project selection — lifted to page level so header + contacts tab stay in sync.
+  // Seeded from (and kept in sync with) the GLOBAL top-bar project selector (ALT-273)
+  // so this record's per-project view opens in the project the user picked.
+  const { selectedProjectId } = useProjectScope();
+  const [projectId, setProjectId] = useState<number | null>(selectedProjectId);
+  useEffect(() => {
+    if (selectedProjectId != null) setProjectId(selectedProjectId);
+  }, [selectedProjectId]);
 
   // Fix #6 — link existing contact
   const [showLinkModal, setShowLinkModal] = useState(false);
