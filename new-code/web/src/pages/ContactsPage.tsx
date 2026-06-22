@@ -528,6 +528,12 @@ export function ContactsPage() {
     whiteSpace: 'nowrap',
     userSelect: 'none',
     borderBottom: '2px solid #1A7EE8',
+    // Sticky header (ALT-318): background on the cell (not just the row) so body
+    // rows can't show through under the sticky header while the body scrolls.
+    position: 'sticky',
+    top: 0,
+    zIndex: 1,
+    background: 'var(--color-surface)',
   };
 
   const tdStyle: React.CSSProperties = {

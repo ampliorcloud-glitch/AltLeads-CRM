@@ -750,6 +750,13 @@ export function CompaniesPage() {
                           userSelect: 'none',
                           cursor: canSort ? 'pointer' : 'default',
                           width: header.id === '__select' ? 40 : undefined,
+                          // Sticky header (ALT-318): background + bottom border on the cell
+                          // so body rows can't show through under the sticky header.
+                          position: 'sticky',
+                          top: 0,
+                          zIndex: 1,
+                          background: 'var(--color-surface)',
+                          borderBottom: '1px solid var(--border-color)',
                         }}
                         onClick={header.column.getToggleSortingHandler()}
                         onKeyDown={(e) => {

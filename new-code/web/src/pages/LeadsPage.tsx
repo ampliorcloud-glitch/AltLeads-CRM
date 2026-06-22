@@ -835,6 +835,14 @@ export function LeadsPage() {
                           userSelect: 'none',
                           cursor: canSort ? 'pointer' : 'default',
                           width: header.id === '__select' ? 40 : undefined,
+                          // Sticky header (ALT-318): keep the header row visible while the
+                          // body scrolls. Background + bottom border live on the cell so
+                          // rows can't show through under the sticky header.
+                          position: 'sticky',
+                          top: 0,
+                          zIndex: 1,
+                          background: 'var(--color-surface)',
+                          borderBottom: '1px solid var(--border-color)',
                         }}
                         onClick={header.column.getToggleSortingHandler()}
                         onKeyDown={(e) => {

@@ -525,6 +525,18 @@ export async function fetchClients(): Promise<{ clients: AdminClient[]; error: s
   return { clients: mapped, error: null };
 }
 
+export async function setClientEnabled(
+  clientAssocId: number,
+  enabled: boolean,
+  actorId: string
+): Promise<string | null> {
+  const { error } = await supabase
+    .from('client_association')
+    .update({ enabled, updated_by: actorId, updated_date: new Date().toISOString() })
+    .eq('client_assoc_id', clientAssocId);
+  return error?.message ?? null;
+}
+
 export interface ClientEditInput {
   client_name: string;
   full_name: string;

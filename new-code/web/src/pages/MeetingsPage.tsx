@@ -713,6 +713,12 @@ export function MeetingsPage() {
                           color: '#1A7EE8',
                           borderBottom: '2px solid #1A7EE8',
                           cursor: canSort ? 'pointer' : 'default',
+                          // Sticky header (ALT-318): white background on the cell so body
+                          // rows can't show through under the sticky header.
+                          position: 'sticky',
+                          top: 0,
+                          zIndex: 1,
+                          background: '#FFFFFF',
                         }}
                         onClick={header.column.getToggleSortingHandler()}
                         onKeyDown={(e) => {

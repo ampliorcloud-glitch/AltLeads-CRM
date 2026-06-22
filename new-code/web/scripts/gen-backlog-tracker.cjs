@@ -2374,7 +2374,14 @@ const TICKETS = [
         'Persona audit (UI). onMouseEnter/Leave style-mutation in 42 files fakes :hover — fragile/inconsistent. Standardize on CSS hover + the existing :focus-visible ring; delete the handlers.'),
       A('ALT-323','Breadcrumb: record name as leaf + clickable crumbs','Task','UX','P3',
         'Persona audit (UI). TopBar breadcrumb is shallow ("Lead Detail", non-clickable). Show the record name as the leaf and make non-last crumbs navigable. HubSpot "Leads / Acme Corp".'),
-    ];
+    ].map((t) => {
+      if (['ALT-318', 'ALT-297', 'ALT-298'].includes(t.id)) {
+        t.status = 'Done';
+        t.finished = d(2026, 6, 22);
+        t.notes = 'DONE 2026-06-22 (background subagent, build green). ' + t.notes;
+      }
+      return t;
+    });
   })()),
 
   ...uxAuditTickets(),

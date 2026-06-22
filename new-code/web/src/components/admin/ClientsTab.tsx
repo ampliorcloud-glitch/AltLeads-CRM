@@ -4,10 +4,13 @@ import {
   fetchClients,
   updateClient,
   createClient,
+  setClientEnabled,
   type AdminClient,
   type AdminLookups,
   type ClientEditInput,
 } from '../../data/admin';
+import { useToast } from '../ui/Toast';
+import { useConfirm } from '../ui/ConfirmDialog';
 import {
   Card,
   FigmaTableHead,
@@ -37,6 +40,9 @@ export function ClientsTab({ lookups, actorId }: { lookups: AdminLookups; actorI
   const [clients, setClients] = useState<AdminClient[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [busyClientId, setBusyClientId] = useState<number | null>(null);
+  const toast = useToast();
+  const confirm = useConfirm();
 
   const [mode, setMode] = useState<'create' | 'edit' | null>(null);
   const [editId, setEditId] = useState<number | null>(null);
@@ -55,6 +61,27 @@ export function ClientsTab({ lookups, actorId }: { lookups: AdminLookups; actorI
   useEffect(() => {
     load();
   }, []);
+
+  const handleToggle = async (c: AdminClient) => {
+    const disabling = c.enabled;
+    if (disabling) {
+      const ok = await confirm({
+        title: `Disable client "${c.client_name}"?`,
+        message: 'They will be marked inactive. Existing projects and data are unaffected.',
+        tone: 'danger',
+        confirmLabel: 'Disable client',
+      });
+      if (!ok) return;
+    }
+    setBusyClientId(c.client_assoc_id);
+    const err = await setClientEnabled(c.client_assoc_id, !c.enabled, actorId);
+    setBusyClientId(null);
+    if (err) { toast.error(err); return; }
+    setClients((prev) =>
+      prev.map((x) => (x.client_assoc_id === c.client_assoc_id ? { ...x, enabled: !c.enabled } : x))
+    );
+    toast.success(disabling ? 'Client disabled' : 'Client enabled');
+  };
 
   const setField = <K extends keyof ClientEditInput>(k: K, v: ClientEditInput[K]) =>
     setForm((prev) => ({ ...prev, [k]: v }));
@@ -212,7 +239,11 @@ export function ClientsTab({ lookups, actorId }: { lookups: AdminLookups; actorI
 
                     {/* Status */}
                     <td style={{ padding: '0 16px', verticalAlign: 'middle' }}>
-                      <StatusToggle enabled={c.enabled} />
+                      <StatusToggle
+                        enabled={c.enabled}
+                        busy={busyClientId === c.client_assoc_id}
+                        onToggle={() => handleToggle(c)}
+                      />
                     </td>
 
                     {/* Edit */}

@@ -25,15 +25,6 @@ import { Modal, Field, TextInput, SelectInput, PrimaryButton, GhostButton } from
 import { useToast } from '../ui/Toast';
 import { useConfirm } from '../ui/ConfirmDialog';
 
-const ROLES = [
-  { id: 1, label: 'Admin' },
-  { id: 2, label: 'Team Lead' },
-  { id: 3, label: 'Agent' },
-  { id: 4, label: 'Sales Head' },
-  { id: 5, label: 'Sales Person' },
-  { id: 6, label: 'QC' },
-];
-
 /**
  * Client/portal sales roles. is_web=false (they were the vendor mobile = CLIENT
  * app roles), so they're excluded from the generic web-role picker — but they're
@@ -511,9 +502,9 @@ export function UsersTab({ lookups, actorId }: { lookups: AdminLookups; actorId:
             )}
             <Field label="Role *">
               <SelectInput value={addRoleId} onChange={setAddRoleId}>
-                {ROLES.map((r) => (
-                  <option key={r.id} value={String(r.id)}>
-                    {r.label}
+                {lookups.roles.map((r) => (
+                  <option key={r.role_id} value={String(r.role_id)}>
+                    {r.name}
                   </option>
                 ))}
               </SelectInput>
