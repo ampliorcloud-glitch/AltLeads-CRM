@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Loader2, ShieldAlert, Users, Briefcase, Building2, Tag, Globe, Layout, ListTree, HelpCircle, ShieldCheck } from 'lucide-react';
+import { Loader2, ShieldAlert, Users, Briefcase, Building2, Tag, Globe, Layout, ListTree, HelpCircle, ShieldCheck, Activity } from 'lucide-react';
 import { AppShell } from '../components/layout/AppShell';
 import { useAuth } from '../contexts/AuthContext';
 import { fetchLookups, type AdminLookups } from '../data/admin';
@@ -10,8 +10,9 @@ import { ReferenceDataTab } from '../components/admin/ReferenceDataTab';
 import { DropdownsTab } from '../components/admin/DropdownsTab';
 import { PreSalesQuestionsTab } from '../components/admin/PreSalesQuestionsTab';
 import { ProjectAccessTab } from '../components/admin/ProjectAccessTab';
+import { ActivityTimelineTab } from '../components/admin/ActivityTimelineTab';
 
-type TabKey = 'users' | 'projects' | 'clients' | 'reference' | 'dropdowns' | 'presales' | 'access';
+type TabKey = 'users' | 'projects' | 'clients' | 'reference' | 'dropdowns' | 'presales' | 'access' | 'activity';
 
 const NAV_ITEMS: { key: TabKey; label: string; icon: React.ReactNode }[] = [
   { key: 'users',     label: 'User',              icon: <Users size={15} strokeWidth={1.6} /> },
@@ -21,6 +22,7 @@ const NAV_ITEMS: { key: TabKey; label: string; icon: React.ReactNode }[] = [
   { key: 'reference', label: 'Reference Data',    icon: <Tag size={15} strokeWidth={1.6} /> },
   { key: 'dropdowns', label: 'Option Lists',      icon: <ListTree size={15} strokeWidth={1.6} /> },
   { key: 'presales',  label: 'Pre-Sales Questions', icon: <HelpCircle size={15} strokeWidth={1.6} /> },
+  { key: 'activity',  label: 'Activity',           icon: <Activity size={15} strokeWidth={1.6} /> },
 ];
 
 const TAB_TITLES: Record<TabKey, string> = {
@@ -31,6 +33,7 @@ const TAB_TITLES: Record<TabKey, string> = {
   reference: 'Reference Data',
   dropdowns: 'Option Lists',
   presales:  'Pre-Sales Questions',
+  activity:  'Activity',
 };
 
 function Restricted() {
@@ -229,6 +232,7 @@ export default function AdminPage() {
               {tab === 'reference' && <ReferenceDataTab actorId={actorId} />}
               {tab === 'dropdowns' && <DropdownsTab actorId={actorId} />}
               {tab === 'presales'  && <PreSalesQuestionsTab actorId={actorId} />}
+              {tab === 'activity'  && <ActivityTimelineTab />}
             </>
           )}
         </div>
