@@ -19,6 +19,7 @@ import { Download, ChevronDown, FileSpreadsheet, FileText } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import type { ExportColumn } from './columns';
 import type { SelectableId } from './useRowSelection';
+import { useToast } from './Toast';
 
 interface Props<Row extends Record<string, unknown>> {
   rows: Row[];
@@ -84,6 +85,7 @@ export function ExportButton<Row extends Record<string, unknown>>({
 }: Props<Row>) {
   const [open, setOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
+  const toast = useToast();
 
   useEffect(() => {
     function handler(e: MouseEvent) {
@@ -103,8 +105,9 @@ export function ExportButton<Row extends Record<string, unknown>>({
       const wb = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(wb, ws, 'Export');
       XLSX.writeFile(wb, `${filename}.xlsx`);
+      toast.success('Exported ' + data.length + ' rows');
     } catch {
-      window.alert('Export failed. Please try again.');
+      toast.error('Export failed — please try again.');
     } finally {
       setOpen(false);
     }
@@ -125,8 +128,9 @@ export function ExportButton<Row extends Record<string, unknown>>({
         )
         .join('\r\n');
       downloadBlob(new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8;' }), `${filename}.csv`);
+      toast.success('Exported ' + data.length + ' rows');
     } catch {
-      window.alert('Export failed. Please try again.');
+      toast.error('Export failed — please try again.');
     } finally {
       setOpen(false);
     }

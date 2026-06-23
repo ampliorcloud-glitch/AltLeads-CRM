@@ -94,7 +94,7 @@ TypeScript everywhere · **Supabase** (Postgres DB + Auth + Storage) · **React 
 - `docs/DESIGN-SYSTEM.md` — palette/type/components.
 - `docs/product/` — PRD, BACKLOG, ROADMAP, ROLES-AND-PERMISSIONS, DATA-DICTIONARY, UAT-CHECKLIST,
   RISK-REGISTER, DECISIONS, GLOSSARY, INDEX.
-- `docs/figma-zip/` (SVGs) + `docs/figma-png/` (rasterized screens, gitignored) — design reference.
+- `docs/archive/figma-exports/figma-zip/` (SVGs) + `docs/archive/figma-exports/figma-png/` (rasterized screens, gitignored) — design reference (archived 2026-06-23 during docs hygiene; see `docs/INDEX.md`).
 - `new-code/migration/` — schema + data-copy + rls-policies.sql.
 
 ## 8. STARTING THE MOBILE CHAT (Phase 6) — read this first in the new chat
@@ -114,7 +114,7 @@ TypeScript everywhere · **Supabase** (Postgres DB + Auth + Storage) · **React 
   (vendor withheld theirs — fine for a new listing; updating the EXISTING Play listing needs the
   vendor's key or Google's key-reset). Apple Developer + Google Play account access needed (vendor
   may ghost due to unpaid final invoice — plan for Google/Apple support recovery).
-- **Figma mobile designs:** `docs/figma-zip/` Mobile UI page (23 frames) — rasterize from the SVGs.
+- **Figma mobile designs:** `docs/archive/figma-exports/figma-zip/` Mobile UI page (23 frames) — rasterize from the SVGs.
 - Mobile reuses Supabase (one backend for web + mobile) — no separate DB.
 
 ## 9. How to resume WEB (this/continuing chat)

@@ -31,6 +31,7 @@
  * ─────────────────────────────────────────────────────────────────────────────
  */
 import { supabase } from '../lib/supabase';
+import { humanizeWriteError } from '../lib/writeError';
 
 /* ------------------------------------------------------------------ */
 /*  Enums (match the CHECK constraints in the migration exactly)        */
@@ -205,7 +206,10 @@ export async function logCall(
     .select(CALL_COLUMNS)
     .single();
 
-  if (error) return { call: null, error: error.message };
+  if (error) {
+    console.error('[calls] logCall insert failed', error);
+    return { call: null, error: humanizeWriteError(error) };
+  }
   return { call: data as unknown as CallLog, error: null };
 }
 
@@ -233,7 +237,10 @@ export async function listCallsForRecord(
   else return { calls: [], error: null }; // no association supplied
 
   const { data, error } = await query.order('called_at', { ascending: false });
-  if (error) return { calls: [], error: error.message };
+  if (error) {
+    console.error('[calls] listCallsForRecord failed', error);
+    return { calls: [], error: humanizeWriteError(error) };
+  }
   return { calls: (data ?? []) as unknown as CallLog[], error: null };
 }
 
@@ -254,7 +261,10 @@ export async function listMyCalls(
     .is('deleted_date', null)
     .order('called_at', { ascending: false });
 
-  if (error) return { calls: [], error: error.message };
+  if (error) {
+    console.error('[calls] listMyCalls failed', error);
+    return { calls: [], error: humanizeWriteError(error) };
+  }
   return { calls: (data ?? []) as unknown as CallLog[], error: null };
 }
 
@@ -282,7 +292,10 @@ export async function callStatsToday(
   if (userId != null) query = query.eq('owner_user_id', userId);
 
   const { count, error } = await query;
-  if (error) return { count: 0, error: error.message };
+  if (error) {
+    console.error('[calls] callStatsToday failed', error);
+    return { count: 0, error: humanizeWriteError(error) };
+  }
   return { count: count ?? 0, error: null };
 }
 

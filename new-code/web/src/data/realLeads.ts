@@ -212,7 +212,12 @@ export async function fetchLeadsFallback(): Promise<LeadsResult> {
     ? await fetchAll<ReportRow>(
         'lead_report',
         'report_id, lead_id, stage_id, user_id, updated_date',
-        (q) => q.is('deleted_date', null).in('lead_id', leadIds).order('updated_date', { ascending: false, nullsFirst: false }),
+        // Deterministic tiebreaker: when two reports for the same lead share
+        // updated_date (or it's null), the highest report_id (newest row) wins, so
+        // the picked stage never flips between loads.
+        (q) => q.is('deleted_date', null).in('lead_id', leadIds)
+          .order('updated_date', { ascending: false, nullsFirst: false })
+          .order('report_id', { ascending: false }),
       )
     : { rows: [] as ReportRow[], error: null };
   const reports = reportsRes.rows;
@@ -473,10 +478,13 @@ export async function fetchDashboardStats(projectId: number | null = null): Prom
     recentLeadIds.length > 0
       ? supabase
           .from('lead_report')
-          .select('lead_id, stage_id')
+          .select('report_id, lead_id, stage_id')
           .in('lead_id', recentLeadIds)
           .is('deleted_date', null)
+          // Deterministic tiebreaker so the per-lead "latest report" stage never
+          // flips on equal/null updated_date (newest report_id wins).
           .order('updated_date', { ascending: false, nullsFirst: false })
+          .order('report_id', { ascending: false })
       : Promise.resolve({ data: [] }),
     recentAssocIds.length > 0
       ? supabase

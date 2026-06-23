@@ -113,8 +113,10 @@ export function ReassignModal({
         <button
           onClick={() => ownerId != null && onConfirm(ownerId)}
           disabled={saving || ownerId == null || (!isBulk && ownerId === currentOwnerId)}
-          className="inline-flex items-center gap-1.5 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed text-white font-medium rounded-md transition-colors"
-          style={{ fontSize: 13, padding: '7px 14px', height: 34 }}
+          className="inline-flex items-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed text-white font-medium rounded-md transition-colors"
+          style={{ fontSize: 13, padding: '7px 14px', height: 34, background: 'var(--color-brand)' }}
+          onMouseEnter={(e) => { if (!(saving || ownerId == null || (!isBulk && ownerId === currentOwnerId))) (e.currentTarget as HTMLElement).style.background = 'var(--color-brand-dark)'; }}
+          onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = 'var(--color-brand)'; }}
         >
           {saving && <Loader2 size={14} className="animate-spin" />}
           {isReassign ? 'Reassign' : 'Assign'}

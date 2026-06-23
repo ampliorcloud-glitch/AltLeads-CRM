@@ -141,16 +141,16 @@ export function DispositionForm({
         <button
           type="button"
           onClick={handleLog}
-          disabled={saving}
+          disabled={saving || !disposition}
           style={{
             fontSize: 13,
             fontWeight: 600,
             padding: '7px 16px',
             border: 'none',
             borderRadius: 6,
-            background: saving ? '#93c5fd' : '#1A7EE8',
+            background: saving || !disposition ? '#93c5fd' : '#1A7EE8',
             color: '#fff',
-            cursor: saving ? 'not-allowed' : 'pointer',
+            cursor: saving || !disposition ? 'not-allowed' : 'pointer',
           }}
         >
           {saving ? 'Logging…' : 'Log call'}

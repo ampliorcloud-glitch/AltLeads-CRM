@@ -30,6 +30,7 @@
 import { supabase } from '../lib/supabase';
 import { insertLeadWithUniqueNumber } from '../lib/leadsApi';
 import { notify, notifyInApp, resolveUserEmailAndName } from '../lib/notify';
+import { humanizeWriteError } from '../lib/writeError';
 
 /* ── Constants ───────────────────────────────────────────────────────────── */
 
@@ -572,11 +573,20 @@ export async function updateWishlistStatus(
   const actorErr = assertNumericActor(actor);
   if (actorErr) return actorErr;
 
-  const { error } = await supabase
+  const { data, error } = await supabase
     .from('wishlist')
     .update({ status, updated_by: actor, updated_date: new Date().toISOString() })
-    .eq('wishlist_id', wishlistId);
-  if (error) return { error: error.message };
+    .eq('wishlist_id', wishlistId)
+    .select('wishlist_id');
+  if (error) {
+    console.error('[wishlist] updateWishlistStatus failed', error);
+    return { error: humanizeWriteError(error) ?? 'Could not update the wishlist status.' };
+  }
+  // No error but 0 rows changed = the row exists but RLS hid the update (you don't
+  // own it). Mirror data/contacts.ts so the user sees the assigned-only message.
+  if (!data || (data as { wishlist_id: number }[]).length === 0) {
+    return { error: 'You can only edit records assigned to you.' };
+  }
   return null;
 }
 

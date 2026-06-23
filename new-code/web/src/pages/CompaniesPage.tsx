@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   useReactTable,
@@ -320,6 +320,10 @@ export function CompaniesPage() {
     if (res.ok === 0 && res.error) { setReassignError(res.error); return; }
     setShowReassign(false);
     sel.clear();
+    // Refresh the per-project owner/status for the reassigned rows so the Owner
+    // column reflects the new owner immediately (don't wait for a project switch /
+    // reload). Reuses the same fetch the project effect uses.
+    loadStatuses(projectId, ids);
     toast.success(
       res.failed > 0
         ? `Reassigned ${res.ok}; ${res.failed} skipped (no permission).`
@@ -364,6 +368,10 @@ export function CompaniesPage() {
   // Per-project statuses keyed by numeric company_id.
   const [statusMap, setStatusMap] = useState<Record<number, CompanyStatusLite>>({});
   const [statusLoading, setStatusLoading] = useState(false);
+  // Monotonic request id for loadStatuses: a fast project switch bumps this so a
+  // slower in-flight fetch (project A) can't land its owners under project B
+  // (mirrors ContactsPage's owner-effect `cancelled` guard).
+  const statusReqRef = useRef(0);
   // account_status dropdown options (for the inline-editable status cell).
   const [statusOptions, setStatusOptions] = useState<DropdownOption[]>([]);
 
@@ -461,8 +469,12 @@ export function CompaniesPage() {
 
   const loadStatuses = useCallback(async (pid: number, ids: number[]) => {
     if (!pid || ids.length === 0) return;
+    // Take a token for this request; a newer call (e.g. project switch) bumps the
+    // ref, so when this fetch resolves we drop its result if it's no longer current.
+    const reqId = ++statusReqRef.current;
     setStatusLoading(true);
     const result = await fetchCompanyStatuses(pid, ids);
+    if (reqId !== statusReqRef.current) return; // stale — a newer load superseded us
     setStatusMap((prev) => ({ ...prev, ...result }));
     setStatusLoading(false);
   }, []);
@@ -527,6 +539,15 @@ export function CompaniesPage() {
     const group = kanbanGroupOptions.find((o) => o.key === kanbanGroupBy) ?? kanbanGroupOptions[0];
     return buildKanbanGrouping<Company>(filteredData, group, 'Unset');
   }, [filteredData, kanbanGroupOptions, kanbanGroupBy]);
+
+  // Keep the kanban "Group by" selection valid: if the selected field is no longer
+  // in the current options, reset to the first option so the <select> value can't
+  // desync from the rendered board (e.g. project cleared while grouped by Owner).
+  useEffect(() => {
+    if (!kanbanGroupOptions.some((o) => o.key === kanbanGroupBy)) {
+      setKanbanGroupBy(kanbanGroupOptions[0].key);
+    }
+  }, [kanbanGroupOptions, kanbanGroupBy]);
 
   /* ---- visible column keys (from prefs) ---- */
   const visibleKeys = useMemo(
@@ -799,6 +820,19 @@ export function CompaniesPage() {
         key: 'owner',
         header: 'Owner',
         getValue: (r) => (projectId == null ? 'Unassigned' : (statusMap[Number(r.id)]?.owner_name ?? 'Unassigned')),
+        // Show a small spinner while this row's owner is still loading, instead of
+        // flashing "Unassigned" before the per-project fetch resolves (mirrors the
+        // Table cell's loading logic).
+        render: (r) => {
+          const numId = Number(r.id);
+          if (projectId != null && statusLoading && !(numId in statusMap)) {
+            return <Loader2 size={12} className="animate-spin text-zinc-300" />;
+          }
+          const name = projectId == null ? null : (statusMap[numId]?.owner_name ?? null);
+          return name
+            ? <span className="text-zinc-600" style={{ fontSize: 13 }}>{name}</span>
+            : <span className="text-zinc-400" style={{ fontSize: 13 }}>Unassigned</span>;
+        },
       },
       {
         key: 'accountStatus',
@@ -808,7 +842,26 @@ export function CompaniesPage() {
         type: 'select',
         options: statusSelectOptions,
         getValue: (r) => statusMap[Number(r.id)]?.account_status ?? '',
-        disabledReason: () => (projectId == null ? 'Select a project first' : null),
+        // While this row's status is still loading, show a spinner rather than a
+        // blank cell (mirrors the Table cell's loading logic). The render path is
+        // only used while the cell is read-only, so we also gate editing on the
+        // load via disabledReason below — that keeps render (spinner) in effect
+        // until the real status lands, instead of seeding the editor with "".
+        render: (r) => {
+          const numId = Number(r.id);
+          if (projectId != null && statusLoading && !(numId in statusMap)) {
+            return <Loader2 size={12} className="animate-spin text-zinc-300" />;
+          }
+          const status = statusMap[numId]?.account_status ?? null;
+          return <StatusBadge value={status} category="account_status" />;
+        },
+        disabledReason: (r) => {
+          if (projectId == null) return 'Select a project first';
+          // Block editing (and let render show the spinner) until this row's
+          // per-project status has loaded, so users can't edit a blank cell.
+          if (statusLoading && !(Number(r.id) in statusMap)) return 'Loading…';
+          return null;
+        },
         onSave: async (r, next) => {
           if (projectId == null) return { error: 'Select a project first.' };
           const newStatus = next === '' ? null : next;
@@ -818,7 +871,7 @@ export function CompaniesPage() {
         },
       },
     ];
-  }, [statusOptions, statusMap, projectId, actorId, handleStatusUpdated]);
+  }, [statusOptions, statusMap, statusLoading, projectId, actorId, handleStatusUpdated]);
 
   const totalRows = filteredData.length;
   const pageIndex = table.getState().pagination.pageIndex;

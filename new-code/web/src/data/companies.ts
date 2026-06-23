@@ -380,27 +380,46 @@ export async function createCompany(
   const cin = input.cin_number.trim();
 
   // Dedup only for real (non-demo) companies.
+  //
+  // Run domain + CIN as SEPARATE .eq() queries and combine in JS, rather than one
+  // interpolated PostgREST .or('domain_clean.eq.${domainClean},cin_number.eq.${cin}')
+  // string: a domain/CIN containing a comma or ')' would break that filter syntax
+  // and the dedup would silently miss (→ duplicate inserted). .eq() sends the value
+  // as a bound parameter, so any characters are safe. Keep domain-first-then-CIN.
   if (!input.is_demo && (domainClean || cin)) {
-    const orParts: string[] = [];
-    if (domainClean) orParts.push(`domain_clean.eq.${domainClean}`);
-    if (cin) orParts.push(`cin_number.eq.${cin}`);
-
-    if (orParts.length > 0) {
-      const { data: matches, error: dupErr } = await supabase
+    const dedupHit = async (
+      column: 'domain_clean' | 'cin_number',
+      value: string,
+    ): Promise<{ company_id: number; company_name: string | null } | null | { error: string }> => {
+      const { data, error } = await supabase
         .from('company_master')
         .select('company_id, company_name')
         .eq('is_demo', false)
         .is('deleted_date', null)
-        .or(orParts.join(','))
+        .eq(column, value)
         .limit(1);
-      if (dupErr) return { kind: 'error', message: dupErr.message };
-      const hit = (matches as { company_id: number; company_name: string | null }[] | null)?.[0];
-      if (hit) {
-        return {
-          kind: 'duplicate',
-          match: { id: String(hit.company_id), name: hit.company_name ?? '', owner: OWNER_UNASSIGNED },
-        };
-      }
+      if (error) return { error: error.message };
+      return (data as { company_id: number; company_name: string | null }[] | null)?.[0] ?? null;
+    };
+
+    // Domain first, then CIN — same precedence as the old .or() (first hit wins).
+    let hit: { company_id: number; company_name: string | null } | null = null;
+    if (domainClean) {
+      const res = await dedupHit('domain_clean', domainClean);
+      if (res && 'error' in res) return { kind: 'error', message: res.error };
+      hit = res;
+    }
+    if (!hit && cin) {
+      const res = await dedupHit('cin_number', cin);
+      if (res && 'error' in res) return { kind: 'error', message: res.error };
+      hit = res;
+    }
+
+    if (hit) {
+      return {
+        kind: 'duplicate',
+        match: { id: String(hit.company_id), name: hit.company_name ?? '', owner: OWNER_UNASSIGNED },
+      };
     }
   }
 

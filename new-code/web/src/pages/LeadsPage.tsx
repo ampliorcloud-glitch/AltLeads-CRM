@@ -431,6 +431,9 @@ export function LeadsPage() {
     setFilters((prev) => ({ ...prev, [key]: value }));
     // Any filter change resets to the first page.
     setPagination((p) => ({ ...p, pageIndex: 0 }));
+    // Clear selection so a bulk action can't act on rows filtered out of view
+    // (mirrors ContactsPage / CompaniesPage setFilter).
+    sel.clear();
   };
 
   const hasActiveFilters = Object.values(filters).some((v) =>
@@ -504,6 +507,26 @@ export function LeadsPage() {
     const group = kanbanGroupOptions.find((o) => o.key === kanbanGroupBy) ?? kanbanGroupOptions[0];
     return buildKanbanGrouping<RealLead>(filteredData, group, 'Unset');
   }, [filteredData, kanbanGroupOptions, kanbanGroupBy]);
+
+  // Keep the kanban "Group by" selection valid: if the selected field is no longer
+  // in the current options, reset to the first option so the <select> value can't
+  // desync from the rendered board (mirrors Contacts/Companies).
+  useEffect(() => {
+    if (!kanbanGroupOptions.some((o) => o.key === kanbanGroupBy)) {
+      setKanbanGroupBy(kanbanGroupOptions[0].key);
+    }
+  }, [kanbanGroupOptions, kanbanGroupBy]);
+
+  // Clamp pageIndex into [0, pageCount-1] when the filtered set / project scope
+  // shrinks, so the user can't land on an empty page while records exist earlier
+  // (mirrors ContactsPage's safePage clamp). Recomputes from filteredData length
+  // so it doesn't depend on the table's own pagination row model timing.
+  useEffect(() => {
+    const pageCount = Math.max(1, Math.ceil(filteredData.length / pagination.pageSize));
+    if (pagination.pageIndex > pageCount - 1) {
+      setPagination((p) => ({ ...p, pageIndex: pageCount - 1 }));
+    }
+  }, [filteredData.length, pagination.pageIndex, pagination.pageSize]);
 
   // Derive the ordered, visibility-filtered set of column keys from prefs.
   const visibleKeys = useMemo(
@@ -885,7 +908,7 @@ export function LeadsPage() {
                   )}
                   {hasActiveFilters && (
                     <button
-                      onClick={() => { setFilters(defaultFilters); setPagination((p) => ({ ...p, pageIndex: 0 })); }}
+                      onClick={() => { setFilters(defaultFilters); setPagination((p) => ({ ...p, pageIndex: 0 })); sel.clear(); }}
                       className="ml-3 text-zinc-400 hover:text-zinc-700 transition-colors"
                       style={{ fontSize: 12 }}
                     >

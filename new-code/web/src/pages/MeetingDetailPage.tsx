@@ -44,6 +44,7 @@ import {
 import { ReassignModal } from '../components/common/ReassignModal';
 import { reassignMeeting, fetchAssignableUsers } from '../data/assignment';
 import type { UserOption } from '../data/wishlist';
+import { CopyButton } from '../components/ui/CopyButton';
 
 /* ------------------------------------------------------------------ */
 /* Small primitives                                                    */
@@ -667,10 +668,20 @@ export function MeetingDetailPage() {
                       {meeting.leadDesignation || dash}
                     </Meta>
                     <Meta icon={<Phone size={12} />} label="Mobile">
-                      {meeting.leadMobile || dash}
+                      {meeting.leadMobile ? (
+                        <span className="inline-flex items-center gap-1.5">
+                          {meeting.leadMobile}
+                          <CopyButton value={meeting.leadMobile} label="Mobile" />
+                        </span>
+                      ) : dash}
                     </Meta>
                     <Meta icon={<MessageSquare size={12} />} label="Email">
-                      {meeting.leadEmail || dash}
+                      {meeting.leadEmail ? (
+                        <span className="inline-flex items-center gap-1.5">
+                          {meeting.leadEmail}
+                          <CopyButton value={meeting.leadEmail} label="Email" />
+                        </span>
+                      ) : dash}
                     </Meta>
                   </div>
                   {meeting.leadId && (

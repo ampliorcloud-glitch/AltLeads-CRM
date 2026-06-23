@@ -58,6 +58,7 @@ import { CopyButton } from '../ui/CopyButton';
 import { StatusBadge } from '../ui/StatusBadge';
 import { StageBadge } from '../ui/Badge';
 import { formatDate } from '../../data/account';
+import { humanizeWriteError } from '../../lib/writeError';
 import { CallLogPreview } from '../calls/CallLogPreview';
 import { PreviewCallLogger } from '../calls/PreviewCallLogger';
 
@@ -267,7 +268,7 @@ export function ContactPreview({
     );
     setSavingStatus(false);
     if (err) {
-      setStatusError(err);
+      setStatusError(humanizeWriteError(err));
       return;
     }
     setStatusSuccess(true);
@@ -298,7 +299,7 @@ export function ContactPreview({
       isReassign: projectStatus?.owner_user_id != null,
     });
     setReassignSaving(false);
-    if (res?.error) { setReassignError(res.error); return; }
+    if (res?.error) { setReassignError(humanizeWriteError(res.error)); return; }
     setShowReassign(false);
     await loadProjectStatus();
   };

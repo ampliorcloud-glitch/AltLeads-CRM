@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { AppShell } from '../components/layout/AppShell';
 import { fetchAllContacts, type Contact } from '../data/contacts';
@@ -340,6 +340,10 @@ export function ContactsPage() {
     if (res.ok === 0 && res.error) { setReassignError(res.error); return; }
     setShowReassign(false);
     sel.clear();
+    // Refresh the per-project owner names for the reassigned rows so the Owner
+    // column reflects the new owner immediately (don't wait for a project switch /
+    // reload). Reuses the same fetch the project effect uses.
+    loadOwners(projectId, ids);
     toast.success(
       res.failed > 0
         ? `Reassigned ${res.ok}; ${res.failed} skipped (no permission).`
@@ -451,11 +455,60 @@ export function ContactsPage() {
     return () => { cancelled = true; };
   }, [projectId, allContacts]);
 
+  // Fetch per-project OWNER names for a set of contact ids within one project and
+  // MERGE them into ownerMap. Batches contact_project_status(contact_id,
+  // owner_user_id) in chunks (mirrors fetchContactStatuses' paging), then resolves
+  // the distinct owner_user_ids to names in a single user_master lookup. Kept in
+  // ContactsPage because the shared status helper can't be widened from here.
+  // Reused by the project effect (all ids) AND after a bulk reassign (the affected
+  // ids), so the Owner column refreshes without a project switch / reload.
+  // `shouldApply` lets the caller drop a stale result (mirrors the original
+  // effect's `cancelled` guard): the project effect passes a predicate bound to
+  // its cleanup flag; the post-reassign call omits it (always applies).
+  const loadOwners = useCallback(async (pid: number, ids: number[], shouldApply?: () => boolean) => {
+    if (!pid || ids.length === 0) return;
+    const ownerByContact: Record<number, number | null> = {};
+    const CHUNK = 200;
+    for (let i = 0; i < ids.length; i += CHUNK) {
+      const slice = ids.slice(i, i + CHUNK);
+      const { data, error } = await supabase
+        .from('contact_project_status')
+        .select('contact_id, owner_user_id')
+        .eq('project_id', pid)
+        .in('contact_id', slice);
+      if (error) {
+        console.error('[ContactsPage] owner fetch error', error);
+        continue;
+      }
+      for (const row of (data ?? []) as { contact_id: number; owner_user_id: number | null }[]) {
+        ownerByContact[row.contact_id] = row.owner_user_id;
+      }
+    }
+
+    // Resolve distinct owner ids → names in one query.
+    const distinctIds = [...new Set(Object.values(ownerByContact).filter((v): v is number => v != null))];
+    const nameById = new Map<number, string>();
+    if (distinctIds.length > 0) {
+      const { data: users } = await supabase
+        .from('user_master')
+        .select('user_id, full_name')
+        .in('user_id', distinctIds);
+      ((users ?? []) as { user_id: number; full_name: string | null }[]).forEach((u) =>
+        nameById.set(u.user_id, (u.full_name ?? '').trim() || `User #${u.user_id}`),
+      );
+    }
+
+    if (shouldApply && !shouldApply()) return; // stale — a newer load superseded us
+    setOwnerMap((prev) => {
+      const next = { ...prev };
+      for (const [cid, uid] of Object.entries(ownerByContact)) {
+        next[Number(cid)] = uid != null ? (nameById.get(uid) ?? `User #${uid}`) : '';
+      }
+      return next;
+    });
+  }, []);
+
   // Load per-project OWNER names whenever project or contacts change.
-  // Batches contact_project_status(contact_id, owner_user_id) in chunks (mirrors
-  // fetchContactStatuses' paging), then resolves the distinct owner_user_ids to
-  // names in a single user_master lookup. Kept in ContactsPage because the shared
-  // status helper can't be widened from here (single-file edit scope).
   useEffect(() => {
     if (!projectId || allContacts.length === 0) {
       setOwnerMap({});
@@ -463,49 +516,13 @@ export function ContactsPage() {
     }
     let cancelled = false;
     const ids = allContacts.map((c) => c.contact_id);
-
-    (async () => {
-      const ownerByContact: Record<number, number> = {};
-      const CHUNK = 200;
-      for (let i = 0; i < ids.length; i += CHUNK) {
-        const slice = ids.slice(i, i + CHUNK);
-        const { data, error } = await supabase
-          .from('contact_project_status')
-          .select('contact_id, owner_user_id')
-          .eq('project_id', projectId)
-          .in('contact_id', slice);
-        if (error) {
-          console.error('[ContactsPage] owner fetch error', error);
-          continue;
-        }
-        for (const row of (data ?? []) as { contact_id: number; owner_user_id: number | null }[]) {
-          if (row.owner_user_id != null) ownerByContact[row.contact_id] = row.owner_user_id;
-        }
-      }
-
-      // Resolve distinct owner ids → names in one query.
-      const distinctIds = [...new Set(Object.values(ownerByContact))];
-      const nameById = new Map<number, string>();
-      if (distinctIds.length > 0) {
-        const { data: users } = await supabase
-          .from('user_master')
-          .select('user_id, full_name')
-          .in('user_id', distinctIds);
-        ((users ?? []) as { user_id: number; full_name: string | null }[]).forEach((u) =>
-          nameById.set(u.user_id, (u.full_name ?? '').trim() || `User #${u.user_id}`),
-        );
-      }
-
-      if (cancelled) return;
-      const next: Record<number, string> = {};
-      for (const [cid, uid] of Object.entries(ownerByContact)) {
-        next[Number(cid)] = nameById.get(uid) ?? `User #${uid}`;
-      }
-      setOwnerMap(next);
-    })();
-
+    // Reset for a fresh project so stale owners from the previous project can't
+    // linger, then load the current project's owners (dropping the result if this
+    // effect is cleaned up first).
+    setOwnerMap({});
+    void loadOwners(projectId, ids, () => !cancelled);
     return () => { cancelled = true; };
-  }, [projectId, allContacts]);
+  }, [projectId, allContacts, loadOwners]);
 
   // TODO visibility: per-project status/notes are owner + admin only (security pass).
 
@@ -615,6 +632,15 @@ export function ContactsPage() {
     const group = kanbanGroupOptions.find((o) => o.key === kanbanGroupBy) ?? kanbanGroupOptions[0];
     return buildKanbanGrouping<ContactRow>(filteredData, group, 'Unset');
   }, [filteredData, kanbanGroupOptions, kanbanGroupBy]);
+
+  // Keep the kanban "Group by" selection valid: if the selected field is no longer
+  // in the current options, reset to the first option so the <select> value can't
+  // desync from the rendered board.
+  useEffect(() => {
+    if (!kanbanGroupOptions.some((o) => o.key === kanbanGroupBy)) {
+      setKanbanGroupBy(kanbanGroupOptions[0].key);
+    }
+  }, [kanbanGroupOptions, kanbanGroupBy]);
 
   // Pagination
   const totalRows = filteredData.length;
@@ -765,6 +791,16 @@ export function ContactsPage() {
       header: 'Owner',
       // Read-only — reassignment stays via the bulk toolbar / preview.
       getValue: (r) => (projectId == null ? '' : (r.owner_name || 'Unassigned')),
+      // Show a small spinner while the per-project owner is still loading rather
+      // than flashing "Unassigned" before the fetch resolves (mirrors the Table
+      // cell's loading logic; statusLoading is the per-project load proxy).
+      render: (r) => {
+        if (projectId == null) return <span style={{ color: '#d1d5db' }}>—</span>;
+        if (statusLoading) return <Loader2 size={12} className="animate-spin text-zinc-300" />;
+        return r.owner_name
+          ? <span title={r.owner_name}>{r.owner_name}</span>
+          : <span style={{ color: '#9ca3af' }}>Unassigned</span>;
+      },
     },
     {
       key: 'description',
@@ -818,7 +854,7 @@ export function ContactsPage() {
     },
     { key: 'designation', header: 'Designation', getValue: (r) => r.designation ?? '' },
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  ], [statusOptions, projectId, actorId]);
+  ], [statusOptions, projectId, actorId, statusLoading]);
 
   /* -------------------------------------------------------- render -- */
 

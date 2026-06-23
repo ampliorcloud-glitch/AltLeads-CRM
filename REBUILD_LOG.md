@@ -946,4 +946,13 @@ Next wave: #8 global project selector (cross-cutting ProjectContext).
   - Q6: deploy posture fine — evenings after 6pm and/or weekends.
   - Q7: PDF emails via Playwright OK, or HTML for now; Ankit may supply template UI.
   - Minor: lite/team VIEWER users for senior stakeholders (read-only) → ALT-343; internal users don't need /sales (admin can); mobile app = backlog (not dropped).
-- Build of ALT-337/338 + research IN PROGRESS, then push. 
+- Build of ALT-337/338 + research DONE + pushed (88ef6a4 → main).
+
+---
+## 2026-06-23 (cont. 2) — Autonomous QC pass + doc hygiene (Ankit: "stop waiting, make it better")
+- **Harsh QC panel (3 subagents)** reviewed recent work + whole app + data layer; **doc-hygiene subagent** reorganized docs. Then **5 disjoint fix subagents** applied every SAFE-NOW finding (build green). Items needing Ankit's eye were NOT touched (listed below).
+- **Doc hygiene:** created **`docs/INDEX.md`** (owner-friendly map, priority docs ⭐ at top), refreshed `docs/product/INDEX.md`, moved all scratch/temp/vendor-binary/figma dumps into **`docs/archive/`** (untracked moves — nothing deleted, no tracked refs broken; SUMMARY.md figma paths repointed).
+- **Shared helper:** `src/lib/writeError.ts` `humanizeWriteError()` — one source mapping raw 42501 (RLS) / 42P01·PGRST205 (missing table) to friendly copy. Wired into data/calls, data/wishlist, data/projectStatus(logDisposition propagates now), ContactPreview, LeadPreview.
+- **Safe fixes applied:** EditableGrid (indeterminate checkbox every-render + text-cell focus parity); CallLogPreview shows real error; DispositionForm button disabled until disposition; GenericKanban empty-state when no columns; ExportButton window.alert→toast + success toast; realLeads deterministic stage tiebreaker (report_id desc); companies dedup `.or()` → sanitized `.eq()` (injection/edge fix); LeadsPage+MeetingsPage `sel.clear()` on filter + pageIndex clamp; kanban group-by resets when option invalid (all 5); Companies/Contacts Owner+Status grid loading affordance + owner refresh after reassign; Companies loadStatuses cancellation guard; Dashboard error+Retry surface + dropped "(from lead_report)" jargon; unified primary blue → brand token (4 modals); per-route ErrorBoundary at AppShell (a page throw no longer blanks the shell); CopyButton on Lead/Company/Meeting detail phone/email/ID.
+- **LEFT FOR ANKIT (needs his eye, not bugs):** badge color canonicalization (StatusBadge vs StageBadge conflicts — visible color call); Wishlist grid pagination (design); rapid description/comments optimistic-vs-refetch; preview ESC/backdrop vs nested modal stacking; grid whole-row click-to-open (interaction design); `saveReport` transactional RPC (needs DB); call_log actually persisting (needs DB migration); undo-on-bulk (larger). Captured for a follow-up pass.
+- Build green. NOTHING PUSHED (awaiting "push").

@@ -55,6 +55,27 @@ export function GenericKanban<Item>({
   onToggleSelect,
 }: GenericKanbanProps<Item>) {
   const selectable = !!isSelected && !!onToggleSelect;
+
+  // No columns (e.g. a derived group-by over zero rows) → a centered empty
+  // state rather than a blank flex strip.
+  if (columns.length === 0) {
+    return (
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          minHeight: 320,
+          height: 'calc(100vh - 320px)',
+          color: 'var(--color-gray-400, #9ca3af)',
+          fontSize: 13,
+        }}
+      >
+        Nothing to show.
+      </div>
+    );
+  }
+
   return (
     <div
       style={{

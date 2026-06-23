@@ -20,6 +20,7 @@
  */
 
 import { supabase } from '../lib/supabase';
+import { humanizeWriteError } from '../lib/writeError';
 import type { Interaction } from './contacts';
 
 export type { Interaction } from './contacts';
@@ -327,7 +328,15 @@ export async function upsertCompanyStatus(
 /*  Dispositions + activity                                            */
 /* ------------------------------------------------------------------ */
 
-/** Log a call disposition as an interaction (type `call`). Returns { error }. */
+/**
+ * Log a call disposition as an interaction (type `call`). Returns { error }.
+ *
+ * Unlike the status-edit history (where a failed interaction write is best-effort
+ * and swallowed because the primary status upsert already succeeded), THIS is the
+ * primary write for the call-log path: if the interaction insert is denied (RLS)
+ * or the table is missing, the call wrote nothing — so we must PROPAGATE that to
+ * the caller (humanized) rather than reporting a false success.
+ */
 export async function logDisposition(params: {
   recordType: RecordType;
   recordId: number;
@@ -337,7 +346,7 @@ export async function logDisposition(params: {
   ownerUserId: number | null;
   actorId: string | null;
 }): Promise<{ error: string | null }> {
-  return appendInteraction({
+  const res = await appendInteraction({
     recordType: params.recordType,
     recordId: params.recordId,
     projectId: params.projectId,
@@ -347,6 +356,11 @@ export async function logDisposition(params: {
     noteText: params.noteText,
     actorId: params.actorId,
   });
+  if (res.error) {
+    console.error('[projectStatus] logDisposition interaction write failed', res.error);
+    return { error: humanizeWriteError(res.error) };
+  }
+  return { error: null };
 }
 
 /**

@@ -213,7 +213,6 @@ function EditableCell<Row>({ row, col }: { row: Row; col: EditableColumn<Row> })
           if (e.key === 'Enter') { e.preventDefault(); (e.currentTarget as HTMLInputElement).blur(); }
           else if (e.key === 'Escape') { setValue(original); (e.currentTarget as HTMLInputElement).blur(); }
         }}
-        onBlur={() => commit(value)}
         disabled={state === 'saving'}
         style={{
           flex: 1,
@@ -228,6 +227,7 @@ function EditableCell<Row>({ row, col }: { row: Row; col: EditableColumn<Row> })
           outline: 'none',
         }}
         onFocus={(e) => { (e.currentTarget as HTMLElement).style.borderColor = '#1A7EE8'; (e.currentTarget as HTMLElement).style.background = '#fff'; }}
+        onBlur={(e) => { (e.currentTarget as HTMLElement).style.borderColor = 'transparent'; (e.currentTarget as HTMLElement).style.background = 'transparent'; commit(value); }}
       />
       {statusIcon}
     </div>
@@ -252,9 +252,11 @@ export function EditableGrid<Row>({
   const selectAllRef = useRef<HTMLInputElement>(null);
   const hasSelect = !!isSelected && !!onToggleSelect;
 
+  // Run on EVERY render so unrelated re-renders can't repaint the checkbox as
+  // not-indeterminate (the DOM `indeterminate` flag isn't expressible in JSX).
   useEffect(() => {
     if (selectAllRef.current) selectAllRef.current.indeterminate = selectAllState === 'some';
-  }, [selectAllState]);
+  });
 
   if (rows.length === 0) {
     return (

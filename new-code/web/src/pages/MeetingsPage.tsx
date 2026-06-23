@@ -341,6 +341,9 @@ export function MeetingsPage() {
   const setFilter = <K extends keyof Filters>(key: K, value: Filters[K]) => {
     setFilters((prev) => ({ ...prev, [key]: value }));
     setPageIndex(0);
+    // Clear selection so a bulk action can't act on rows filtered out of view
+    // (mirrors ContactsPage / CompaniesPage setFilter).
+    sel.clear();
   };
 
   const hasActiveFilters = Object.values(filters).some((v) =>
@@ -412,6 +415,25 @@ export function MeetingsPage() {
     const group = kanbanGroupOptions.find((o) => o.key === kanbanGroupBy) ?? kanbanGroupOptions[0];
     return buildKanbanGrouping<MeetingRow>(filteredData, group, 'Unset');
   }, [filteredData, kanbanGroupOptions, kanbanGroupBy]);
+
+  // Keep the kanban "Group by" selection valid: if the selected field is no longer
+  // in the current options, reset to the first option so the <select> value can't
+  // desync from the rendered board (mirrors Contacts/Companies).
+  useEffect(() => {
+    if (!kanbanGroupOptions.some((o) => o.key === kanbanGroupBy)) {
+      setKanbanGroupBy(kanbanGroupOptions[0].key);
+    }
+  }, [kanbanGroupOptions, kanbanGroupBy]);
+
+  // Clamp pageIndex into [0, pageCount-1] when the filtered set / project scope
+  // shrinks, so the user can't land on an empty page while records exist earlier
+  // (mirrors ContactsPage's safePage clamp).
+  useEffect(() => {
+    const pageCount = Math.max(1, Math.ceil(filteredData.length / PAGE_SIZE));
+    if (pageIndex > pageCount - 1) {
+      setPageIndex(pageCount - 1);
+    }
+  }, [filteredData.length, pageIndex]);
 
   // Visible column keys in display order (driven by colPrefs).
   const visibleKeys = useMemo(
@@ -812,7 +834,7 @@ export function MeetingsPage() {
                   )}
                   {hasActiveFilters && (
                     <button
-                      onClick={() => { setFilters(defaultFilters); setPageIndex(0); }}
+                      onClick={() => { setFilters(defaultFilters); setPageIndex(0); sel.clear(); }}
                       className="ml-3 text-zinc-400 hover:text-zinc-700 transition-colors"
                       style={{ fontSize: 12 }}
                     >

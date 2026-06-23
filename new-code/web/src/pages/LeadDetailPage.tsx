@@ -17,6 +17,7 @@ import {
 } from 'lucide-react';
 import { AppShell } from '../components/layout/AppShell';
 import { StageBadge } from '../components/ui/Badge';
+import { CopyButton } from '../components/ui/CopyButton';
 import { CreateTaskModal, type TaskAssociation } from '../components/tasks/CreateTaskModal';
 import { LogCallModal, type CallAssociation } from '../components/calls/LogCallModal';
 import { CallHistoryCard } from '../components/calls/CallHistoryCard';
@@ -473,10 +474,11 @@ export function LeadDetailPage() {
           {/* Lead ID — top-right, matches Figma "Lead ID : XXXXXX" */}
           {lead.lead_number && (
             <div
-              className="flex justify-end font-mono text-zinc-400"
+              className="flex items-center justify-end gap-1 font-mono text-zinc-400"
               style={{ fontSize: 11, marginBottom: 4 }}
             >
               Lead ID&nbsp;:&nbsp;{lead.lead_number}
+              <CopyButton value={lead.lead_number} label="Lead ID" size={12} />
             </div>
           )}
 

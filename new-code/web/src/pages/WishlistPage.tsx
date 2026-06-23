@@ -539,6 +539,15 @@ export function WishlistPage() {
     return buildKanbanGrouping<WishlistItem>(allFilteredRows, group, 'Unset');
   }, [allFilteredRows, kanbanGroupOptions, kanbanGroupBy]);
 
+  // Keep the kanban "Group by" selection valid: if the selected field is no longer
+  // in the current options, reset to the first option so the <select> value can't
+  // desync from the rendered board (mirrors Contacts/Companies).
+  useEffect(() => {
+    if (!kanbanGroupOptions.some((o) => o.key === kanbanGroupBy)) {
+      setKanbanGroupBy(kanbanGroupOptions[0].key);
+    }
+  }, [kanbanGroupOptions, kanbanGroupBy]);
+
   /* ----------------------------------------------------------------- */
   /*  EditableGrid columns (ALT-331) — mirror the visible Table columns. */
   /*  Wishlist has NO safe inline writers, so EVERY column is read-only: */

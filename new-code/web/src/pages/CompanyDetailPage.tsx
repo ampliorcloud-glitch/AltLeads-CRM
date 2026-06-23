@@ -31,6 +31,7 @@ import { ReassignModal } from '../components/common/ReassignModal';
 import { reassignCompany, fetchAssignableUsers, fetchUserLabel } from '../data/assignment';
 import type { UserOption } from '../data/wishlist';
 import { StageBadge } from '../components/ui/Badge';
+import { CopyButton } from '../components/ui/CopyButton';
 import { CreateTaskModal, type TaskAssociation } from '../components/tasks/CreateTaskModal';
 import { LogCallModal, type CallAssociation } from '../components/calls/LogCallModal';
 import type { TaskType } from '../data/tasks';
@@ -1423,9 +1424,12 @@ export function CompanyDetailPage() {
               </Detail>
               <Detail icon={<Mail size={14} />} label="Email">
                 {company.email ? (
-                  <a href={`mailto:${company.email}`} className="hover:underline" style={{ color: 'var(--color-brand)' }}>
-                    {company.email}
-                  </a>
+                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, minWidth: 0 }}>
+                    <a href={`mailto:${company.email}`} className="hover:underline" style={{ color: 'var(--color-brand)' }}>
+                      {company.email}
+                    </a>
+                    <CopyButton value={company.email} label="Email" />
+                  </span>
                 ) : '—'}
               </Detail>
               <Detail icon={<Link2 size={14} />} label="LinkedIn">

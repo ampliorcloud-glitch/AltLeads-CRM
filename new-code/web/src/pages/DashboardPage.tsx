@@ -1,11 +1,11 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { AppShell } from '../components/layout/AppShell';
 import { StageBadge } from '../components/ui/Badge';
 import { useAuth } from '../contexts/AuthContext';
 import { useProjectScope } from '../contexts/ProjectContext';
 import { fetchDashboardStats, type DashboardStats } from '../data/realLeads';
-import { Users, CalendarDays, TrendingUp, CheckCircle2, PhoneCall, Loader2, ChevronRight } from 'lucide-react';
+import { Users, CalendarDays, TrendingUp, CheckCircle2, PhoneCall, Loader2, ChevronRight, AlertCircle, RefreshCw } from 'lucide-react';
 
 /** Friendly label for a raw role name (e.g. TEAM_LEAD -> Team Lead). */
 function roleLabel(role?: string | null): string {
@@ -129,6 +129,9 @@ export function DashboardPage() {
       : null;
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  // Bump to re-run the load effect (Retry on error), mirroring the list pages.
+  const [reloadKey, setReloadKey] = useState(0);
 
   useEffect(() => {
     // Wait for the scope to resolve so we don't fetch all-project stats first and
@@ -136,14 +139,22 @@ export function DashboardPage() {
     if (scopeLoading) return;
     let cancelled = false;
     setLoading(true);
+    setLoadError(null);
     fetchDashboardStats(selectedProjectId).then((s) => {
       if (!cancelled) {
         setStats(s);
         setLoading(false);
       }
-    }).catch(() => { if (!cancelled) setLoading(false); });
+    }).catch(() => {
+      if (!cancelled) {
+        setLoadError("Couldn't load dashboard data.");
+        setLoading(false);
+      }
+    });
     return () => { cancelled = true; };
-  }, [selectedProjectId, scopeLoading]);
+  }, [selectedProjectId, scopeLoading, reloadKey]);
+
+  const retry = useCallback(() => setReloadKey((k) => k + 1), []);
 
   const stageEntries = stats?.stageBreakdown ?? [];
   const maxCount = stageEntries.length > 0 ? Math.max(...stageEntries.map((e) => e.count)) : 1;
@@ -187,6 +198,31 @@ export function DashboardPage() {
             </span>
           )}
         </div>
+
+        {/* Load error — surface the failure instead of silently showing zeros (Retry re-runs the fetch). */}
+        {loadError && (
+          <div
+            className="flex items-center justify-between gap-3 rounded-lg px-4 py-3"
+            style={{ background: '#FEF2F2', border: '1px solid #FECACA' }}
+          >
+            <span className="flex items-center gap-2 text-zinc-700" style={{ fontSize: 13 }}>
+              <AlertCircle size={16} className="text-red-400 shrink-0" />
+              {loadError}
+            </span>
+            <button
+              type="button"
+              onClick={retry}
+              className="inline-flex items-center gap-1.5 shrink-0"
+              style={{
+                fontSize: 13, fontWeight: 500, color: 'var(--color-brand)',
+                border: '1px solid var(--border-input)', borderRadius: 'var(--radius-btn)',
+                background: 'var(--color-surface)', padding: '6px 14px', cursor: 'pointer',
+              }}
+            >
+              <RefreshCw size={13} /> Retry
+            </button>
+          </div>
+        )}
 
         {/* Stat cards — each drills into the relevant list */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-3">
@@ -234,7 +270,7 @@ export function DashboardPage() {
 
         {/* Bar chart — each stage row drills into the filtered Leads list */}
         <div className="rounded-lg p-5" style={{ background: 'var(--color-surface)', border: '1px solid var(--border-color)' }}>
-          <h3 className="font-medium text-zinc-700 mb-4" style={{ fontSize: 13 }}>Leads by Stage (from lead_report)</h3>
+          <h3 className="font-medium text-zinc-700 mb-4" style={{ fontSize: 13 }}>Leads by Stage</h3>
           {loading ? (
             <div className="flex items-center gap-2 text-zinc-400 py-6 justify-center" style={{ fontSize: 13 }}>
               <Loader2 size={16} className="animate-spin" />

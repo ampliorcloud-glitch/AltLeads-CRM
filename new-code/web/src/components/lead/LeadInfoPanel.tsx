@@ -89,13 +89,14 @@ export function LeadInfoPanel({
           <PanelField label="Name" value={lead.lead_name} />
           <PanelField label="Role / Designation" value={lead.designation || lead.role_and_resp} />
           <PanelField label="Source" value={lead.source_name} />
-          <PanelField label="Mobile" value={lead.mobile_no} href={lead.mobile_no ? `tel:${lead.mobile_no}` : undefined} />
+          <PanelField label="Mobile" value={lead.mobile_no} href={lead.mobile_no ? `tel:${lead.mobile_no}` : undefined} copy />
           <PanelField
             label="Alternate Mobile"
             value={lead.alt_mobile_no}
             href={lead.alt_mobile_no ? `tel:${lead.alt_mobile_no}` : undefined}
+            copy
           />
-          <PanelField label="Email" value={lead.email} href={lead.email ? `mailto:${lead.email}` : undefined} />
+          <PanelField label="Email" value={lead.email} href={lead.email ? `mailto:${lead.email}` : undefined} copy />
           <PanelField label="Area of Interest" value={lead.area_of_interest} />
           <PanelField label="LinkedIn" value={lead.linkedin_url ? 'View Profile' : ''} href={linkedinHref(lead.linkedin_url)} />
           <PanelField label="Created" value={fmtDate(lead.created_date)} />
@@ -115,11 +116,12 @@ export function LeadInfoPanel({
             <PanelField label="Location" value={company.location} />
             <PanelField label="Industry" value={company.industry_name} />
             <PanelField label="Domain / Sector" value={company.domain_name} />
-            <PanelField label="Email" value={company.email} href={company.email ? `mailto:${company.email}` : undefined} />
+            <PanelField label="Email" value={company.email} href={company.email ? `mailto:${company.email}` : undefined} copy />
             <PanelField
               label="Phone"
               value={company.mobile_number}
               href={company.mobile_number ? `tel:${company.mobile_number}` : undefined}
+              copy
             />
             <PanelField
               label="Website"

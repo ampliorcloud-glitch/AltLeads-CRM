@@ -49,6 +49,7 @@ import { ReassignModal } from '../common/ReassignModal';
 import { CopyButton } from '../ui/CopyButton';
 import { StageBadge } from '../ui/Badge';
 import { formatDate } from '../../data/meetings';
+import { humanizeWriteError } from '../../lib/writeError';
 import { CallLogPreview } from '../calls/CallLogPreview';
 import { PreviewCallLogger } from '../calls/PreviewCallLogger';
 
@@ -189,7 +190,7 @@ export function LeadPreview({ leadId }: { leadId: number }) {
       isReassign: lead.salesperson_user_id != null,
     });
     setReassignSaving(false);
-    if (res?.error) { setReassignError(res.error); return; }
+    if (res?.error) { setReassignError(humanizeWriteError(res.error)); return; }
     setShowReassign(false);
     await loadLead();
   };

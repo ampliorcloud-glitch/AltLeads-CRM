@@ -3,6 +3,7 @@ import type { ReactNode } from 'react';
 import { Sidebar } from './Sidebar';
 import { SalesSidebar } from './SalesSidebar';
 import { TopBar } from './TopBar';
+import { RouteErrorBoundary } from '../ui/ErrorBoundary';
 import { useIsSalesShell } from '../../contexts/SalesShellContext';
 
 interface AppShellProps {
@@ -21,7 +22,12 @@ export function AppShell({ title, children }: AppShellProps) {
       {isSalesShell ? <SalesSidebar /> : <Sidebar />}
       <div className="flex-1 flex flex-col overflow-hidden">
         <TopBar title={title} />
-        <main className="flex-1 overflow-auto p-5">{children}</main>
+        {/* Per-route boundary: a render-time throw in the page CONTENT shows a
+            calm fallback in the content area while the sidebar/topbar stay alive,
+            so navigation survives one broken screen (mirrors PortalLayout). */}
+        <main className="flex-1 overflow-auto p-5">
+          <RouteErrorBoundary name="page">{children}</RouteErrorBoundary>
+        </main>
       </div>
     </div>
   );

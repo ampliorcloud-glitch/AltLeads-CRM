@@ -133,7 +133,7 @@ export function CallLogPreview({
           <Loader2 size={14} className="animate-spin" /> Loading calls…
         </div>
       ) : error ? (
-        <p style={{ fontSize: 12.5, color: '#9CA3AF', margin: 0 }}>Could not load calls.</p>
+        <p style={{ fontSize: 12.5, color: '#9CA3AF', margin: 0 }}>{error || 'Could not load calls.'}</p>
       ) : calls.length === 0 ? (
         <p style={{ fontSize: 12.5, color: '#9CA3AF', margin: 0 }}>No calls logged yet.</p>
       ) : (

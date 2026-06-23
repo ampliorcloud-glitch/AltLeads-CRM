@@ -6,6 +6,7 @@
 import React, { useState } from 'react';
 import { Loader2, ChevronDown } from 'lucide-react';
 import { initials } from '../../data/leadWorkspace';
+import { CopyButton } from '../ui/CopyButton';
 
 export const card = 'bg-white border border-gray-200 rounded-lg';
 
@@ -139,10 +140,13 @@ export function PanelField({
   label,
   value,
   href,
+  copy = false,
 }: {
   label: string;
   value?: string | null;
   href?: string;
+  /** When true, shows a copy-to-clipboard button next to a present value. */
+  copy?: boolean;
 }) {
   const has = value && value.trim();
   return (
@@ -151,20 +155,23 @@ export function PanelField({
         {label}
       </span>
       {has ? (
-        href ? (
-          <a
-            href={href}
-            target={href.startsWith('http') ? '_blank' : undefined}
-            rel="noopener noreferrer"
-            style={{ fontSize: 13, color: 'var(--color-brand)', wordBreak: 'break-all' }}
-          >
-            {value}
-          </a>
-        ) : (
-          <span style={{ fontSize: 13, color: 'var(--color-gray-700)', wordBreak: 'break-word' }}>
-            {value}
-          </span>
-        )
+        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, minWidth: 0 }}>
+          {href ? (
+            <a
+              href={href}
+              target={href.startsWith('http') ? '_blank' : undefined}
+              rel="noopener noreferrer"
+              style={{ fontSize: 13, color: 'var(--color-brand)', wordBreak: 'break-all' }}
+            >
+              {value}
+            </a>
+          ) : (
+            <span style={{ fontSize: 13, color: 'var(--color-gray-700)', wordBreak: 'break-word' }}>
+              {value}
+            </span>
+          )}
+          {copy ? <CopyButton value={value} label={label} /> : null}
+        </span>
       ) : (
         <span style={{ fontSize: 13, color: 'var(--color-gray-300)' }}>—</span>
       )}
