@@ -20,7 +20,9 @@ import { ExportButton } from '../components/ui/ExportButton';
 import { MultiSelectFilter } from '../components/ui/MultiSelectFilter';
 import { ColumnCustomizer, defaultColumnPrefs, reconcileColumns } from '../components/ui/ColumnCustomizer';
 import { ViewSwitcher, useViewMode } from '../components/ui/ViewSwitcher';
-import { CardGrid, CardShell } from '../components/ui/CardGrid';
+import { CardShell } from '../components/ui/CardGrid';
+import { ListToolbar } from '../components/ui/ListToolbar';
+import { EditableGrid, type EditableColumn } from '../components/ui/EditableGrid';
 import { GenericKanban, type KanbanColumnDef } from '../components/kanban/GenericKanban';
 import { StatusBadge } from '../components/ui/StatusBadge';
 import { ProjectSelect } from '../components/ui/ProjectSelect';
@@ -48,6 +50,7 @@ import { fetchOptions, type DropdownOption } from '../data/dropdowns';
 import { BulkProjectModal } from '../components/common/BulkProjectModal';
 import { BulkStatusModal } from '../components/common/BulkStatusModal';
 import { addCompaniesToProject, setCompaniesStatus } from '../data/bulkActions';
+import { upsertCompanyStatus } from '../data/projectStatus';
 import type { UserOption } from '../data/wishlist';
 import { useToast } from '../components/ui/Toast';
 import { RecordPreviewPanel } from '../components/common/RecordPreviewPanel';
@@ -702,6 +705,106 @@ export function CompaniesPage() {
     getPaginationRowModel: getPaginationRowModel(),
   });
 
+  /* ---- EditableGrid columns (real "Grid" view, ALT-331) ----
+     Mirrors the Table columns. SAFE EDITABLE SET: Account Status only — it's the
+     only per-project field this page loads onto rows AND has an option list for
+     (statusOptions). It saves through the SAME writer the inline status cell uses
+     (upsertCompanyStatus with { account_status }). Other per-project fields
+     (feasibility / decision-power / description) aren't loaded here, so they stay
+     out rather than inventing new fetches/option lists. Per-project gating: the
+     status cell is read-only with a tooltip until a project is selected (mirrors
+     the Table's inline cell + Owner gating). The rest (name link, domain,
+     industry, city, CIN, owner) are read-only. */
+  const EDITABLE_COLUMNS = useMemo<EditableColumn<Company>[]>(() => {
+    const statusSelectOptions = statusOptions.map((o) => ({ value: o.value, label: o.label }));
+    return [
+      {
+        key: 'name',
+        header: 'Company',
+        width: 240,
+        getValue: (r) => r.name ?? '',
+        render: (r) => (
+          <div className="flex items-center gap-2.5">
+            <CompanyAvatar name={r.name || ''} />
+            <div className="min-w-0">
+              <div className="flex items-center gap-1.5">
+                <p className="font-medium text-zinc-900 truncate" style={{ fontSize: 13, maxWidth: 200 }} title={r.name || undefined}>
+                  {r.name || <span className="text-zinc-400">—</span>}
+                </p>
+                {r.isDemo && <DemoTag />}
+              </div>
+              {r.city && (
+                <p className="text-zinc-400 truncate" style={{ fontSize: 11, maxWidth: 200 }} title={r.city}>{r.city}</p>
+              )}
+            </div>
+          </div>
+        ),
+      },
+      {
+        key: 'domainClean',
+        header: 'Domain',
+        getValue: (r) => r.domainClean ?? '',
+        render: (r) => {
+          const domain = r.domainClean ?? '';
+          if (!domain) return <span className="text-zinc-300" style={{ fontSize: 13 }}>—</span>;
+          return (
+            <a
+              href={fullUrl(r.webUrl || domain)}
+              target="_blank"
+              rel="noreferrer noopener"
+              onClick={(e) => e.stopPropagation()}
+              style={{ fontSize: 13, color: 'var(--color-brand)' }}
+              className="hover:underline"
+            >
+              {domain}
+            </a>
+          );
+        },
+      },
+      {
+        key: 'industry',
+        header: 'Industry',
+        getValue: (r) => r.industry ?? '',
+      },
+      {
+        key: 'city',
+        header: 'City',
+        getValue: (r) => r.city ?? '',
+      },
+      {
+        key: 'cin',
+        header: 'CIN',
+        getValue: (r) => r.cin ?? '',
+        render: (r) =>
+          r.cin
+            ? <span className="text-zinc-500 font-mono" style={{ fontSize: 12 }}>{r.cin}</span>
+            : <span className="text-zinc-300" style={{ fontSize: 13 }}>—</span>,
+      },
+      {
+        key: 'owner',
+        header: 'Owner',
+        getValue: (r) => (projectId == null ? 'Unassigned' : (statusMap[Number(r.id)]?.owner_name ?? 'Unassigned')),
+      },
+      {
+        key: 'accountStatus',
+        header: 'Account Status',
+        width: 200,
+        editable: true,
+        type: 'select',
+        options: statusSelectOptions,
+        getValue: (r) => statusMap[Number(r.id)]?.account_status ?? '',
+        disabledReason: () => (projectId == null ? 'Select a project first' : null),
+        onSave: async (r, next) => {
+          if (projectId == null) return { error: 'Select a project first.' };
+          const newStatus = next === '' ? null : next;
+          const { error } = await upsertCompanyStatus(Number(r.id), projectId, { account_status: newStatus }, actorId);
+          if (!error) handleStatusUpdated(Number(r.id), newStatus);
+          return { error };
+        },
+      },
+    ];
+  }, [statusOptions, statusMap, projectId, actorId, handleStatusUpdated]);
+
   const totalRows = filteredData.length;
   const pageIndex = table.getState().pagination.pageIndex;
   const pageSize = table.getState().pagination.pageSize;
@@ -763,83 +866,85 @@ export function CompaniesPage() {
           </div>
         </div>
 
-        {/* Toolbar row: count + actions */}
-        <div className="flex items-center justify-between">
-          <p className="text-zinc-400" style={{ fontSize: 12 }}>
-            {loading ? (
-              <span className="flex items-center gap-1.5 text-zinc-400">
-                <Loader2 size={12} className="animate-spin" />
-                Loading companies...
-              </span>
-            ) : loadError ? (
-              <span className="text-red-500">{loadError}</span>
-            ) : (
-              <>
-                {sel.count > 0 && (
-                  <span className="font-medium text-zinc-700 mr-3">{sel.count} selected</span>
-                )}
-                <span className="font-medium text-zinc-700">{filteredData.length}</span> of{' '}
-                <span className="font-medium text-zinc-700">{allCompanies.length}</span> companies
-                {hasActiveFilters && (
-                  <button
-                    onClick={() => {
-                      setFilters(defaultFilters);
-                      setPagination((p) => ({ ...p, pageIndex: 0 }));
-                      sel.clear();
-                    }}
-                    className="ml-3 text-zinc-400 hover:text-zinc-700 transition-colors"
-                    style={{ fontSize: 12 }}
-                  >
-                    Clear filters
-                  </button>
-                )}
-              </>
-            )}
-          </p>
-          <div className="flex items-center gap-2">
-            {/* Bulk reassign selected companies (ALT-291) — needs an active project */}
-            {canReassign && sel.count > 0 && projectId != null && (
-              <button
-                onClick={openBulkReassign}
-                className="inline-flex items-center gap-1.5 border border-zinc-300 hover:border-zinc-400 bg-white hover:bg-zinc-50 text-zinc-700 font-medium rounded-md transition-colors"
-                style={{ fontSize: 13, padding: '6px 12px', height: 34 }}
-                title="Assign the selected companies (in this project) to a salesperson"
-              >
-                <UserCheck size={14} />
-                Reassign ({sel.count})
-              </button>
-            )}
+        {/* Toolbar row: count + actions — standardized via ListToolbar (ALT-333) */}
+        <ListToolbar
+          left={
+            <p className="text-zinc-400" style={{ fontSize: 12 }}>
+              {loading ? (
+                <span className="flex items-center gap-1.5 text-zinc-400">
+                  <Loader2 size={12} className="animate-spin" />
+                  Loading companies...
+                </span>
+              ) : loadError ? (
+                <span className="text-red-500">{loadError}</span>
+              ) : (
+                <>
+                  {sel.count > 0 && (
+                    <span className="font-medium text-zinc-700 mr-3">{sel.count} selected</span>
+                  )}
+                  <span className="font-medium text-zinc-700">{filteredData.length}</span> of{' '}
+                  <span className="font-medium text-zinc-700">{allCompanies.length}</span> companies
+                  {hasActiveFilters && (
+                    <button
+                      onClick={() => {
+                        setFilters(defaultFilters);
+                        setPagination((p) => ({ ...p, pageIndex: 0 }));
+                        sel.clear();
+                      }}
+                      className="ml-3 text-zinc-400 hover:text-zinc-700 transition-colors"
+                      style={{ fontSize: 12 }}
+                    >
+                      Clear filters
+                    </button>
+                  )}
+                </>
+              )}
+            </p>
+          }
+          bulkActions={sel.count > 0 ? (
+            <>
+              {/* Bulk reassign selected companies (ALT-291) — needs an active project */}
+              {canReassign && projectId != null && (
+                <button
+                  onClick={openBulkReassign}
+                  className="inline-flex items-center gap-1.5 border border-zinc-300 hover:border-zinc-400 bg-white hover:bg-zinc-50 text-zinc-700 font-medium rounded-md transition-colors"
+                  style={{ fontSize: 13, padding: '6px 12px', height: 34 }}
+                  title="Assign the selected companies (in this project) to a salesperson"
+                >
+                  <UserCheck size={14} />
+                  Reassign ({sel.count})
+                </button>
+              )}
 
-            {/* Bulk add-to-project (ALT-291) */}
-            {canReassign && sel.count > 0 && (
-              <button
-                onClick={() => { setAddProjectError(null); setShowAddProject(true); }}
-                className="inline-flex items-center gap-1.5 border border-zinc-300 hover:border-zinc-400 bg-white hover:bg-zinc-50 text-zinc-700 font-medium rounded-md transition-colors"
-                style={{ fontSize: 13, padding: '6px 12px', height: 34 }}
-                title="Add the selected companies to a project"
-              >
-                <FolderPlus size={14} />
-                Add to project ({sel.count})
-              </button>
-            )}
+              {/* Bulk add-to-project (ALT-291) */}
+              {canReassign && (
+                <button
+                  onClick={() => { setAddProjectError(null); setShowAddProject(true); }}
+                  className="inline-flex items-center gap-1.5 border border-zinc-300 hover:border-zinc-400 bg-white hover:bg-zinc-50 text-zinc-700 font-medium rounded-md transition-colors"
+                  style={{ fontSize: 13, padding: '6px 12px', height: 34 }}
+                  title="Add the selected companies to a project"
+                >
+                  <FolderPlus size={14} />
+                  Add to project ({sel.count})
+                </button>
+              )}
 
-            {/* Bulk set-status (Step E) — per-project, needs an active project */}
-            {canReassign && sel.count > 0 && projectId != null && (
-              <button
-                onClick={() => { setSetStatusError(null); setShowSetStatus(true); }}
-                className="inline-flex items-center gap-1.5 border border-zinc-300 hover:border-zinc-400 bg-white hover:bg-zinc-50 text-zinc-700 font-medium rounded-md transition-colors"
-                style={{ fontSize: 13, padding: '6px 12px', height: 34 }}
-                title="Set the account status of the selected companies (in this project)"
-              >
-                <Tag size={14} />
-                Set status ({sel.count})
-              </button>
-            )}
-
-            {/* Table / Grid view switcher */}
-            <ViewSwitcher value={view} onChange={setView} />
-
-            {/* Column customizer */}
+              {/* Bulk set-status (Step E) — per-project, needs an active project */}
+              {canReassign && projectId != null && (
+                <button
+                  onClick={() => { setSetStatusError(null); setShowSetStatus(true); }}
+                  className="inline-flex items-center gap-1.5 border border-zinc-300 hover:border-zinc-400 bg-white hover:bg-zinc-50 text-zinc-700 font-medium rounded-md transition-colors"
+                  style={{ fontSize: 13, padding: '6px 12px', height: 34 }}
+                  title="Set the account status of the selected companies (in this project)"
+                >
+                  <Tag size={14} />
+                  Set status ({sel.count})
+                </button>
+              )}
+            </>
+          ) : undefined}
+          viewSwitcher={<ViewSwitcher value={view} onChange={setView} />}
+          columns={
             <ColumnCustomizer
               entity="companies"
               userId={userId}
@@ -847,8 +952,8 @@ export function CompaniesPage() {
               value={columnPrefs}
               onChange={(next) => setColumnPrefs(reconcileColumns(next, ALL_COLUMNS))}
             />
-
-            {/* Export button — replaces old single Excel button */}
+          }
+          exportButton={
             <ExportButton
               rows={exportRows as unknown as Record<string, unknown>[]}
               columns={activeExportColumns as unknown as ExportColumn<Record<string, unknown>>[]}
@@ -857,33 +962,34 @@ export function CompaniesPage() {
               idKey="id"
               disabled={loading || filteredData.length === 0}
             />
-
-            {/* Create is admin-only by default (ADR-21); hidden from outreach roles. */}
-            {canCreateData && (
-            <button
-              onClick={() => navigate('/companies/new')}
-              style={{
-                display: 'flex', alignItems: 'center', gap: 6,
-                background: 'var(--color-brand)',
-                color: '#fff',
-                fontWeight: 500,
-                borderRadius: 'var(--radius-btn)',
-                border: 'none',
-                fontSize: 12,
-                padding: '5px 12px',
-                height: 30,
-                cursor: 'pointer',
-                transition: 'background 0.15s',
-              }}
-              onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = 'var(--color-brand-dark)'; }}
-              onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = 'var(--color-brand)'; }}
-            >
-              <Plus size={13} strokeWidth={2.25} />
-              New Company
-            </button>
-            )}
-          </div>
-        </div>
+          }
+          create={
+            /* Create is admin-only by default (ADR-21); hidden from outreach roles. */
+            canCreateData ? (
+              <button
+                onClick={() => navigate('/companies/new')}
+                style={{
+                  display: 'flex', alignItems: 'center', gap: 6,
+                  background: 'var(--color-brand)',
+                  color: '#fff',
+                  fontWeight: 500,
+                  borderRadius: 'var(--radius-btn)',
+                  border: 'none',
+                  fontSize: 12,
+                  padding: '5px 12px',
+                  height: 30,
+                  cursor: 'pointer',
+                  transition: 'background 0.15s',
+                }}
+                onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = 'var(--color-brand-dark)'; }}
+                onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = 'var(--color-brand)'; }}
+              >
+                <Plus size={13} strokeWidth={2.25} />
+                New Company
+              </button>
+            ) : undefined
+          }
+        />
 
         {/* Kanban (Board) view — grouped by per-project account status */}
         {view === 'kanban' && !loading && !loadError && (
@@ -901,6 +1007,8 @@ export function CompaniesPage() {
               getKey={(row) => row.id}
               getCardLabel={(row) => `Open ${row.name || 'company'}`}
               onCardClick={(row) => setPreviewId(Number(row.id))}
+              isSelected={(item) => sel.isSelected(item.id)}
+              onToggleSelect={(item) => sel.toggle(item.id)}
               renderCard={(row) => {
                 const lite = statusMap[Number(row.id)] ?? null;
                 const status = lite?.account_status ?? null;
@@ -921,36 +1029,27 @@ export function CompaniesPage() {
           )
         )}
 
-        {/* Grid (card) view */}
-        {view === 'grid' && !loading && !loadError && (
-          <CardGrid<Company>
-            rows={table.getRowModel().rows.map((r) => r.original)}
-            getKey={(row) => row.id}
-            onCardClick={(row) => setPreviewId(Number(row.id))}
-            emptyLabel={hasActiveFilters ? 'No companies match the current filters.' : 'No companies yet.'}
-            renderCard={(row) => {
-              const lite = projectId == null ? null : (statusMap[Number(row.id)] ?? null);
-              const status = lite?.account_status ?? null;
-              const ownerName = projectId == null ? null : (lite?.owner_name ?? null);
-              return (
-                <CardShell
-                  name={row.name || ''}
-                  subtitle={row.domainClean || undefined}
-                  tag={row.isDemo ? (
-                    <span style={{ fontSize: 9, fontWeight: 600, letterSpacing: 0.4, background: '#F3F4F6', color: '#9CA3AF', borderRadius: 3, padding: '1px 5px', textTransform: 'uppercase' }}>Demo</span>
-                  ) : undefined}
-                  chip={status ?? undefined}
-                  fields={[
-                    { label: 'Industry', value: row.industry ?? '' },
-                    { label: 'City', value: row.city ?? '' },
-                    { label: 'Owner', value: ownerName ?? 'Unassigned' },
-                    { label: 'Account Status', value: status ? <StatusBadge value={status} category="account_status" /> : '' },
-                  ]}
-                />
-              );
-            }}
-          />
-        )}
+        {/* Grid view — real spreadsheet-style inline editing (EditableGrid, ALT-331) */}
+        {view === 'grid' && !loading && !loadError && (() => {
+          const gridRows = table.getRowModel().rows.map((r) => r.original);
+          const visibleIds = gridRows.map((r) => r.id);
+          const selCount = visibleIds.filter((id) => sel.isSelected(id)).length;
+          const selectAllState: 'none' | 'some' | 'all' =
+            selCount === 0 ? 'none' : selCount === visibleIds.length ? 'all' : 'some';
+          return (
+            <EditableGrid<Company>
+              rows={gridRows}
+              getKey={(r) => r.id}
+              columns={EDITABLE_COLUMNS}
+              isSelected={(r) => sel.isSelected(r.id)}
+              onToggleSelect={(r) => sel.toggle(r.id)}
+              selectAllState={selectAllState}
+              onToggleSelectAll={() => sel.toggleAll(visibleIds)}
+              onOpenRow={(r) => setPreviewId(Number(r.id))}
+              emptyLabel="No companies match."
+            />
+          );
+        })()}
 
         {/* Table */}
         {(view === 'table' || loading || loadError) && (
@@ -1259,7 +1358,7 @@ export function CompaniesPage() {
         <RecordPreviewPanel
           title="Company"
           onClose={() => setPreviewId(null)}
-          onOpenFull={() => navigate(`/companies/${previewId}`)}
+          openFullHref={`/companies/${previewId}`}
         >
           <CompanyPreview companyId={previewId} projectId={projectId} />
         </RecordPreviewPanel>

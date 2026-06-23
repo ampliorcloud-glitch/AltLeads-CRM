@@ -58,6 +58,7 @@ import { CopyButton } from '../ui/CopyButton';
 import { StatusBadge } from '../ui/StatusBadge';
 import { StageBadge } from '../ui/Badge';
 import { formatDate } from '../../data/account';
+import { CallLogPreview } from '../calls/CallLogPreview';
 
 const BRAND = 'var(--color-brand, #1A7EE8)';
 
@@ -512,6 +513,9 @@ export function ContactPreview({
           />
         )}
       </div>
+
+      {/* Recent calls (logged dispositions, this project) */}
+      <CallLogPreview entity="contact" id={contactId} projectId={projectId} />
 
       {/* Quick contact methods + key fields */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>

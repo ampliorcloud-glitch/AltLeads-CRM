@@ -6,9 +6,13 @@
  * "Open full record →" affordance for the full detail page.
  *
  * Presentation only — it fetches no data and knows nothing about the record type.
- * The caller supplies the body (`children`) and the two actions:
- *   - onOpenFull  → navigate to the full detail page
- *   - onClose     → dismiss the panel
+ * The caller supplies the body (`children`) and the actions:
+ *   - openFullHref → the full detail page URL; the "Open full record" action opens
+ *                    it in a NEW browser tab (ALT-334) via window.open(..., '_blank').
+ *   - onOpenFull   → legacy fallback: a click handler (e.g. navigate) used only
+ *                    when openFullHref is not supplied. Prefer openFullHref so the
+ *                    record opens in a new tab and the preview list stays put.
+ *   - onClose      → dismiss the panel
  *
  * Behaviour matches the rest of the app's overlays: semi-transparent backdrop,
  * close on ESC + backdrop click, and the shared useFocusTrap so keyboard focus
@@ -18,7 +22,7 @@
  * Companies, Meetings) can drop their own *Preview body inside the same shell.
  */
 import { useEffect, useRef } from 'react';
-import type { ReactNode } from 'react';
+import type { ReactNode, CSSProperties } from 'react';
 import { X, ArrowRight } from 'lucide-react';
 import { useFocusTrap } from '../../lib/useFocusTrap';
 
@@ -26,12 +30,16 @@ export function RecordPreviewPanel({
   title,
   onClose,
   onOpenFull,
+  openFullHref,
   openFullLabel = 'Open full record',
   children,
 }: {
   title?: string;
   onClose: () => void;
+  /** Legacy click handler; only used when openFullHref is not provided. */
   onOpenFull?: () => void;
+  /** Detail-page URL — opened in a NEW tab when set (ALT-334). Preferred. */
+  openFullHref?: string;
   openFullLabel?: string;
   children: ReactNode;
 }) {
@@ -107,30 +115,49 @@ export function RecordPreviewPanel({
             {title ?? 'Preview'}
           </span>
           <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-            {onOpenFull && (
-              <button
-                type="button"
-                onClick={onOpenFull}
-                style={{
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: 5,
-                  fontSize: 12,
-                  fontWeight: 500,
-                  color: '#fff',
-                  background: 'var(--color-brand, #1A7EE8)',
-                  border: 'none',
-                  borderRadius: 6,
-                  padding: '6px 11px',
-                  cursor: 'pointer',
-                  whiteSpace: 'nowrap',
-                }}
-                title={openFullLabel}
-              >
-                {openFullLabel}
-                <ArrowRight size={13} />
-              </button>
-            )}
+            {(() => {
+              // Shared visual for the "Open full record" action (button or anchor).
+              const openFullStyle: CSSProperties = {
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 5,
+                fontSize: 12,
+                fontWeight: 500,
+                color: '#fff',
+                background: 'var(--color-brand, #1A7EE8)',
+                border: 'none',
+                borderRadius: 6,
+                padding: '6px 11px',
+                cursor: 'pointer',
+                whiteSpace: 'nowrap',
+                textDecoration: 'none',
+              };
+              // Preferred: open the detail page in a NEW tab (ALT-334).
+              if (openFullHref) {
+                return (
+                  <a
+                    href={openFullHref}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    style={openFullStyle}
+                    title={openFullLabel}
+                  >
+                    {openFullLabel}
+                    <ArrowRight size={13} />
+                  </a>
+                );
+              }
+              // Legacy fallback: in-app navigation via the supplied handler.
+              if (onOpenFull) {
+                return (
+                  <button type="button" onClick={onOpenFull} style={openFullStyle} title={openFullLabel}>
+                    {openFullLabel}
+                    <ArrowRight size={13} />
+                  </button>
+                );
+              }
+              return null;
+            })()}
             <button
               type="button"
               onClick={onClose}

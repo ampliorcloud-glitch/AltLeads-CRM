@@ -30,7 +30,9 @@ import {
   reconcileColumns,
 } from '../components/ui/ColumnCustomizer';
 import { ViewSwitcher, useViewMode } from '../components/ui/ViewSwitcher';
-import { CardGrid, CardShell } from '../components/ui/CardGrid';
+import { CardShell } from '../components/ui/CardGrid';
+import { ListToolbar } from '../components/ui/ListToolbar';
+import { EditableGrid, type EditableColumn } from '../components/ui/EditableGrid';
 import { GenericKanban, type KanbanColumnDef } from '../components/kanban/GenericKanban';
 import type { ColumnDef as ColDef, ExportColumn } from '../components/ui/columns';
 import type { ColumnPref } from '../data/views';
@@ -591,6 +593,126 @@ export function MeetingsPage() {
   const firstRow = filteredData.length === 0 ? 0 : pageIndex * PAGE_SIZE + 1;
   const lastRow = Math.min((pageIndex + 1) * PAGE_SIZE, filteredData.length);
 
+  /* ---- EditableGrid columns (real "Grid" view, ALT-331) ----
+     Mirrors the Table columns. SAFE EDITABLE SET: ALL COLUMNS READ-ONLY. Meeting
+     status is workflow-driven (it changes through the meeting record's flow, not a
+     free dropdown) and owner reassignment goes through the people-picker
+     (reassignMeeting / ReassignModal, available from the bulk toolbar), so there is
+     no safe inline writer to wire here. The grid is therefore a denser, selectable
+     spreadsheet view: status renders as the existing MeetingStatusBadge, dates via
+     the existing formatters, and company/salesperson/agent as plain read-only
+     text — matching the Table's cells. */
+  const EDITABLE_COLUMNS = useMemo<EditableColumn<MeetingRow>[]>(() => [
+    {
+      key: 'company',
+      header: 'Company / Lead',
+      width: 240,
+      getValue: (r) => r.company ?? '',
+      render: (r) => {
+        const company = r.company || r.leadName || r.name || '';
+        return (
+          <div className="flex items-center gap-2 min-w-0">
+            <CompanyAvatar name={company} />
+            <div className="min-w-0">
+              <p className="font-medium text-zinc-900 truncate" style={{ fontSize: 13, maxWidth: 200 }} title={company || undefined}>
+                {company || <span className="text-zinc-400">Unlinked meeting</span>}
+              </p>
+              <p className="text-zinc-400 truncate" style={{ fontSize: 11, maxWidth: 200 }}>
+                {[r.leadName, r.city].filter(Boolean).join(' · ')}
+              </p>
+            </div>
+          </div>
+        );
+      },
+    },
+    {
+      key: 'client',
+      header: 'Client',
+      getValue: (r) => r.client ?? '',
+      render: (r) => (
+        <span className="text-zinc-600 truncate" style={{ fontSize: 13 }}>
+          {r.client || <span className="text-zinc-300">—</span>}
+        </span>
+      ),
+    },
+    {
+      key: 'meetingDate',
+      header: 'Meeting',
+      getValue: (r) => (r.meetingDate ? formatDate(r.meetingDate) : ''),
+      render: (r) => (
+        <div className="whitespace-nowrap">
+          <p className="text-zinc-700" style={{ fontSize: 13 }}>
+            {r.meetingDate ? formatDate(r.meetingDate) : <span className="text-zinc-300">—</span>}
+          </p>
+          <p className="text-zinc-400" style={{ fontSize: 11 }}>
+            {r.meetingTime ? formatTime(r.meetingTime) : ''}
+          </p>
+        </div>
+      ),
+    },
+    {
+      key: 'mode',
+      header: 'Mode',
+      getValue: (r) => r.mode ?? '',
+      render: (r) => (
+        <span className="text-zinc-600" style={{ fontSize: 13 }}>
+          {r.mode || <span className="text-zinc-300">—</span>}
+        </span>
+      ),
+    },
+    {
+      key: 'salesperson',
+      header: 'Salesperson',
+      getValue: (r) => r.salesperson ?? '',
+      render: (r) => (
+        <span className="text-zinc-700 truncate" style={{ fontSize: 13 }}>
+          {r.salesperson || <span className="text-zinc-300">—</span>}
+        </span>
+      ),
+    },
+    {
+      key: 'agent',
+      header: 'Agent',
+      getValue: (r) => r.agent ?? '',
+      render: (r) => (
+        <span className="text-zinc-700" style={{ fontSize: 13 }}>
+          {r.agent || <span className="text-zinc-300">—</span>}
+        </span>
+      ),
+    },
+    {
+      key: 'confirmed',
+      header: 'Confirmed',
+      getValue: (r) => (r.confirmed ? 'Yes' : ''),
+      render: (r) =>
+        r.confirmed ? (
+          <span
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 4,
+              fontSize: 11,
+              fontWeight: 500,
+              background: '#F0FDF4',
+              color: '#16A34A',
+              borderRadius: 4,
+              padding: '2px 7px',
+              whiteSpace: 'nowrap',
+            }}
+          >
+            <CheckCircle2 size={11} /> Yes
+          </span>
+        ) : (
+          <span className="text-zinc-400" style={{ fontSize: 13 }}>—</span>
+        ),
+    },
+    {
+      key: 'status',
+      header: 'Status',
+      getValue: (r) => r.status ?? '',
+      render: (r) => <MeetingStatusBadge status={r.status} />,
+    },
+  ], []);
 
   return (
     <AppShell title="Meetings">
@@ -663,53 +785,55 @@ export function MeetingsPage() {
           </div>
         </div>
 
-        {/* Toolbar row: count + actions */}
-        <div className="flex items-center justify-between">
-          <p className="text-zinc-400" style={{ fontSize: 12 }}>
-            {loading ? (
-              <span className="flex items-center gap-1.5 text-zinc-400">
-                <Loader2 size={12} className="animate-spin" />
-                Loading meetings...
-              </span>
-            ) : loadError ? (
-              <span className="text-red-500">{loadError}</span>
-            ) : (
-              <>
-                {sel.count > 0 && (
-                  <span className="font-medium text-zinc-700 mr-2">{sel.count} selected ·</span>
-                )}
-                <span className="font-medium text-zinc-700">{filteredData.length}</span> of{' '}
-                <span className="font-medium text-zinc-700">{allMeetings.length}</span> meetings
-                {noProjectHidden > 0 && (
-                  <span className="text-zinc-400" title="These meetings' leads have no project assigned, so they're hidden while a project is selected.">
-                    {' · '}{noProjectHidden} with no project hidden
-                  </span>
-                )}
-                {hasActiveFilters && (
-                  <button
-                    onClick={() => { setFilters(defaultFilters); setPageIndex(0); }}
-                    className="ml-3 text-zinc-400 hover:text-zinc-700 transition-colors"
-                    style={{ fontSize: 12 }}
-                  >
-                    Clear filters
-                  </button>
-                )}
-              </>
-            )}
-          </p>
-          <div className="flex items-center gap-2">
-            {canReassign && sel.count > 0 && (
-              <button
-                onClick={openBulkReassign}
-                className="inline-flex items-center gap-1.5 border border-zinc-300 hover:border-zinc-400 bg-white hover:bg-zinc-50 text-zinc-700 font-medium rounded-md transition-colors"
-                style={{ fontSize: 13, padding: '6px 12px', height: 34 }}
-                title="Reassign the selected meetings' leads to a salesperson"
-              >
-                <UserCheck size={14} />
-                Reassign ({sel.count})
-              </button>
-            )}
-            <ViewSwitcher value={view} onChange={setView} />
+        {/* Toolbar row: count + actions — standardized via ListToolbar (ALT-333) */}
+        <ListToolbar
+          left={
+            <p className="text-zinc-400" style={{ fontSize: 12 }}>
+              {loading ? (
+                <span className="flex items-center gap-1.5 text-zinc-400">
+                  <Loader2 size={12} className="animate-spin" />
+                  Loading meetings...
+                </span>
+              ) : loadError ? (
+                <span className="text-red-500">{loadError}</span>
+              ) : (
+                <>
+                  {sel.count > 0 && (
+                    <span className="font-medium text-zinc-700 mr-2">{sel.count} selected ·</span>
+                  )}
+                  <span className="font-medium text-zinc-700">{filteredData.length}</span> of{' '}
+                  <span className="font-medium text-zinc-700">{allMeetings.length}</span> meetings
+                  {noProjectHidden > 0 && (
+                    <span className="text-zinc-400" title="These meetings' leads have no project assigned, so they're hidden while a project is selected.">
+                      {' · '}{noProjectHidden} with no project hidden
+                    </span>
+                  )}
+                  {hasActiveFilters && (
+                    <button
+                      onClick={() => { setFilters(defaultFilters); setPageIndex(0); }}
+                      className="ml-3 text-zinc-400 hover:text-zinc-700 transition-colors"
+                      style={{ fontSize: 12 }}
+                    >
+                      Clear filters
+                    </button>
+                  )}
+                </>
+              )}
+            </p>
+          }
+          bulkActions={canReassign && sel.count > 0 ? (
+            <button
+              onClick={openBulkReassign}
+              className="inline-flex items-center gap-1.5 border border-zinc-300 hover:border-zinc-400 bg-white hover:bg-zinc-50 text-zinc-700 font-medium rounded-md transition-colors"
+              style={{ fontSize: 13, padding: '6px 12px', height: 34 }}
+              title="Reassign the selected meetings' leads to a salesperson"
+            >
+              <UserCheck size={14} />
+              Reassign ({sel.count})
+            </button>
+          ) : null}
+          viewSwitcher={<ViewSwitcher value={view} onChange={setView} />}
+          columns={
             <ColumnCustomizer
               entity="meetings"
               userId={userId}
@@ -717,6 +841,8 @@ export function MeetingsPage() {
               value={colPrefs}
               onChange={(next) => setColPrefs(reconcileColumns(next, ALL_COLUMNS))}
             />
+          }
+          exportButton={
             <ExportButton
               // eslint-disable-next-line @typescript-eslint/no-explicit-any
               rows={filteredData as any[]}
@@ -727,8 +853,9 @@ export function MeetingsPage() {
               idKey="id"
               disabled={loading || filteredData.length === 0}
             />
-          </div>
-        </div>
+          }
+          create={null}
+        />
 
         {/* Kanban (Board) view — grouped by meeting status; cards open the preview drawer */}
         {view === 'kanban' && !loading && !loadError && (
@@ -738,6 +865,8 @@ export function MeetingsPage() {
             getKey={(row) => row.id}
             getCardLabel={(row) => `Open meeting for ${row.company || row.leadName || row.name || 'meeting'}`}
             onCardClick={(row) => setPreviewId(Number(row.id))}
+            isSelected={(item) => sel.isSelected(item.id)}
+            onToggleSelect={(item) => sel.toggle(item.id)}
             renderCard={(row) => {
               const title = row.name || row.company || row.leadName || '';
               return (
@@ -755,31 +884,30 @@ export function MeetingsPage() {
           />
         )}
 
-        {/* Grid (card) view */}
-        {view === 'grid' && !loading && !loadError && (
-          <CardGrid<MeetingRow>
-            rows={rowsOnPage.map((r) => r.original)}
-            getKey={(row) => row.id}
-            onCardClick={(row) => setPreviewId(Number(row.id))}
-            emptyLabel={hasActiveFilters ? 'No meetings match the current filters.' : 'No meetings found.'}
-            renderCard={(row) => {
-              const title = row.name || row.company || row.leadName || '';
-              return (
-                <CardShell
-                  name={title}
-                  subtitle={[row.company, row.city].filter(Boolean).join(' · ') || undefined}
-                  chip={<MeetingStatusBadge status={row.status} />}
-                  fields={[
-                    { label: 'Company', value: row.company ?? '' },
-                    { label: 'Meeting Date', value: row.meetingDate ? formatDate(row.meetingDate) : '' },
-                    { label: 'Salesperson', value: row.salesperson ?? '' },
-                    { label: 'Status', value: row.status ?? '' },
-                  ]}
-                />
-              );
-            }}
-          />
-        )}
+        {/* Grid view — real spreadsheet-style selectable view (EditableGrid, ALT-331).
+            All columns are read-only here: meeting status is workflow-driven and owner
+            changes go through the people-picker (bulk Reassign), so there's no safe
+            inline writer to wire. */}
+        {view === 'grid' && !loading && !loadError && (() => {
+          const gridRows = rowsOnPage.map((r) => r.original);
+          const visibleIds = gridRows.map((r) => r.id);
+          const selCount = visibleIds.filter((id) => sel.isSelected(id)).length;
+          const selectAllState: 'none' | 'some' | 'all' =
+            selCount === 0 ? 'none' : selCount === visibleIds.length ? 'all' : 'some';
+          return (
+            <EditableGrid<MeetingRow>
+              rows={gridRows}
+              getKey={(r) => r.id}
+              columns={EDITABLE_COLUMNS}
+              isSelected={(r) => sel.isSelected(r.id)}
+              onToggleSelect={(r) => sel.toggle(r.id)}
+              selectAllState={selectAllState}
+              onToggleSelectAll={() => sel.toggleAll(visibleIds)}
+              onOpenRow={(r) => setPreviewId(Number(r.id))}
+              emptyLabel="No meetings match."
+            />
+          );
+        })()}
 
         {/* Table */}
         {(view === 'table' || loading || loadError) && (
@@ -994,7 +1122,7 @@ export function MeetingsPage() {
         <RecordPreviewPanel
           title="Meeting"
           onClose={() => setPreviewId(null)}
-          onOpenFull={() => navigate(`${meetingBase}/${previewId}`)}
+          openFullHref={`${meetingBase}/${previewId}`}
         >
           <MeetingPreview meetingId={previewId} />
         </RecordPreviewPanel>

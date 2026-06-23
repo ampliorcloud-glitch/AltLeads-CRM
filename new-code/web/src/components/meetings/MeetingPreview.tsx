@@ -48,6 +48,7 @@ import type { UserOption } from '../../data/wishlist';
 import { useAuth } from '../../contexts/AuthContext';
 import { ReassignModal } from '../common/ReassignModal';
 import { MeetingStatusBadge } from '../meeting/MeetingStatusBadge';
+import { CallLogPreview } from '../calls/CallLogPreview';
 
 const BRAND = 'var(--color-brand, #1A7EE8)';
 
@@ -277,6 +278,9 @@ export function MeetingPreview({ meetingId }: { meetingId: number }) {
           </div>
         )}
       </div>
+
+      {/* Recent calls (logged dispositions) */}
+      <CallLogPreview entity="meeting" id={meetingId} />
 
       {/* Key fields: agenda, opportunity, project / stage */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>

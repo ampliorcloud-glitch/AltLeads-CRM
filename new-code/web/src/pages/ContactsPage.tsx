@@ -15,7 +15,9 @@ import { useRowSelection } from '../components/ui/useRowSelection';
 import { ExportButton } from '../components/ui/ExportButton';
 import { ColumnCustomizer, defaultColumnPrefs } from '../components/ui/ColumnCustomizer';
 import { ViewSwitcher, useViewMode } from '../components/ui/ViewSwitcher';
-import { CardGrid, CardShell } from '../components/ui/CardGrid';
+import { CardShell } from '../components/ui/CardGrid';
+import { ListToolbar } from '../components/ui/ListToolbar';
+import { EditableGrid, type EditableColumn } from '../components/ui/EditableGrid';
 import { GenericKanban, type KanbanColumnDef } from '../components/kanban/GenericKanban';
 import { StatusBadge } from '../components/ui/StatusBadge';
 import { MultiSelectFilter } from '../components/ui/MultiSelectFilter';
@@ -661,6 +663,149 @@ export function ContactsPage() {
       });
   }, [columnPrefs, projectId]);
 
+  /* ----------------------------------------------------------------- */
+  /*  EditableGrid columns (ALT-331) — mirror the visible Table columns. */
+  /*  Editable: Contact Status (select) + Description / Comments (text), */
+  /*  all per-project and gated on a selected project; all other columns */
+  /*  (name link, designation, email/phone/LinkedIn, company, city,      */
+  /*  owner) are read-only. Saves reuse the page's existing audited       */
+  /*  writer (upsertContactStatus), same as the inline status cell.       */
+  /* ----------------------------------------------------------------- */
+  const projectGate = (): string | null =>
+    projectId == null ? 'Select a project first' : null;
+
+  const EDITABLE_COLUMNS = useMemo<EditableColumn<ContactRow>[]>(() => [
+    {
+      key: 'full_name',
+      header: 'Name',
+      // Read-only — name stays a link to the full record (mirrors the table).
+      getValue: (r) => r.full_name ?? '',
+      render: (r) => (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
+          <ContactAvatar name={r.full_name ?? ''} />
+          <a
+            href={`/contacts/${r.contact_id}`}
+            onClick={(e) => { e.preventDefault(); e.stopPropagation(); navigate(`/contacts/${r.contact_id}`); }}
+            title={r.full_name || undefined}
+            style={{ fontWeight: 500, color: '#1A7EE8', fontSize: 13, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+          >
+            {r.full_name || '—'}
+          </a>
+          {r.is_demo && (
+            <span style={{ fontSize: 9, fontWeight: 600, letterSpacing: 0.4, background: '#F3F4F6', color: '#9CA3AF', borderRadius: 3, padding: '1px 5px' }}>DEMO</span>
+          )}
+        </div>
+      ),
+    },
+    { key: 'company_name', header: 'Company', getValue: (r) => r.company_name ?? '' },
+    { key: 'city_name', header: 'City', getValue: (r) => r.city_name ?? '' },
+    // Email / phone / LinkedIn are sensitive — display as-is, NOT editable.
+    { key: 'email', header: 'Email', getValue: (r) => r.email ?? '' },
+    {
+      key: 'linkedin_url',
+      header: 'LinkedIn',
+      align: 'center',
+      width: 70,
+      getValue: (r) => r.linkedin_url ?? '',
+      render: (r) => {
+        const url = r.linkedin_url;
+        if (!url) return <span style={{ color: '#e5e7eb' }}>—</span>;
+        return (
+          <a
+            href={url.startsWith('http') ? url : `https://linkedin.com/in/${url}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            onClick={(e) => e.stopPropagation()}
+            style={{ color: '#0A66C2', display: 'inline-flex', alignItems: 'center' }}
+          >
+            <Link2 size={14} />
+          </a>
+        );
+      },
+    },
+    {
+      key: 'phone_combined',
+      header: 'Phone',
+      getValue: (r) => r.mobile_no ?? r.alt_mobile_no ?? '',
+    },
+    {
+      key: 'contact_status',
+      header: 'Contact Status',
+      type: 'select',
+      width: 170,
+      editable: true,
+      options: statusOptions.map((o) => ({ value: o.value, label: o.label })),
+      getValue: (r) => r.contact_status ?? '',
+      disabledReason: projectGate,
+      render: (r) => <StatusBadge value={r.contact_status} category="contact_status" />,
+      onSave: async (r, next) => {
+        if (projectId == null) return { error: 'Select a project first' };
+        const newStatus = next === '' ? null : next;
+        const res = await upsertContactStatus(r.contact_id, projectId, { contact_status: newStatus }, actorId);
+        if (!res.error) handleStatusUpdated(r.contact_id, newStatus);
+        return res;
+      },
+    },
+    {
+      key: 'owner_name',
+      header: 'Owner',
+      // Read-only — reassignment stays via the bulk toolbar / preview.
+      getValue: (r) => (projectId == null ? '' : (r.owner_name || 'Unassigned')),
+    },
+    {
+      key: 'description',
+      header: 'Description',
+      type: 'text',
+      width: 220,
+      editable: true,
+      getValue: (r) => r.description ?? '',
+      disabledReason: projectGate,
+      onSave: async (r, next) => {
+        if (projectId == null) return { error: 'Select a project first' };
+        const value = next.trim() === '' ? null : next;
+        const res = await upsertContactStatus(r.contact_id, projectId, { description: value }, actorId);
+        if (!res.error) {
+          setStatusMap((prev) => ({
+            ...prev,
+            [r.contact_id]: {
+              contact_status: prev[r.contact_id]?.contact_status ?? null,
+              description: value,
+              comments: prev[r.contact_id]?.comments ?? null,
+            },
+          }));
+        }
+        return res;
+      },
+    },
+    {
+      key: 'comments',
+      header: 'Comments',
+      type: 'text',
+      width: 220,
+      editable: true,
+      getValue: (r) => r.comments ?? '',
+      disabledReason: projectGate,
+      onSave: async (r, next) => {
+        if (projectId == null) return { error: 'Select a project first' };
+        const value = next.trim() === '' ? null : next;
+        const res = await upsertContactStatus(r.contact_id, projectId, { comments: value }, actorId);
+        if (!res.error) {
+          setStatusMap((prev) => ({
+            ...prev,
+            [r.contact_id]: {
+              contact_status: prev[r.contact_id]?.contact_status ?? null,
+              description: prev[r.contact_id]?.description ?? null,
+              comments: value,
+            },
+          }));
+        }
+        return res;
+      },
+    },
+    { key: 'designation', header: 'Designation', getValue: (r) => r.designation ?? '' },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  ], [statusOptions, projectId, actorId]);
+
   /* -------------------------------------------------------- render -- */
 
   const sortIcon = (key: SortKey) => {
@@ -794,76 +939,94 @@ export function ContactsPage() {
           </div>
         </div>
 
-        {/* Toolbar */}
-        <div className="flex items-center justify-between">
-          <p className="text-zinc-400" style={{ fontSize: 12 }}>
-            {loading ? (
-              <span className="flex items-center gap-1.5 text-zinc-400">
-                <Loader2 size={12} className="animate-spin" />
-                Loading contacts...
-              </span>
-            ) : loadError ? (
-              <span className="text-red-500">{loadError}</span>
-            ) : (
+        {/* Toolbar (standardized via ListToolbar — ALT-333). Slots enforce the
+            universal order: bulkActions → ViewSwitcher → Columns → Export →
+            Create. Export now comes AFTER the switcher + columns (was before). */}
+        <ListToolbar
+          left={
+            <p className="text-zinc-400" style={{ fontSize: 12 }}>
+              {loading ? (
+                <span className="flex items-center gap-1.5 text-zinc-400">
+                  <Loader2 size={12} className="animate-spin" />
+                  Loading contacts...
+                </span>
+              ) : loadError ? (
+                <span className="text-red-500">{loadError}</span>
+              ) : (
+                <>
+                  {sel.count > 0 && (
+                    <span className="text-zinc-700 font-medium mr-2">{sel.count} selected</span>
+                  )}
+                  <span className="font-medium text-zinc-700">{filteredData.length}</span> of{' '}
+                  <span className="font-medium text-zinc-700">{allContacts.length}</span> contacts
+                  {hasActiveFilters && (
+                    <button
+                      onClick={() => { setFilters(defaultFilters); setPageIndex(0); sel.clear(); }}
+                      className="ml-3 text-zinc-400 hover:text-zinc-700 transition-colors"
+                      style={{ fontSize: 12 }}
+                    >
+                      Clear filters
+                    </button>
+                  )}
+                </>
+              )}
+            </p>
+          }
+          bulkActions={
+            sel.count > 0 ? (
               <>
-                {sel.count > 0 && (
-                  <span className="text-zinc-700 font-medium mr-2">{sel.count} selected</span>
-                )}
-                <span className="font-medium text-zinc-700">{filteredData.length}</span> of{' '}
-                <span className="font-medium text-zinc-700">{allContacts.length}</span> contacts
-                {hasActiveFilters && (
+                {/* Bulk reassign selected contacts (ALT-291) — needs an active project */}
+                {canReassign && projectId != null && (
                   <button
-                    onClick={() => { setFilters(defaultFilters); setPageIndex(0); sel.clear(); }}
-                    className="ml-3 text-zinc-400 hover:text-zinc-700 transition-colors"
-                    style={{ fontSize: 12 }}
+                    onClick={openBulkReassign}
+                    className="inline-flex items-center gap-1.5 border border-zinc-300 hover:border-zinc-400 bg-white hover:bg-zinc-50 text-zinc-700 font-medium rounded-md transition-colors"
+                    style={{ fontSize: 13, padding: '6px 12px', height: 34 }}
+                    title="Assign the selected contacts (in this project) to a salesperson"
                   >
-                    Clear filters
+                    <UserCheck size={14} />
+                    Reassign ({sel.count})
+                  </button>
+                )}
+
+                {/* Bulk add-to-project (ALT-291) */}
+                {canReassign && (
+                  <button
+                    onClick={() => { setAddProjectError(null); setShowAddProject(true); }}
+                    className="inline-flex items-center gap-1.5 border border-zinc-300 hover:border-zinc-400 bg-white hover:bg-zinc-50 text-zinc-700 font-medium rounded-md transition-colors"
+                    style={{ fontSize: 13, padding: '6px 12px', height: 34 }}
+                    title="Add the selected contacts to a project"
+                  >
+                    <FolderPlus size={14} />
+                    Add to project ({sel.count})
+                  </button>
+                )}
+
+                {/* Bulk set-status (Step E) — per-project, needs an active project */}
+                {canReassign && projectId != null && (
+                  <button
+                    onClick={() => { setSetStatusError(null); setShowSetStatus(true); }}
+                    className="inline-flex items-center gap-1.5 border border-zinc-300 hover:border-zinc-400 bg-white hover:bg-zinc-50 text-zinc-700 font-medium rounded-md transition-colors"
+                    style={{ fontSize: 13, padding: '6px 12px', height: 34 }}
+                    title="Set the contact status of the selected contacts (in this project)"
+                  >
+                    <Tag size={14} />
+                    Set status ({sel.count})
                   </button>
                 )}
               </>
-            )}
-          </p>
-          <div className="flex items-center gap-2">
-            {/* Bulk reassign selected contacts (ALT-291) — needs an active project */}
-            {canReassign && sel.count > 0 && projectId != null && (
-              <button
-                onClick={openBulkReassign}
-                className="inline-flex items-center gap-1.5 border border-zinc-300 hover:border-zinc-400 bg-white hover:bg-zinc-50 text-zinc-700 font-medium rounded-md transition-colors"
-                style={{ fontSize: 13, padding: '6px 12px', height: 34 }}
-                title="Assign the selected contacts (in this project) to a salesperson"
-              >
-                <UserCheck size={14} />
-                Reassign ({sel.count})
-              </button>
-            )}
-
-            {/* Bulk add-to-project (ALT-291) */}
-            {canReassign && sel.count > 0 && (
-              <button
-                onClick={() => { setAddProjectError(null); setShowAddProject(true); }}
-                className="inline-flex items-center gap-1.5 border border-zinc-300 hover:border-zinc-400 bg-white hover:bg-zinc-50 text-zinc-700 font-medium rounded-md transition-colors"
-                style={{ fontSize: 13, padding: '6px 12px', height: 34 }}
-                title="Add the selected contacts to a project"
-              >
-                <FolderPlus size={14} />
-                Add to project ({sel.count})
-              </button>
-            )}
-
-            {/* Bulk set-status (Step E) — per-project, needs an active project */}
-            {canReassign && sel.count > 0 && projectId != null && (
-              <button
-                onClick={() => { setSetStatusError(null); setShowSetStatus(true); }}
-                className="inline-flex items-center gap-1.5 border border-zinc-300 hover:border-zinc-400 bg-white hover:bg-zinc-50 text-zinc-700 font-medium rounded-md transition-colors"
-                style={{ fontSize: 13, padding: '6px 12px', height: 34 }}
-                title="Set the contact status of the selected contacts (in this project)"
-              >
-                <Tag size={14} />
-                Set status ({sel.count})
-              </button>
-            )}
-
-            {/* Export — uses ExportButton with visible columns */}
+            ) : undefined
+          }
+          viewSwitcher={<ViewSwitcher value={view} onChange={setView} />}
+          columns={
+            <ColumnCustomizer
+              entity="contacts"
+              userId={userId}
+              allColumns={ALL_COLUMNS}
+              value={columnPrefs}
+              onChange={setColumnPrefs}
+            />
+          }
+          exportButton={
             <ExportButton<ContactRow>
               rows={filteredData}
               columns={exportColumns}
@@ -872,45 +1035,34 @@ export function ContactsPage() {
               idKey="contact_id"
               disabled={loading || filteredData.length === 0}
             />
-
-            {/* Table / Grid view switcher */}
-            <ViewSwitcher value={view} onChange={setView} />
-
-            {/* Column customizer */}
-            <ColumnCustomizer
-              entity="contacts"
-              userId={userId}
-              allColumns={ALL_COLUMNS}
-              value={columnPrefs}
-              onChange={setColumnPrefs}
-            />
-
-            {/* Create is admin-only by default (ADR-21); hidden from outreach roles. */}
-            {canCreateData && (
-            <button
-              onClick={() => navigate('/contacts/new')}
-              style={{
-                display: 'flex', alignItems: 'center', gap: 6,
-                background: 'var(--color-brand)',
-                color: '#fff',
-                fontWeight: 500,
-                borderRadius: 'var(--radius-btn)',
-                border: 'none',
-                fontSize: 12,
-                padding: '5px 12px',
-                height: 30,
-                cursor: 'pointer',
-                transition: 'background 0.15s',
-              }}
-              onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = 'var(--color-brand-dark)'; }}
-              onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = 'var(--color-brand)'; }}
-            >
-              <Plus size={13} strokeWidth={2.25} />
-              New Contact
-            </button>
-            )}
-          </div>
-        </div>
+          }
+          create={
+            /* Create is admin-only by default (ADR-21); hidden from outreach roles. */
+            canCreateData ? (
+              <button
+                onClick={() => navigate('/contacts/new')}
+                style={{
+                  display: 'flex', alignItems: 'center', gap: 6,
+                  background: 'var(--color-brand)',
+                  color: '#fff',
+                  fontWeight: 500,
+                  borderRadius: 'var(--radius-btn)',
+                  border: 'none',
+                  fontSize: 12,
+                  padding: '5px 12px',
+                  height: 30,
+                  cursor: 'pointer',
+                  transition: 'background 0.15s',
+                }}
+                onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = 'var(--color-brand-dark)'; }}
+                onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = 'var(--color-brand)'; }}
+              >
+                <Plus size={13} strokeWidth={2.25} />
+                New Contact
+              </button>
+            ) : undefined
+          }
+        />
 
         {/* Kanban (Board) view — grouped by per-project contact status */}
         {view === 'kanban' && !loading && !loadError && (
@@ -928,6 +1080,8 @@ export function ContactsPage() {
               getKey={(row) => row.contact_id}
               getCardLabel={(row) => `Open ${row.full_name || row.company_name || 'contact'}`}
               onCardClick={(row) => setPreviewId(row.contact_id)}
+              isSelected={(row) => sel.isSelected(row.contact_id)}
+              onToggleSelect={(row) => sel.toggle(row.contact_id)}
               renderCard={(row) => (
                 <CardShell
                   name={row.full_name || ''}
@@ -943,31 +1097,28 @@ export function ContactsPage() {
           )
         )}
 
-        {/* Grid (card) view */}
+        {/* Grid view — spreadsheet-style EditableGrid (ALT-331/332). Inline-edits
+            Contact Status / Description / Comments (per-project, gated on a
+            project) via the same audited writer as the table's inline cell; all
+            other columns are read-only. Leading checkbox wires to the shared
+            selection so the bulk toolbar works from the Grid too. */}
         {view === 'grid' && !loading && !loadError && (
-          <CardGrid<ContactRow>
+          <EditableGrid<ContactRow>
             rows={pageRows}
             getKey={(row) => row.contact_id}
-            onCardClick={(row) => setPreviewId(row.contact_id)}
-            emptyLabel={hasActiveFilters ? 'No contacts match the current filters.' : 'No contacts yet.'}
-            renderCard={(row) => (
-              <CardShell
-                name={row.full_name || ''}
-                subtitle={row.designation || undefined}
-                tag={row.is_demo ? (
-                  <span style={{ fontSize: 9, fontWeight: 600, letterSpacing: 0.4, background: '#F3F4F6', color: '#9CA3AF', borderRadius: 3, padding: '1px 5px' }}>DEMO</span>
-                ) : undefined}
-                chip={row.contact_status ?? undefined}
-                fields={[
-                  { label: 'Company', value: row.company_name ?? '' },
-                  { label: 'Designation', value: row.designation ?? '' },
-                  { label: 'City', value: row.city_name ?? '' },
-                  { label: 'Phone', value: row.mobile_no ?? row.alt_mobile_no ?? '' },
-                  // Per-project owner — only meaningful with a project selected.
-                  { label: 'Owner', value: projectId ? (row.owner_name || 'Unassigned') : '' },
-                ]}
-              />
-            )}
+            columns={EDITABLE_COLUMNS}
+            isSelected={(row) => sel.isSelected(row.contact_id)}
+            onToggleSelect={(row) => sel.toggle(row.contact_id)}
+            selectAllState={
+              pageIds.length > 0 && sel.allSelected(pageIds)
+                ? 'all'
+                : pageIds.some((id) => sel.isSelected(id))
+                  ? 'some'
+                  : 'none'
+            }
+            onToggleSelectAll={() => sel.toggleAll(pageIds)}
+            onOpenRow={(row) => setPreviewId(row.contact_id)}
+            emptyLabel="No contacts match."
           />
         )}
 
@@ -1432,7 +1583,7 @@ export function ContactsPage() {
         <RecordPreviewPanel
           title="Contact"
           onClose={() => setPreviewId(null)}
-          onOpenFull={() => navigate(`/contacts/${previewId}`)}
+          openFullHref={`/contacts/${previewId}`}
         >
           <ContactPreview contactId={previewId} projectId={projectId} />
         </RecordPreviewPanel>

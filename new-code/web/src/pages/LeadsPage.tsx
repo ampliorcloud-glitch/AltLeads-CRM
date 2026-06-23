@@ -31,7 +31,9 @@ import {
   reconcileColumns,
 } from '../components/ui/ColumnCustomizer';
 import { ViewSwitcher, useViewMode } from '../components/ui/ViewSwitcher';
-import { CardGrid, CardShell } from '../components/ui/CardGrid';
+import { CardShell } from '../components/ui/CardGrid';
+import { ListToolbar } from '../components/ui/ListToolbar';
+import { EditableGrid, type EditableColumn } from '../components/ui/EditableGrid';
 import { GenericKanban, type KanbanColumnDef } from '../components/kanban/GenericKanban';
 import { RecordPreviewPanel } from '../components/common/RecordPreviewPanel';
 import { LeadPreview } from '../components/leads/LeadPreview';
@@ -179,6 +181,76 @@ const EXPORT_COLUMNS: ExportColumn[] = [
   { key: 'meetingDate',       header: 'Meeting Date',   accessor: (r) => r.meetingDate ?? '' },
   { key: 'leadGeneratedDate', header: 'Lead Generated' },
   { key: 'lastUpdated',       header: 'Last Updated' },
+];
+
+/* ------------------------------------------------------------------
+   EditableGrid columns (the real inline "Grid" view, ALT-331).
+
+   Mirrors the Table's data columns (same keys + order, minus the checkbox and
+   any pure-action column). SAFE-EDITABLE SET for Leads: every column is
+   READ-ONLY. This page has no simple inline writer:
+     • stage is workflow-driven (lead_report) → render as the StageBadge.
+     • Owner/Salesperson reassignment uses a people-picker (reassignLeadsBulk) via
+       the bulk button + preview, not a free-text cell → read-only.
+   The Company column renders the avatar+name block; dates use formatDate; all
+   other cells fall back to EditableGrid's plain read-only display. Row open is
+   handled by EditableGrid's ↗ button (onOpenRow → setPreviewId).
+------------------------------------------------------------------ */
+
+const EDITABLE_COLUMNS: EditableColumn<RealLead>[] = [
+  {
+    key: 'company',
+    header: 'Company',
+    getValue: (r) => r.company,
+    render: (r) => {
+      const name = r.company ?? '';
+      const sub = r.city || r.industry || '';
+      return (
+        <div className="flex items-center gap-2.5">
+          <CompanyAvatar name={name} />
+          <div className="min-w-0">
+            <p className="font-medium text-zinc-900 truncate" style={{ fontSize: 13, maxWidth: 200 }} title={name || undefined}>
+              {name || <span className="text-zinc-400">—</span>}
+            </p>
+            {sub && (
+              <p className="text-zinc-400 truncate" style={{ fontSize: 11, maxWidth: 200 }} title={sub}>{sub}</p>
+            )}
+          </div>
+        </div>
+      );
+    },
+  },
+  { key: 'contactName',  header: 'Contact',        getValue: (r) => r.contactName },
+  { key: 'project',      header: 'Project',        getValue: (r) => r.project },
+  { key: 'city',         header: 'City',           getValue: (r) => r.city },
+  { key: 'agent',        header: 'Agent',          getValue: (r) => r.agent },
+  { key: 'salesperson',  header: 'Salesperson',    getValue: (r) => r.salesperson },
+  { key: 'source',       header: 'Source',         getValue: (r) => r.source },
+  {
+    key: 'stage',
+    header: 'Stage',
+    getValue: (r) => r.stage,
+    render: (r) => <StageBadge stage={r.stage} />,
+  },
+  {
+    key: 'meetingDate',
+    header: 'Meeting Date',
+    getValue: (r) => (r.meetingDate ? formatDate(r.meetingDate) : ''),
+  },
+  {
+    key: 'lastUpdated',
+    header: 'Last Updated',
+    getValue: (r) => (r.lastUpdated ? formatDate(r.lastUpdated) : ''),
+  },
+  { key: 'leadNumber',   header: 'Lead #',         getValue: (r) => r.leadNumber },
+  { key: 'contactEmail', header: 'Email',          getValue: (r) => r.contactEmail },
+  { key: 'contactPhone', header: 'Phone',          getValue: (r) => r.contactPhone },
+  { key: 'industry',     header: 'Industry',       getValue: (r) => r.industry },
+  {
+    key: 'leadGeneratedDate',
+    header: 'Lead Generated',
+    getValue: (r) => (r.leadGeneratedDate ? formatDate(r.leadGeneratedDate) : ''),
+  },
 ];
 
 /* ------------------------------------------------------------------
@@ -654,6 +726,26 @@ export function LeadsPage() {
       .filter((c): c is ExportColumn => c != null);
   }, [visibleKeys]);
 
+  // Grid (EditableGrid) columns — same visible keys + display order as the Table.
+  const gridColumns = useMemo<EditableColumn<RealLead>[]>(() => {
+    const colMap = new Map(EDITABLE_COLUMNS.map((c) => [c.key, c]));
+    return visibleKeys
+      .map((k) => colMap.get(k))
+      .filter((c): c is EditableColumn<RealLead> => c != null);
+  }, [visibleKeys]);
+
+  // The leads visible on the current page (drives the Grid's select-all state).
+  const gridRows = useMemo(
+    () => table.getRowModel().rows.map((r) => r.original),
+    [table, filteredData, pagination, sorting],
+  );
+  const gridSelectAllState: 'all' | 'some' | 'none' = useMemo(() => {
+    if (gridRows.length === 0) return 'none';
+    const selectedOnPage = gridRows.filter((r) => sel.isSelected(r.id)).length;
+    if (selectedOnPage === 0) return 'none';
+    return selectedOnPage === gridRows.length ? 'all' : 'some';
+  }, [gridRows, sel]);
+
   return (
     <AppShell title="Leads">
       <div className="space-y-3">
@@ -754,53 +846,55 @@ export function LeadsPage() {
           </div>
         </div>
 
-        {/* Toolbar row: count + actions */}
-        <div className="flex items-center justify-between">
-          <p className="text-zinc-400" style={{ fontSize: 12 }}>
-            {loading ? (
-              <span className="flex items-center gap-1.5 text-zinc-400">
-                <Loader2 size={12} className="animate-spin" />
-                Loading leads...
-              </span>
-            ) : loadError ? (
-              <span className="text-red-500">{loadError}</span>
-            ) : (
-              <>
-                <span className="font-medium text-zinc-700">{filteredData.length}</span> of{' '}
-                <span className="font-medium text-zinc-700">{allLeads.length}</span> leads
-                {noProjectHidden > 0 && (
-                  <span className="text-zinc-400" title="These leads have no project assigned, so they're hidden while a project is selected.">
-                    {' · '}{noProjectHidden} with no project hidden
-                  </span>
-                )}
-                {sel.count > 0 && (
-                  <>
-                    {' ·'}{' '}
-                    <span className="font-medium text-zinc-700">{sel.count}</span> selected
+        {/* Toolbar row: count + actions (standardized via ListToolbar, ALT-333) */}
+        <ListToolbar
+          left={
+            <p className="text-zinc-400" style={{ fontSize: 12 }}>
+              {loading ? (
+                <span className="flex items-center gap-1.5 text-zinc-400">
+                  <Loader2 size={12} className="animate-spin" />
+                  Loading leads...
+                </span>
+              ) : loadError ? (
+                <span className="text-red-500">{loadError}</span>
+              ) : (
+                <>
+                  <span className="font-medium text-zinc-700">{filteredData.length}</span> of{' '}
+                  <span className="font-medium text-zinc-700">{allLeads.length}</span> leads
+                  {noProjectHidden > 0 && (
+                    <span className="text-zinc-400" title="These leads have no project assigned, so they're hidden while a project is selected.">
+                      {' · '}{noProjectHidden} with no project hidden
+                    </span>
+                  )}
+                  {sel.count > 0 && (
+                    <>
+                      {' ·'}{' '}
+                      <span className="font-medium text-zinc-700">{sel.count}</span> selected
+                      <button
+                        onClick={() => sel.clear()}
+                        className="ml-2 text-zinc-400 hover:text-zinc-700 transition-colors"
+                        style={{ fontSize: 12 }}
+                      >
+                        Clear
+                      </button>
+                    </>
+                  )}
+                  {hasActiveFilters && (
                     <button
-                      onClick={() => sel.clear()}
-                      className="ml-2 text-zinc-400 hover:text-zinc-700 transition-colors"
+                      onClick={() => { setFilters(defaultFilters); setPagination((p) => ({ ...p, pageIndex: 0 })); }}
+                      className="ml-3 text-zinc-400 hover:text-zinc-700 transition-colors"
                       style={{ fontSize: 12 }}
                     >
-                      Clear
+                      Clear filters
                     </button>
-                  </>
-                )}
-                {hasActiveFilters && (
-                  <button
-                    onClick={() => { setFilters(defaultFilters); setPagination((p) => ({ ...p, pageIndex: 0 })); }}
-                    className="ml-3 text-zinc-400 hover:text-zinc-700 transition-colors"
-                    style={{ fontSize: 12 }}
-                  >
-                    Clear filters
-                  </button>
-                )}
-              </>
-            )}
-          </p>
-          <div className="flex items-center gap-2">
-            {/* Bulk reassign selected leads (ALT-291) */}
-            {canReassign && sel.count > 0 && (
+                  )}
+                </>
+              )}
+            </p>
+          }
+          bulkActions={
+            /* Bulk reassign selected leads (ALT-291) */
+            canReassign && sel.count > 0 ? (
               <button
                 onClick={openBulkReassign}
                 className="inline-flex items-center gap-1.5 border border-zinc-300 hover:border-zinc-400 bg-white hover:bg-zinc-50 text-zinc-700 font-medium rounded-md transition-colors"
@@ -810,12 +904,10 @@ export function LeadsPage() {
                 <UserCheck size={14} />
                 Reassign ({sel.count})
               </button>
-            )}
-
-            {/* Table / Grid view switcher */}
-            <ViewSwitcher value={view} onChange={setView} />
-
-            {/* Column customizer */}
+            ) : null
+          }
+          viewSwitcher={<ViewSwitcher value={view} onChange={setView} />}
+          columns={
             <ColumnCustomizer
               entity="leads"
               userId={userId}
@@ -823,8 +915,8 @@ export function LeadsPage() {
               value={columnPrefs}
               onChange={(next) => setColumnPrefs(reconcileColumns(next, ALL_COLUMNS))}
             />
-
-            {/* Export (selected rows or all filtered rows) */}
+          }
+          exportButton={
             <ExportButton
               // eslint-disable-next-line @typescript-eslint/no-explicit-any
               rows={filteredData as any[]}
@@ -835,33 +927,34 @@ export function LeadsPage() {
               idKey="id"
               disabled={loading || filteredData.length === 0}
             />
-
-            {/* Create is admin-only by default (ADR-21); hidden from outreach roles. */}
-            {canCreateData && (
-            <button
-              onClick={() => navigate('/leads/new')}
-              style={{
-                display: 'flex', alignItems: 'center', gap: 6,
-                background: 'var(--color-brand)',
-                color: '#fff',
-                fontWeight: 500,
-                borderRadius: 'var(--radius-btn)',
-                border: 'none',
-                fontSize: 12,
-                padding: '5px 12px',
-                height: 30,
-                cursor: 'pointer',
-                transition: 'background 0.15s',
-              }}
-              onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = 'var(--color-brand-dark)'; }}
-              onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = 'var(--color-brand)'; }}
-            >
-              <Plus size={13} strokeWidth={2.25} />
-              New Lead
-            </button>
-            )}
-          </div>
-        </div>
+          }
+          create={
+            /* Create is admin-only by default (ADR-21); hidden from outreach roles. */
+            canCreateData ? (
+              <button
+                onClick={() => navigate('/leads/new')}
+                style={{
+                  display: 'flex', alignItems: 'center', gap: 6,
+                  background: 'var(--color-brand)',
+                  color: '#fff',
+                  fontWeight: 500,
+                  borderRadius: 'var(--radius-btn)',
+                  border: 'none',
+                  fontSize: 12,
+                  padding: '5px 12px',
+                  height: 30,
+                  cursor: 'pointer',
+                  transition: 'background 0.15s',
+                }}
+                onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = 'var(--color-brand-dark)'; }}
+                onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = 'var(--color-brand)'; }}
+              >
+                <Plus size={13} strokeWidth={2.25} />
+                New Lead
+              </button>
+            ) : null
+          }
+        />
 
         {/* Kanban (Board) view — grouped by stage; cards open the preview drawer */}
         {view === 'kanban' && !loading && !loadError && (
@@ -871,6 +964,8 @@ export function LeadsPage() {
             getKey={(row) => row.id}
             getCardLabel={(row) => `Open ${row.company || row.contactName || 'lead'}`}
             onCardClick={(row) => setPreviewId(row.id)}
+            isSelected={(row) => sel.isSelected(row.id)}
+            onToggleSelect={(row) => sel.toggle(row.id)}
             renderCard={(row) => (
               <CardShell
                 name={row.company || row.contactName || ''}
@@ -885,27 +980,20 @@ export function LeadsPage() {
           />
         )}
 
-        {/* Grid (card) view */}
+        {/* Grid view — real inline-edit spreadsheet (ALT-331). For Leads every
+            column is read-only (no safe inline writer); editing happens via the
+            preview drawer / bulk reassign. */}
         {view === 'grid' && !loading && !loadError && (
-          <CardGrid<RealLead>
-            rows={table.getRowModel().rows.map((r) => r.original)}
+          <EditableGrid<RealLead>
+            rows={gridRows}
             getKey={(row) => row.id}
-            onCardClick={(row) => setPreviewId(row.id)}
-            emptyLabel={hasActiveFilters ? 'No leads match the current filters.' : 'No leads yet.'}
-            renderCard={(row) => (
-              <CardShell
-                name={row.company || row.contactName || ''}
-                subtitle={row.contactName || undefined}
-                chip={row.stage ?? undefined}
-                fields={[
-                  { label: 'Company', value: row.company ?? '' },
-                  { label: 'Stage', value: row.stage ?? '' },
-                  { label: 'City', value: row.city ?? '' },
-                  { label: 'Agent', value: row.agent ?? '' },
-                  { label: 'Salesperson', value: row.salesperson ?? '' },
-                ]}
-              />
-            )}
+            columns={gridColumns}
+            isSelected={(row) => sel.isSelected(row.id)}
+            onToggleSelect={(row) => sel.toggle(row.id)}
+            selectAllState={gridSelectAllState}
+            onToggleSelectAll={() => sel.toggleAll(gridRows.map((r) => r.id))}
+            onOpenRow={(row) => setPreviewId(row.id)}
+            emptyLabel="No leads match."
           />
         )}
 
@@ -1220,7 +1308,7 @@ export function LeadsPage() {
         <RecordPreviewPanel
           title="Lead"
           onClose={() => setPreviewId(null)}
-          onOpenFull={() => navigate(`${leadBase}/${previewId}`)}
+          openFullHref={`${leadBase}/${previewId}`}
         >
           <LeadPreview leadId={Number(previewId)} />
         </RecordPreviewPanel>

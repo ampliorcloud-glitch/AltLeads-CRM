@@ -20,7 +20,9 @@ import { ExportButton } from '../components/ui/ExportButton';
 import { MultiSelectFilter } from '../components/ui/MultiSelectFilter';
 import { ColumnCustomizer, defaultColumnPrefs, reconcileColumns } from '../components/ui/ColumnCustomizer';
 import { ViewSwitcher, useViewMode } from '../components/ui/ViewSwitcher';
-import { CardGrid, CardShell } from '../components/ui/CardGrid';
+import { ListToolbar } from '../components/ui/ListToolbar';
+import { EditableGrid, type EditableColumn } from '../components/ui/EditableGrid';
+import { CardShell } from '../components/ui/CardGrid';
 import { GenericKanban, type KanbanColumnDef } from '../components/kanban/GenericKanban';
 import { Skeleton } from '../components/ui/Skeleton';
 import { RecordPreviewPanel } from '../components/common/RecordPreviewPanel';
@@ -534,6 +536,95 @@ export function WishlistPage() {
     return map;
   }, [allFilteredRows, kanbanColumns]);
 
+  /* ----------------------------------------------------------------- */
+  /*  EditableGrid columns (ALT-331) — mirror the visible Table columns. */
+  /*  Wishlist has NO safe inline writers, so EVERY column is read-only: */
+  /*  status renders as the existing StatusBadge, company/contact reuse  */
+  /*  the table's cell markup, dates use fmtLongDate. The Grid here is    */
+  /*  just a denser, selectable view (no inline edit / no bulk toolbar).  */
+  /* ----------------------------------------------------------------- */
+  const EDITABLE_COLUMNS = useMemo<EditableColumn<WishlistItem>[]>(() => {
+    const catalogue: Record<string, EditableColumn<WishlistItem>> = {
+      company: {
+        key: 'company',
+        header: 'Company',
+        getValue: (r) => r.company ?? '',
+        render: (r) => {
+          const name = r.company || '';
+          return (
+            <div className="flex items-center gap-2 min-w-0">
+              <CompanyAvatar name={name} />
+              <span className="font-medium text-zinc-900 truncate" style={{ fontSize: 13 }}>
+                {name || <span className="text-zinc-400">—</span>}
+              </span>
+            </div>
+          );
+        },
+      },
+      contactName: {
+        key: 'contactName',
+        header: 'Contact',
+        getValue: (r) => r.contactName ?? '',
+        render: (r) => (
+          <div>
+            <p className="text-zinc-800" style={{ fontSize: 13 }}>
+              {r.contactName || <span className="text-zinc-300">—</span>}
+            </p>
+            {r.designation && (
+              <p className="text-zinc-400" style={{ fontSize: 11 }}>{r.designation}</p>
+            )}
+          </div>
+        ),
+      },
+      industry: { key: 'industry', header: 'Industry', getValue: (r) => r.industry ?? '' },
+      city: { key: 'city', header: 'City', getValue: (r) => r.city ?? '' },
+      state: { key: 'state', header: 'State', getValue: (r) => r.state ?? '' },
+      agent: { key: 'agent', header: 'Assigned Agent', getValue: (r) => r.agent ?? '' },
+      teamLead: { key: 'teamLead', header: 'Team Lead', getValue: (r) => r.teamLead ?? '' },
+      status: {
+        key: 'status',
+        header: 'Status',
+        width: 170,
+        getValue: (r) => r.status ?? '',
+        render: (r) => <StatusBadge status={r.status} />,
+      },
+      createdDate: {
+        key: 'createdDate',
+        header: 'Added',
+        getValue: (r) => r.createdDate ?? '',
+        render: (r) => (
+          <span className="text-zinc-500 whitespace-nowrap" style={{ fontSize: 13 }}>
+            {r.createdDate ? fmtLongDate(r.createdDate) : '—'}
+          </span>
+        ),
+      },
+      lastUpdated: {
+        key: 'lastUpdated',
+        header: 'Last Updated',
+        getValue: (r) => r.lastUpdated ?? '',
+        render: (r) => (
+          <span className="text-zinc-500 whitespace-nowrap" style={{ fontSize: 13 }}>
+            {r.lastUpdated ? fmtLongDate(r.lastUpdated) : '—'}
+          </span>
+        ),
+      },
+      pincode: { key: 'pincode', header: 'Pincode', getValue: (r) => r.pincode ?? '' },
+      phone: { key: 'phone', header: 'Phone', getValue: (r) => r.phone ?? '' },
+      description: { key: 'description', header: 'Notes', getValue: (r) => r.description ?? '' },
+    };
+    // Mirror the visible Table columns + order (visibleKeys), skipping unknowns.
+    return visibleKeys.map((k) => catalogue[k]).filter(Boolean) as EditableColumn<WishlistItem>[];
+  }, [visibleKeys]);
+
+  // Grid uses the full filtered set; selection helpers operate over those ids.
+  const gridVisibleIds = useMemo(() => allFilteredRows.map((r) => r.id), [allFilteredRows]);
+  const gridSelectAllState: 'all' | 'some' | 'none' =
+    gridVisibleIds.length > 0 && sel.allSelected(gridVisibleIds)
+      ? 'all'
+      : gridVisibleIds.some((id) => sel.isSelected(id))
+        ? 'some'
+        : 'none';
+
   return (
     <AppShell title="Wishlist">
       <div className="space-y-3">
@@ -589,52 +680,56 @@ export function WishlistPage() {
           </div>
         </div>
 
-        {/* Toolbar: count + actions */}
-        <div className="flex items-center justify-between gap-2">
-          <p className="text-zinc-400" style={{ fontSize: 12 }}>
-            {loading ? (
-              <span className="flex items-center gap-1.5 text-zinc-400">
-                <Loader2 size={12} className="animate-spin" />
-                Loading wishlist...
-              </span>
-            ) : loadError ? (
-              <span className="text-red-500">{loadError}</span>
-            ) : (
-              <>
-                <span className="font-medium text-zinc-700">{rowCount}</span> of{' '}
-                <span className="font-medium text-zinc-700">{allItems.length}</span> companies
-                {scopedProjectName && (
-                  <span className="text-zinc-400" title="Wishlist entries aren't tied to a project, so the selected project doesn't filter this list.">
-                    {' · '}not filtered by project
-                  </span>
-                )}
-                {sel.count > 0 && (
-                  <span className="ml-2 text-zinc-500">
-                    · <span className="font-medium text-zinc-700">{sel.count}</span> selected
+        {/* Toolbar (standardized via ListToolbar — ALT-333). Slots enforce the
+            universal order: bulkActions → ViewSwitcher → Columns → Export →
+            Create. Wishlist has no bulk actions and no create. */}
+        <ListToolbar
+          left={
+            <p className="text-zinc-400" style={{ fontSize: 12 }}>
+              {loading ? (
+                <span className="flex items-center gap-1.5 text-zinc-400">
+                  <Loader2 size={12} className="animate-spin" />
+                  Loading wishlist...
+                </span>
+              ) : loadError ? (
+                <span className="text-red-500">{loadError}</span>
+              ) : (
+                <>
+                  <span className="font-medium text-zinc-700">{rowCount}</span> of{' '}
+                  <span className="font-medium text-zinc-700">{allItems.length}</span> companies
+                  {scopedProjectName && (
+                    <span className="text-zinc-400" title="Wishlist entries aren't tied to a project, so the selected project doesn't filter this list.">
+                      {' · '}not filtered by project
+                    </span>
+                  )}
+                  {sel.count > 0 && (
+                    <span className="ml-2 text-zinc-500">
+                      · <span className="font-medium text-zinc-700">{sel.count}</span> selected
+                      <button
+                        onClick={() => sel.clear()}
+                        className="ml-1.5 text-zinc-400 hover:text-zinc-700 transition-colors"
+                        style={{ fontSize: 12 }}
+                      >
+                        Clear
+                      </button>
+                    </span>
+                  )}
+                  {hasActiveFilters && (
                     <button
-                      onClick={() => sel.clear()}
-                      className="ml-1.5 text-zinc-400 hover:text-zinc-700 transition-colors"
+                      onClick={() => { setFilters(defaultFilters); setPagination((p) => ({ ...p, pageIndex: 0 })); sel.clear(); }}
+                      className="ml-3 text-zinc-400 hover:text-zinc-700 transition-colors"
                       style={{ fontSize: 12 }}
                     >
-                      Clear
+                      Clear filters
                     </button>
-                  </span>
-                )}
-                {hasActiveFilters && (
-                  <button
-                    onClick={() => { setFilters(defaultFilters); setPagination((p) => ({ ...p, pageIndex: 0 })); sel.clear(); }}
-                    className="ml-3 text-zinc-400 hover:text-zinc-700 transition-colors"
-                    style={{ fontSize: 12 }}
-                  >
-                    Clear filters
-                  </button>
-                )}
-              </>
-            )}
-          </p>
-          <div className="flex items-center gap-2">
-            {/* Table / Grid / Kanban view switcher */}
-            <ViewSwitcher value={view} onChange={setView} />
+                  )}
+                </>
+              )}
+            </p>
+          }
+          bulkActions={null /* Wishlist has no bulk actions today */}
+          viewSwitcher={<ViewSwitcher value={view} onChange={setView} />}
+          columns={
             <ColumnCustomizer
               entity="wishlist"
               userId={userId}
@@ -642,6 +737,8 @@ export function WishlistPage() {
               value={columnPrefs}
               onChange={(next) => setColumnPrefs(reconcileColumns(next, ALL_COLUMNS))}
             />
+          }
+          exportButton={
             <ExportButton
               rows={filteredData as unknown as Record<string, unknown>[]}
               columns={activeExportColumns as unknown as ExportColumn<Record<string, unknown>>[]}
@@ -650,8 +747,9 @@ export function WishlistPage() {
               idKey="id"
               disabled={loading || rowCount === 0}
             />
-          </div>
-        </div>
+          }
+          create={null}
+        />
 
         {/* Kanban (Board) view — grouped by status; cards open the preview drawer */}
         {view === 'kanban' && !loading && !loadError && (
@@ -661,6 +759,8 @@ export function WishlistPage() {
             getKey={(row) => row.id}
             getCardLabel={(row) => `Open ${row.company || row.contactName || 'company'}`}
             onCardClick={(row) => setPreviewId(row.wishlistId)}
+            isSelected={(item) => sel.isSelected(item.id)}
+            onToggleSelect={(item) => sel.toggle(item.id)}
             renderCard={(row) => (
               <CardShell
                 name={row.company || ''}
@@ -677,26 +777,23 @@ export function WishlistPage() {
           />
         )}
 
-        {/* Grid (card) view */}
+        {/* Grid view — spreadsheet-style EditableGrid (ALT-331/332), denser than
+            the old card tiles. Wishlist has no safe inline writers, so every
+            column is READ-ONLY (status badge / company + contact markup / dates
+            via fmtLongDate). The leading checkbox wires to the shared selection
+            for parity, even though there's no bulk toolbar here yet. Row open
+            uses the same preview drawer as the table/cards. */}
         {view === 'grid' && !loading && !loadError && (
-          <CardGrid<WishlistItem>
+          <EditableGrid<WishlistItem>
             rows={allFilteredRows}
             getKey={(row) => row.id}
-            onCardClick={(row) => setPreviewId(row.wishlistId)}
-            emptyLabel={hasActiveFilters ? 'No companies match the current filters.' : 'No companies in the wishlist yet.'}
-            renderCard={(row) => (
-              <CardShell
-                name={row.company || ''}
-                subtitle={row.contactName || undefined}
-                chip={<StatusBadge status={row.status} />}
-                fields={[
-                  { label: 'Industry', value: row.industry ?? '' },
-                  { label: 'City', value: row.city ?? '' },
-                  { label: 'Agent', value: row.agent ?? '' },
-                  { label: 'Team Lead', value: row.teamLead ?? '' },
-                ]}
-              />
-            )}
+            columns={EDITABLE_COLUMNS}
+            isSelected={(row) => sel.isSelected(row.id)}
+            onToggleSelect={(row) => sel.toggle(row.id)}
+            selectAllState={gridSelectAllState}
+            onToggleSelectAll={() => sel.toggleAll(gridVisibleIds)}
+            onOpenRow={(row) => setPreviewId(row.wishlistId)}
+            emptyLabel="No wishlist items match."
           />
         )}
 
@@ -880,7 +977,7 @@ export function WishlistPage() {
         <RecordPreviewPanel
           title="Wishlist"
           onClose={() => setPreviewId(null)}
-          onOpenFull={() => navigate(`/wishlist/${previewId}`)}
+          openFullHref={`/wishlist/${previewId}`}
         >
           <WishlistPreview wishlistId={previewId} />
         </RecordPreviewPanel>

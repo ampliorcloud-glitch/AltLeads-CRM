@@ -38,6 +38,9 @@ interface GenericKanbanProps<Item> {
   getCardLabel?: (item: Item) => string;
   /** Empty-lane message. */
   emptyColumnLabel?: string;
+  /** Multi-select parity (ALT-332) — wire to the page's useRowSelection. */
+  isSelected?: (item: Item) => boolean;
+  onToggleSelect?: (item: Item) => void;
 }
 
 export function GenericKanban<Item>({
@@ -48,7 +51,10 @@ export function GenericKanban<Item>({
   onCardClick,
   getCardLabel,
   emptyColumnLabel = 'Nothing here',
+  isSelected,
+  onToggleSelect,
 }: GenericKanbanProps<Item>) {
+  const selectable = !!isSelected && !!onToggleSelect;
   return (
     <div
       style={{
@@ -144,7 +150,9 @@ export function GenericKanban<Item>({
                   {emptyColumnLabel}
                 </p>
               ) : (
-                items.map((item) => (
+                items.map((item) => {
+                  const selected = selectable && isSelected!(item);
+                  return (
                   <div
                     key={getKey(item)}
                     role="button"
@@ -158,13 +166,15 @@ export function GenericKanban<Item>({
                       }
                     }}
                     style={{
-                      background: 'var(--color-surface)',
-                      border: '1px solid var(--border-color)',
+                      position: 'relative',
+                      background: selected ? '#EFF6FF' : 'var(--color-surface)',
+                      border: `1px solid ${selected ? 'var(--color-brand, #1A7EE8)' : 'var(--border-color)'}`,
                       borderRadius: 'var(--radius-card, 8px)',
                       padding: 10,
+                      paddingLeft: selectable ? 30 : 10,
                       cursor: 'pointer',
                       boxShadow: '0 1px 2px rgba(16,24,40,0.04)',
-                      transition: 'border-color 0.12s, box-shadow 0.12s',
+                      transition: 'border-color 0.12s, box-shadow 0.12s, background 0.12s',
                       outline: 'none',
                     }}
                     onMouseEnter={(e) => {
@@ -172,15 +182,26 @@ export function GenericKanban<Item>({
                       (e.currentTarget as HTMLElement).style.boxShadow = '0 2px 6px rgba(16,24,40,0.08)';
                     }}
                     onMouseLeave={(e) => {
-                      (e.currentTarget as HTMLElement).style.borderColor = 'var(--border-color)';
+                      (e.currentTarget as HTMLElement).style.borderColor = selected ? 'var(--color-brand, #1A7EE8)' : 'var(--border-color)';
                       (e.currentTarget as HTMLElement).style.boxShadow = '0 1px 2px rgba(16,24,40,0.04)';
                     }}
                     onFocus={(e) => { (e.currentTarget as HTMLElement).style.borderColor = 'var(--color-brand)'; }}
-                    onBlur={(e) => { (e.currentTarget as HTMLElement).style.borderColor = 'var(--border-color)'; }}
+                    onBlur={(e) => { (e.currentTarget as HTMLElement).style.borderColor = selected ? 'var(--color-brand, #1A7EE8)' : 'var(--border-color)'; }}
                   >
+                    {selectable && (
+                      <input
+                        type="checkbox"
+                        aria-label="Select card"
+                        checked={selected}
+                        onClick={(e) => e.stopPropagation()}
+                        onChange={(e) => { e.stopPropagation(); onToggleSelect!(item); }}
+                        style={{ position: 'absolute', top: 10, left: 10, cursor: 'pointer', zIndex: 1 }}
+                      />
+                    )}
                     {renderCard(item)}
                   </div>
-                ))
+                  );
+                })
               )}
             </div>
           </section>

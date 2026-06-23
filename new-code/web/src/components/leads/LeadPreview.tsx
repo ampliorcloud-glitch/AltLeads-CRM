@@ -49,6 +49,7 @@ import { ReassignModal } from '../common/ReassignModal';
 import { CopyButton } from '../ui/CopyButton';
 import { StageBadge } from '../ui/Badge';
 import { formatDate } from '../../data/meetings';
+import { CallLogPreview } from '../calls/CallLogPreview';
 
 const BRAND = 'var(--color-brand, #1A7EE8)';
 
@@ -290,6 +291,9 @@ export function LeadPreview({ leadId }: { leadId: number }) {
           )}
         </div>
       </div>
+
+      {/* Recent calls (logged dispositions) */}
+      <CallLogPreview entity="lead" id={leadId} />
 
       {/* Key fields */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>

@@ -916,3 +916,17 @@ Next wave: #8 global project selector (cross-cutting ProjectContext).
 - **UX/psychology audit → `05-UX-PSYCHOLOGY-AUDIT.md`** (Opus): journey-by-journey frictions with the psychological principle + fix + severity. Top issues = login recovery/feedback (no forgot-password/show-password, raw error below button), perceived latency (6 sequential awaits behind a bare spinner), always-disabled "Request company" button (learned helplessness), missing save confirmation, internal jargon (42501/ALT-###/REQUEST 3) leaking to users, sub-AA muted-text contrast.
 - **Applied SAFE quick-wins (Sonnet, both exts):** login autofocus + Enter-to-submit + show/hide password + friendly errors moved above the button + Forgot-password link (→ crm.altleads.com/forgot-password) + signing-in state; instant header render + `Promise.all` + skeletons; 300ms SPA debounce; plain-language messages (codes → console only); Ext2 Saved✓; WCAG-AA contrast bumps. **HELD for owner:** brand color (#0a2540 vs CRM #1A7EE8), the intentionally-disabled "Request company" (ALT-283).
 - Both builds **GREEN**; `dist/` loadable with branded icons. Commits this session: 708fb9b → 489b58c → 37e09b6. **NOTHING PUSHED.** Awaiting owner load-test + CRM Opus applying CRM-REQUESTS-PRECISE.md.
+
+---
+## 2026-06-23 — Durable chat archive + universal grid/toolbar/preview pass (Ankit)
+- **Conversation archive (NEW):** after `/compact` made past asks feel lost, built `new-code/web/scripts/gen-conversation-log.cjs` → reads EVERY session transcript, strips tool-noise, scrubs secrets, writes **`docs/CONVERSATION-LOG.md`** (gitignored, local-only — old chats contain pasted tokens). 7 sessions / 171 user msgs / 1552 replies. Ankit chose "Claude refreshes it every session" (no hook — a SessionStart hook was also blocked by the auto-mode classifier). Wired into CLAUDE.md resume step 4 + memory `conversation-log-archive.md`.
+- **Read the full 52MB session via 6 parallel readers** to recover history; surfaced the standardization gap (Kanban/Grid/etc. covered 5 modules but NOT Task Manager / Call Logs).
+- **NEW Ankit requirements (captured as ALT-331..336):**
+  - **ALT-331** REAL editable **Excel grid** (inline-edit cells, no need to open record) — the shipped "Grid" was read-only tiles. Universal all modules. Edit scope = **SAFE editable set** (Ankit chose): status/stage, owner, description, comments, editable text; identifiers/counts read-only; per-project fields need a project picked. Reuse existing writers.
+  - **ALT-332** multi-select checkboxes in **Grid + Kanban** (today: Table only) → bulk toolbar from every view.
+  - **ALT-333** standardize the **toolbar** (shared `ListToolbar`, canonical order) — drift today (Contacts Export before switcher, etc.).
+  - **ALT-334** preview **"Open full record" → NEW tab**.
+  - **ALT-335** **Call-log (disposition + comment) in the preview** for Company/Contact/Lead/Meeting — feeds daily-calls metrics (dials/connects/connected/pitched) for the manager/leadership dashboard.
+  - **ALT-336** (Planned) **dashboard redesign** per the Claude-design deck (dials + Scheduled⊇Successful funnel; Successful was always once Scheduled, but Scheduled can drop/cancel/postpone). Ankit to re-share the deck.
+- **Pointed Ankit to history docs:** USER-STORIES-AND-FLOWS, PERSONA-AUDIT-2026-06, HIGH-IMPACT-UX-GAPS, UX-AUDIT, AMBIGUOUS-DECISIONS, OPEN-QUESTIONS, + CONVERSATION-LOG.
+- Build of ALT-331..335 IN PROGRESS (shared EditableGrid + ListToolbar + kanban select + CallLogPreview, then wire all 5 pages). NOTHING PUSHED.
