@@ -6,7 +6,8 @@
 1. Read **`REBUILD_LOG.md`** (repo root) — the running state / source of truth. Newest entries are at the bottom of the Session Log.
 2. Skim **`docs/product/VISION.md`** (north-star) + **`docs/product/INTERNAL-LAUNCH-PLAN.md`** (where we are → launch) + **`docs/product/SALES-PORTAL.md`** (priority #2).
 3. Open the backlog: **`docs/AltLeads-Backlog-Tracker.xlsx`** (Jira-style; regenerate with `node new-code/web/scripts/gen-backlog-tracker.cjs`).
-4. Then continue the work. Don't re-derive decisions already in `docs/product/DECISIONS.md`.
+4. **Recover past asks** — regenerate the chat archive (`node new-code/web/scripts/gen-conversation-log.cjs`) and read/grep **`docs/CONVERSATION-LOG.md`** whenever Ankit references something he asked "before"/"earlier"/"yesterday". It holds every message + reply across all sessions (gitignored, local-only — contains pasted secrets). Don't rely only on the compaction summary.
+5. Then continue the work. Don't re-derive decisions already in `docs/product/DECISIONS.md`.
 
 ## 1. What this is
 Our own outreach CRM (TypeScript + React/Vite + Supabase), replacing a vendor's Java/MySQL system. **Live at `crm.altleads.com`** (one combined Node app: web build + email/notify + admin API, on Hostinger, git auto-deploy from the `AltLeads-CRM` repo). North-star: an **ecosystem** (CRM web + Chrome extension + mobile) that captures everything and powers an AI "superpower" (see VISION.md).

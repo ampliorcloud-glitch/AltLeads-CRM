@@ -63,3 +63,6 @@ test_db_connection.js
 
 # Local MCP config (contains API token)
 .mcp.json
+
+# Durable conversation archive (regenerated locally; old chats contain pasted secrets)
+docs/CONVERSATION-LOG.md
