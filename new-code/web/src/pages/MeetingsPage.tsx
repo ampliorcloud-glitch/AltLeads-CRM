@@ -33,7 +33,12 @@ import { ViewSwitcher, useViewMode } from '../components/ui/ViewSwitcher';
 import { CardShell } from '../components/ui/CardGrid';
 import { ListToolbar } from '../components/ui/ListToolbar';
 import { EditableGrid, type EditableColumn } from '../components/ui/EditableGrid';
-import { GenericKanban, type KanbanColumnDef } from '../components/kanban/GenericKanban';
+import { GenericKanban } from '../components/kanban/GenericKanban';
+import {
+  KanbanGroupBySelect,
+  buildKanbanGrouping,
+  type KanbanGroupDef,
+} from '../components/kanban/KanbanGroupBySelect';
 import type { ColumnDef as ColDef, ExportColumn } from '../components/ui/columns';
 import type { ColumnPref } from '../data/views';
 import {
@@ -269,6 +274,8 @@ export function MeetingsPage() {
   const [agents, setAgents] = useState<string[]>([]);
   const [salespeople, setSalespeople] = useState<string[]>([]);
   const [statuses, setStatuses] = useState<string[]>([]);
+  // Kanban "Group by" field (ALT-338) — default = status (the original fixed field).
+  const [kanbanGroupBy, setKanbanGroupBy] = useState<string>('status');
   const [industries, setIndustries] = useState<string[]>([]);
   const [cities, setCities] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
@@ -382,34 +389,29 @@ export function MeetingsPage() {
     [selectedProjectId, allMeetings],
   );
 
-  // Kanban (Board) view — group filtered meetings by meeting status. Columns are
-  // the known status options (those present) + an "Unset" bucket for blanks.
-  // Card click opens the same preview drawer the row uses.
-  const kanbanColumns = useMemo<KanbanColumnDef[]>(() => {
-    const present = new Set<string>();
-    let hasUnset = false;
-    for (const m of filteredData) {
-      if (m.status) present.add(m.status);
-      else hasUnset = true;
-    }
-    const cols: KanbanColumnDef[] = [];
-    for (const s of statuses) {
-      if (present.has(s)) { cols.push({ key: s, label: s }); present.delete(s); }
-    }
-    for (const s of [...present].sort()) cols.push({ key: s, label: s });
-    if (hasUnset) cols.push({ key: '__unset', label: 'Unset' });
-    return cols;
-  }, [filteredData, statuses]);
+  // Kanban (Board) view — selectable "Group by" field (ALT-338). Default = status
+  // (the original fixed grouping): its lanes reuse the canonical status order so
+  // the board looks identical to before. City / Industry / Salesperson derive
+  // their lanes from the distinct values present. (Disposition grouping needs
+  // latest-call data not carried on the meeting row → skipped for now.)
+  const kanbanGroupOptions = useMemo<KanbanGroupDef<MeetingRow>[]>(() => [
+    {
+      key: 'status',
+      label: 'Status',
+      getGroup: (m) => m.status || null,
+      lanes: statuses
+        .filter((s) => filteredData.some((m) => m.status === s))
+        .map((s) => ({ key: s, label: s })),
+    },
+    { key: 'city', label: 'City', getGroup: (m) => m.city || null },
+    { key: 'industry', label: 'Industry', getGroup: (m) => m.industry || null },
+    { key: 'salesperson', label: 'Salesperson', getGroup: (m) => m.salesperson || null },
+  ], [statuses, filteredData]);
 
-  const meetingsByStatus = useMemo(() => {
-    const map = new Map<string, MeetingRow[]>();
-    for (const c of kanbanColumns) map.set(c.key, []);
-    for (const m of filteredData) {
-      const key = m.status || '__unset';
-      map.get(key)?.push(m);
-    }
-    return map;
-  }, [filteredData, kanbanColumns]);
+  const { columns: kanbanColumns, itemsByColumn: meetingsByGroup } = useMemo(() => {
+    const group = kanbanGroupOptions.find((o) => o.key === kanbanGroupBy) ?? kanbanGroupOptions[0];
+    return buildKanbanGrouping<MeetingRow>(filteredData, group, 'Unset');
+  }, [filteredData, kanbanGroupOptions, kanbanGroupBy]);
 
   // Visible column keys in display order (driven by colPrefs).
   const visibleKeys = useMemo(
@@ -857,11 +859,21 @@ export function MeetingsPage() {
           create={null}
         />
 
-        {/* Kanban (Board) view — grouped by meeting status; cards open the preview drawer */}
+        {/* Kanban (Board) view — group-by field is selectable (ALT-338); cards
+            open the same preview drawer the row uses. */}
+        {view === 'kanban' && !loading && !loadError && (
+          <div className="flex items-center" style={{ marginBottom: 8 }}>
+            <KanbanGroupBySelect
+              value={kanbanGroupBy}
+              onChange={setKanbanGroupBy}
+              options={kanbanGroupOptions}
+            />
+          </div>
+        )}
         {view === 'kanban' && !loading && !loadError && (
           <GenericKanban<MeetingRow>
             columns={kanbanColumns}
-            itemsByColumn={meetingsByStatus}
+            itemsByColumn={meetingsByGroup}
             getKey={(row) => row.id}
             getCardLabel={(row) => `Open meeting for ${row.company || row.leadName || row.name || 'meeting'}`}
             onCardClick={(row) => setPreviewId(Number(row.id))}

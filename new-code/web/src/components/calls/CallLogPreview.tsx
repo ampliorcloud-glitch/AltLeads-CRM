@@ -21,6 +21,8 @@
  *   id         numeric id of that record
  *   projectId  optional project scope (Company/Contact track a selected project)
  *   title      section heading (defaults to "Recent calls")
+ *   refreshSignal  bump this number to force a re-fetch (e.g. after a parent logs
+ *                  a new call via PreviewCallLogger) so the list updates instantly
  */
 import { useEffect, useState } from 'react';
 import { Phone, Loader2 } from 'lucide-react';
@@ -76,11 +78,13 @@ export function CallLogPreview({
   id,
   projectId,
   title = 'Recent calls',
+  refreshSignal,
 }: {
   entity: CallLogEntity;
   id: number;
   projectId?: number | null;
   title?: string;
+  refreshSignal?: number;
 }) {
   const [calls, setCalls] = useState<CallLogEntry[]>([]);
   const [truncated, setTruncated] = useState(false);
@@ -107,7 +111,7 @@ export function CallLogPreview({
     return () => {
       cancelled = true;
     };
-  }, [entity, id, projectId]);
+  }, [entity, id, projectId, refreshSignal]);
 
   return (
     <div>

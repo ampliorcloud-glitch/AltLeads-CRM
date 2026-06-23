@@ -18,7 +18,12 @@ import { ViewSwitcher, useViewMode } from '../components/ui/ViewSwitcher';
 import { CardShell } from '../components/ui/CardGrid';
 import { ListToolbar } from '../components/ui/ListToolbar';
 import { EditableGrid, type EditableColumn } from '../components/ui/EditableGrid';
-import { GenericKanban, type KanbanColumnDef } from '../components/kanban/GenericKanban';
+import { GenericKanban } from '../components/kanban/GenericKanban';
+import {
+  KanbanGroupBySelect,
+  buildKanbanGrouping,
+  type KanbanGroupDef,
+} from '../components/kanban/KanbanGroupBySelect';
 import { StatusBadge } from '../components/ui/StatusBadge';
 import { MultiSelectFilter } from '../components/ui/MultiSelectFilter';
 import { Skeleton } from '../components/ui/Skeleton';
@@ -399,6 +404,8 @@ export function ContactsPage() {
 
   // Table / Grid view (persisted per user + entity in localStorage).
   const [view, setView] = useViewMode('contacts', userId);
+  // Kanban "Group by" field (ALT-338) — default = status (the original fixed field).
+  const [kanbanGroupBy, setKanbanGroupBy] = useState<string>('contact_status');
 
   // Row selection
   const sel = useRowSelection<number>();
@@ -580,27 +587,34 @@ export function ContactsPage() {
     return enriched;
   }, [allContacts, filters, statusMap, ownerMap, sort]);
 
-  // Kanban (Board) view — contact status is PER PROJECT (contact_project_status
-  // .contact_status), so the board is only meaningful with a project selected;
-  // otherwise the page shows a gentle inline note. Columns are built from the
-  // known contact_status options (+ an "Unset" bucket); cards open the preview.
-  const kanbanColumns = useMemo<KanbanColumnDef[]>(() => {
-    const cols: KanbanColumnDef[] = statusOptions.map((o) => ({ key: o.value, label: o.label }));
-    cols.push({ key: '__unset', label: 'Unset' });
-    return cols;
-  }, [statusOptions]);
+  // Kanban (Board) view — selectable "Group by" field (ALT-338). Default =
+  // Contact Status, which is PER PROJECT (contact_project_status.contact_status):
+  // its lanes come from the canonical contact_status options (+ an "Unset"
+  // bucket) and it's only meaningful with a project selected (the render gates
+  // status grouping on a project + shows a gentle note otherwise). City / Company
+  // / Owner derive their lanes from the distinct values present and DON'T need a
+  // project (though owner_name is itself only resolved when a project is chosen).
+  // (Disposition grouping needs latest-call data not on the contact row → skip.)
+  const kanbanGroupOptions = useMemo<KanbanGroupDef<ContactRow>[]>(() => [
+    {
+      key: 'contact_status',
+      label: 'Status',
+      getGroup: (c) => c.contact_status ?? null,
+      lanes: statusOptions.map((o) => ({ key: o.value, label: o.label })),
+    },
+    { key: 'city_name', label: 'City', getGroup: (c) => c.city_name || null },
+    { key: 'company_name', label: 'Company', getGroup: (c) => c.company_name || null },
+    { key: 'owner_name', label: 'Owner', getGroup: (c) => c.owner_name || null },
+  ], [statusOptions]);
 
-  const contactsByStatus = useMemo(() => {
-    const known = new Set(kanbanColumns.map((c) => c.key));
-    const map = new Map<string, ContactRow[]>();
-    for (const c of kanbanColumns) map.set(c.key, []);
-    for (const c of filteredData) {
-      const status = c.contact_status ?? null;
-      const key = status && known.has(status) ? status : '__unset';
-      map.get(key)?.push(c);
-    }
-    return map;
-  }, [filteredData, kanbanColumns]);
+  // Status grouping is gated on a selected project (same as before); the other
+  // fields can group without one.
+  const kanbanNeedsProject = kanbanGroupBy === 'contact_status';
+
+  const { columns: kanbanColumns, itemsByColumn: contactsByGroup } = useMemo(() => {
+    const group = kanbanGroupOptions.find((o) => o.key === kanbanGroupBy) ?? kanbanGroupOptions[0];
+    return buildKanbanGrouping<ContactRow>(filteredData, group, 'Unset');
+  }, [filteredData, kanbanGroupOptions, kanbanGroupBy]);
 
   // Pagination
   const totalRows = filteredData.length;
@@ -1064,19 +1078,30 @@ export function ContactsPage() {
           }
         />
 
-        {/* Kanban (Board) view — grouped by per-project contact status */}
+        {/* Kanban (Board) view — group-by field is selectable (ALT-338). Status
+            grouping is per-project (gated on a project); City/Company/Owner work
+            without one. */}
         {view === 'kanban' && !loading && !loadError && (
-          projectId == null ? (
+          <div className="flex items-center" style={{ marginBottom: 8 }}>
+            <KanbanGroupBySelect
+              value={kanbanGroupBy}
+              onChange={setKanbanGroupBy}
+              options={kanbanGroupOptions}
+            />
+          </div>
+        )}
+        {view === 'kanban' && !loading && !loadError && (
+          kanbanNeedsProject && projectId == null ? (
             <div
               className="rounded-lg flex items-center justify-center text-zinc-500"
               style={{ background: 'var(--color-surface)', border: '1px solid var(--border-color)', padding: '40px 16px', fontSize: 13, textAlign: 'center' }}
             >
-              Select a project to group records on the board.
+              Select a project to group records by status.
             </div>
           ) : (
             <GenericKanban<ContactRow>
               columns={kanbanColumns}
-              itemsByColumn={contactsByStatus}
+              itemsByColumn={contactsByGroup}
               getKey={(row) => row.contact_id}
               getCardLabel={(row) => `Open ${row.full_name || row.company_name || 'contact'}`}
               onCardClick={(row) => setPreviewId(row.contact_id)}

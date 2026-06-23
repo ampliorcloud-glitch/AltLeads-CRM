@@ -23,7 +23,12 @@ import { ViewSwitcher, useViewMode } from '../components/ui/ViewSwitcher';
 import { CardShell } from '../components/ui/CardGrid';
 import { ListToolbar } from '../components/ui/ListToolbar';
 import { EditableGrid, type EditableColumn } from '../components/ui/EditableGrid';
-import { GenericKanban, type KanbanColumnDef } from '../components/kanban/GenericKanban';
+import { GenericKanban } from '../components/kanban/GenericKanban';
+import {
+  KanbanGroupBySelect,
+  buildKanbanGrouping,
+  type KanbanGroupDef,
+} from '../components/kanban/KanbanGroupBySelect';
 import { StatusBadge } from '../components/ui/StatusBadge';
 import { ProjectSelect } from '../components/ui/ProjectSelect';
 import { Skeleton } from '../components/ui/Skeleton';
@@ -383,6 +388,8 @@ export function CompaniesPage() {
 
   // Table / Grid view (persisted per user + entity in localStorage).
   const [view, setView] = useViewMode('companies', userId);
+  // Kanban "Group by" field (ALT-338) — default = account status (the original fixed field).
+  const [kanbanGroupBy, setKanbanGroupBy] = useState<string>('account_status');
 
   // Row-click preview slide-over (ALT-327/328). Opening the panel replaces the
   // old navigate-away behaviour; the full detail page stays reachable via the
@@ -495,23 +502,31 @@ export function CompaniesPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [view, projectId, filteredData]);
 
-  const kanbanColumns = useMemo<KanbanColumnDef[]>(() => {
-    const cols: KanbanColumnDef[] = statusOptions.map((o) => ({ key: o.value, label: o.label }));
-    cols.push({ key: '__unset', label: 'Unset' });
-    return cols;
-  }, [statusOptions]);
+  // Selectable "Group by" field (ALT-338). Default = Account Status (per-project:
+  // its lanes come from the canonical account_status options + an "Unset" bucket,
+  // and it's gated on a selected project). Owner is ALSO per-project (read from
+  // statusMap). Industry / City live on the Company row, so they group without a
+  // project. (Disposition grouping needs latest-call data not on the row → skip.)
+  const kanbanGroupOptions = useMemo<KanbanGroupDef<Company>[]>(() => [
+    {
+      key: 'account_status',
+      label: 'Status',
+      getGroup: (c) => statusMap[Number(c.id)]?.account_status ?? null,
+      lanes: statusOptions.map((o) => ({ key: o.value, label: o.label })),
+    },
+    { key: 'industry', label: 'Industry', getGroup: (c) => c.industry || null },
+    { key: 'city', label: 'City', getGroup: (c) => c.city || null },
+    { key: 'owner_name', label: 'Owner', getGroup: (c) => statusMap[Number(c.id)]?.owner_name || null },
+  ], [statusOptions, statusMap]);
 
-  const companiesByStatus = useMemo(() => {
-    const known = new Set(kanbanColumns.map((c) => c.key));
-    const map = new Map<string, Company[]>();
-    for (const c of kanbanColumns) map.set(c.key, []);
-    for (const c of filteredData) {
-      const status = statusMap[Number(c.id)]?.account_status ?? null;
-      const key = status && known.has(status) ? status : '__unset';
-      map.get(key)?.push(c);
-    }
-    return map;
-  }, [filteredData, statusMap, kanbanColumns]);
+  // Status / Owner grouping is per-project (gated on a project); Industry / City
+  // group without one.
+  const kanbanNeedsProject = kanbanGroupBy === 'account_status' || kanbanGroupBy === 'owner_name';
+
+  const { columns: kanbanColumns, itemsByColumn: companiesByGroup } = useMemo(() => {
+    const group = kanbanGroupOptions.find((o) => o.key === kanbanGroupBy) ?? kanbanGroupOptions[0];
+    return buildKanbanGrouping<Company>(filteredData, group, 'Unset');
+  }, [filteredData, kanbanGroupOptions, kanbanGroupBy]);
 
   /* ---- visible column keys (from prefs) ---- */
   const visibleKeys = useMemo(
@@ -991,19 +1006,30 @@ export function CompaniesPage() {
           }
         />
 
-        {/* Kanban (Board) view — grouped by per-project account status */}
+        {/* Kanban (Board) view — group-by field is selectable (ALT-338). Status
+            and Owner grouping are per-project (gated on a project); Industry/City
+            work without one. */}
         {view === 'kanban' && !loading && !loadError && (
-          projectId == null ? (
+          <div className="flex items-center" style={{ marginBottom: 8 }}>
+            <KanbanGroupBySelect
+              value={kanbanGroupBy}
+              onChange={setKanbanGroupBy}
+              options={kanbanGroupOptions}
+            />
+          </div>
+        )}
+        {view === 'kanban' && !loading && !loadError && (
+          kanbanNeedsProject && projectId == null ? (
             <div
               className="rounded-lg flex items-center justify-center text-zinc-500"
               style={{ background: 'var(--color-surface)', border: '1px solid var(--border-color)', padding: '40px 16px', fontSize: 13, textAlign: 'center' }}
             >
-              Select a project to group records on the board.
+              Select a project to group records by status or owner.
             </div>
           ) : (
             <GenericKanban<Company>
               columns={kanbanColumns}
-              itemsByColumn={companiesByStatus}
+              itemsByColumn={companiesByGroup}
               getKey={(row) => row.id}
               getCardLabel={(row) => `Open ${row.name || 'company'}`}
               onCardClick={(row) => setPreviewId(Number(row.id))}

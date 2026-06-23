@@ -23,7 +23,12 @@ import { ViewSwitcher, useViewMode } from '../components/ui/ViewSwitcher';
 import { ListToolbar } from '../components/ui/ListToolbar';
 import { EditableGrid, type EditableColumn } from '../components/ui/EditableGrid';
 import { CardShell } from '../components/ui/CardGrid';
-import { GenericKanban, type KanbanColumnDef } from '../components/kanban/GenericKanban';
+import { GenericKanban } from '../components/kanban/GenericKanban';
+import {
+  KanbanGroupBySelect,
+  buildKanbanGrouping,
+  type KanbanGroupDef,
+} from '../components/kanban/KanbanGroupBySelect';
 import { Skeleton } from '../components/ui/Skeleton';
 import { RecordPreviewPanel } from '../components/common/RecordPreviewPanel';
 import { WishlistPreview } from '../components/wishlist/WishlistPreview';
@@ -236,6 +241,8 @@ export function WishlistPage() {
 
   // Table / Grid / Kanban view (persisted per user + entity in localStorage).
   const [view, setView] = useViewMode('wishlist', userId);
+  // Kanban "Group by" field (ALT-338) — default = status (the original fixed field).
+  const [kanbanGroupBy, setKanbanGroupBy] = useState<string>('status');
 
   // Right-hand preview drawer (ALT-327/328) — row click opens a compact mini
   // record instead of navigating away; "Open full record →" deep-links to the page.
@@ -508,33 +515,29 @@ export function WishlistPage() {
   // Grid / Kanban use the full filtered set (boards/cards aren't paginated).
   const allFilteredRows = filteredData;
 
-  // Kanban (Board) view — group filtered wishlist entries by status. Columns are
-  // the known statuses (those present) + an "Unset" bucket for blanks. Card click
-  // opens the same preview drawer the row uses.
-  const kanbanColumns = useMemo<KanbanColumnDef[]>(() => {
-    const present = new Set<string>();
-    let hasUnset = false;
-    for (const i of allFilteredRows) {
-      if (i.status) present.add(i.status);
-      else hasUnset = true;
-    }
-    const cols: KanbanColumnDef[] = [];
-    for (const s of statuses) {
-      if (present.has(s)) { cols.push({ key: s, label: s }); present.delete(s); }
-    }
-    for (const s of [...present].sort()) cols.push({ key: s, label: s });
-    if (hasUnset) cols.push({ key: '__unset', label: 'Unset' });
-    return cols;
-  }, [allFilteredRows, statuses]);
+  // Kanban (Board) view — selectable "Group by" field (ALT-338). Default = status
+  // (the original fixed grouping): its lanes reuse the canonical status order so
+  // the board looks identical to before. City / Industry / Agent / Team Lead
+  // derive their lanes from the distinct values present on the wishlist rows.
+  const kanbanGroupOptions = useMemo<KanbanGroupDef<WishlistItem>[]>(() => [
+    {
+      key: 'status',
+      label: 'Status',
+      getGroup: (i) => i.status || null,
+      lanes: statuses
+        .filter((s) => allFilteredRows.some((i) => i.status === s))
+        .map((s) => ({ key: s, label: s })),
+    },
+    { key: 'city', label: 'City', getGroup: (i) => i.city || null },
+    { key: 'industry', label: 'Industry', getGroup: (i) => i.industry || null },
+    { key: 'agent', label: 'Agent', getGroup: (i) => i.agent || null },
+    { key: 'teamLead', label: 'Team Lead', getGroup: (i) => i.teamLead || null },
+  ], [statuses, allFilteredRows]);
 
-  const itemsByStatus = useMemo(() => {
-    const map = new Map<string, WishlistItem[]>();
-    for (const c of kanbanColumns) map.set(c.key, []);
-    for (const i of allFilteredRows) {
-      map.get(i.status || '__unset')?.push(i);
-    }
-    return map;
-  }, [allFilteredRows, kanbanColumns]);
+  const { columns: kanbanColumns, itemsByColumn: itemsByGroup } = useMemo(() => {
+    const group = kanbanGroupOptions.find((o) => o.key === kanbanGroupBy) ?? kanbanGroupOptions[0];
+    return buildKanbanGrouping<WishlistItem>(allFilteredRows, group, 'Unset');
+  }, [allFilteredRows, kanbanGroupOptions, kanbanGroupBy]);
 
   /* ----------------------------------------------------------------- */
   /*  EditableGrid columns (ALT-331) — mirror the visible Table columns. */
@@ -751,11 +754,21 @@ export function WishlistPage() {
           create={null}
         />
 
-        {/* Kanban (Board) view — grouped by status; cards open the preview drawer */}
+        {/* Kanban (Board) view — group-by field is selectable (ALT-338); cards
+            open the same preview drawer the row uses. */}
+        {view === 'kanban' && !loading && !loadError && (
+          <div className="flex items-center" style={{ marginBottom: 8 }}>
+            <KanbanGroupBySelect
+              value={kanbanGroupBy}
+              onChange={setKanbanGroupBy}
+              options={kanbanGroupOptions}
+            />
+          </div>
+        )}
         {view === 'kanban' && !loading && !loadError && (
           <GenericKanban<WishlistItem>
             columns={kanbanColumns}
-            itemsByColumn={itemsByStatus}
+            itemsByColumn={itemsByGroup}
             getKey={(row) => row.id}
             getCardLabel={(row) => `Open ${row.company || row.contactName || 'company'}`}
             onCardClick={(row) => setPreviewId(row.wishlistId)}

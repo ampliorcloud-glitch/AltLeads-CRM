@@ -59,6 +59,7 @@ import { StatusBadge } from '../ui/StatusBadge';
 import { StageBadge } from '../ui/Badge';
 import { formatDate } from '../../data/account';
 import { CallLogPreview } from '../calls/CallLogPreview';
+import { PreviewCallLogger } from '../calls/PreviewCallLogger';
 
 const BRAND = 'var(--color-brand, #1A7EE8)';
 
@@ -161,6 +162,9 @@ export function ContactPreview({
   const [savingStatus, setSavingStatus] = useState(false);
   const [statusError, setStatusError] = useState<string | null>(null);
   const [statusSuccess, setStatusSuccess] = useState(false);
+
+  // Bumped after a call is logged in the preview so CallLogPreview re-fetches (ALT-337).
+  const [logVersion, setLogVersion] = useState(0);
 
   // Per-project owner + reassignment (ALT-288)
   const [ownerName, setOwnerName] = useState<string>('');
@@ -514,8 +518,20 @@ export function ContactPreview({
         )}
       </div>
 
+      {/* Log a call (writes to the live interaction table, same as the full record) */}
+      {projectId != null && (
+        <PreviewCallLogger
+          recordType="contact"
+          recordId={contactId}
+          projectId={projectId}
+          ownerUserId={projectStatus?.owner_user_id ?? null}
+          actorId={profile?.user_id != null ? String(profile.user_id) : null}
+          onLogged={() => setLogVersion((v) => v + 1)}
+        />
+      )}
+
       {/* Recent calls (logged dispositions, this project) */}
-      <CallLogPreview entity="contact" id={contactId} projectId={projectId} />
+      <CallLogPreview entity="contact" id={contactId} projectId={projectId} refreshSignal={logVersion} />
 
       {/* Quick contact methods + key fields */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>

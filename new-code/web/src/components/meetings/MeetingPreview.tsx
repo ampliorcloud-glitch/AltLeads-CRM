@@ -49,6 +49,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { ReassignModal } from '../common/ReassignModal';
 import { MeetingStatusBadge } from '../meeting/MeetingStatusBadge';
 import { CallLogPreview } from '../calls/CallLogPreview';
+import { PreviewCallLogger } from '../calls/PreviewCallLogger';
 
 const BRAND = 'var(--color-brand, #1A7EE8)';
 
@@ -111,6 +112,9 @@ export function MeetingPreview({ meetingId }: { meetingId: number }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [meeting, setMeeting] = useState<MeetingDetail | null>(null);
+
+  // Bumped after a call is logged in the preview so CallLogPreview re-fetches (ALT-337).
+  const [logVersion, setLogVersion] = useState(0);
 
   // Change-owner (ALT-288). A meeting's owner = its lead's assigned salesperson;
   // reassigning here reassigns the underlying lead (reassignMeeting).
@@ -279,8 +283,19 @@ export function MeetingPreview({ meetingId }: { meetingId: number }) {
         )}
       </div>
 
+      {/* Log a call (record_type='meeting' in the live interaction table — the same
+          store CallLogPreview reads for this meeting; owner = lead's salesperson) */}
+      <PreviewCallLogger
+        recordType="meeting"
+        recordId={meetingId}
+        projectId={null}
+        ownerUserId={meeting.salespersonUserId ?? null}
+        actorId={actor || null}
+        onLogged={() => setLogVersion((v) => v + 1)}
+      />
+
       {/* Recent calls (logged dispositions) */}
-      <CallLogPreview entity="meeting" id={meetingId} />
+      <CallLogPreview entity="meeting" id={meetingId} refreshSignal={logVersion} />
 
       {/* Key fields: agenda, opportunity, project / stage */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>

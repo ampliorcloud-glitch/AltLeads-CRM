@@ -50,6 +50,7 @@ import { CopyButton } from '../ui/CopyButton';
 import { StageBadge } from '../ui/Badge';
 import { formatDate } from '../../data/meetings';
 import { CallLogPreview } from '../calls/CallLogPreview';
+import { PreviewCallLogger } from '../calls/PreviewCallLogger';
 
 const BRAND = 'var(--color-brand, #1A7EE8)';
 
@@ -117,6 +118,9 @@ export function LeadPreview({ leadId }: { leadId: number }) {
   const [error, setError] = useState<string | null>(null);
   const [lead, setLead] = useState<LeadDetail | null>(null);
   const [activity, setActivity] = useState<ActivityItem[]>([]);
+
+  // Bumped after a call is logged in the preview so CallLogPreview re-fetches (ALT-337).
+  const [logVersion, setLogVersion] = useState(0);
 
   // Salesperson label + reassignment (ALT-288), mirrors LeadDetailPage.
   const [salespersonName, setSalespersonName] = useState<string>('');
@@ -292,8 +296,18 @@ export function LeadPreview({ leadId }: { leadId: number }) {
         </div>
       </div>
 
+      {/* Log a call (writes to the live interaction table, same as the full record) */}
+      <PreviewCallLogger
+        recordType="lead"
+        recordId={leadId}
+        projectId={lead.project_id ?? null}
+        ownerUserId={lead.salesperson_user_id ?? null}
+        actorId={actor || null}
+        onLogged={() => setLogVersion((v) => v + 1)}
+      />
+
       {/* Recent calls (logged dispositions) */}
-      <CallLogPreview entity="lead" id={leadId} />
+      <CallLogPreview entity="lead" id={leadId} refreshSignal={logVersion} />
 
       {/* Key fields */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>

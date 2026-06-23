@@ -929,4 +929,21 @@ Next wave: #8 global project selector (cross-cutting ProjectContext).
   - **ALT-335** **Call-log (disposition + comment) in the preview** for Company/Contact/Lead/Meeting — feeds daily-calls metrics (dials/connects/connected/pitched) for the manager/leadership dashboard.
   - **ALT-336** (Planned) **dashboard redesign** per the Claude-design deck (dials + Scheduled⊇Successful funnel; Successful was always once Scheduled, but Scheduled can drop/cancel/postpone). Ankit to re-share the deck.
 - **Pointed Ankit to history docs:** USER-STORIES-AND-FLOWS, PERSONA-AUDIT-2026-06, HIGH-IMPACT-UX-GAPS, UX-AUDIT, AMBIGUOUS-DECISIONS, OPEN-QUESTIONS, + CONVERSATION-LOG.
-- Build of ALT-331..335 IN PROGRESS (shared EditableGrid + ListToolbar + kanban select + CallLogPreview, then wire all 5 pages). NOTHING PUSHED.
+- ALT-331..335 SHIPPED + committed (build green, 2 commits af80716 + e055e57): EditableGrid (replaced Grid tiles), ListToolbar, multi-select in Grid+Kanban, CallLogPreview in 4 previews, open-full→new-tab. NOT pushed yet at that point.
+
+---
+## 2026-06-23 (cont.) — Ankit feedback + OPEN-QUESTIONS answers + HubSpot-parity backlog
+- **Tiles:** Ankit didn't ask to remove the Grid tiles (I swapped them for the editable grid). "No need to restore as of now" → parked as ALT-339 (later offer BOTH cards + spreadsheet).
+- **BUILD this session:** ALT-337 **Log-a-call FROM the preview** (reuse DispositionForm→logDisposition→interaction; refresh CallLogPreview) for Company/Contact/Lead/Meeting; ALT-338 **Kanban group-by** field selector (status/city/industry/owner; disposition needs latest-call data → note). ALT-348 HubSpot+Zoho UX research (subagents → doc).
+- **NEW backlog (HubSpot-parity, mostly DB/RLS → owner-gated):** ALT-340 merge duplicate companies + parent/child association (PARKING LOT, extends ALT-293); ALT-341 generic record ASSOCIATIONS (add company/lead/meeting/contact/wishlist/task/call to any record); ALT-342 multiple emails/phones per contact (child table); ALT-343 record COLLABORATORS (project users edit/view exactly like owner, all modules) + lite/viewer users for seniors; ALT-345 mask sensitive details at DB level + reveal-on-demand.
+- **Dashboard deck RECEIVED** (Amplior×HungerBox 3-Year Review). Funnel to model: Dials ~200k → Connects ~82k (~41%) → Qualified Pitches ~7k → Scheduled 3,500 → Successful 2,637 (~67% sched→success). cancel(prospect) vs drop(sales) vs reschedule/postpone. THREE dashboards (Agent/Sales/TL). ALT-336 (umbrella) + ALT-344 (full build spec).
+- **OPEN-QUESTIONS.md answered by Ankit (2026-06-23) — locked, captured as tickets:**
+  - Q1: Sales Head assigns leads only to Sales Persons (not agents); sales = company-process, reflected in records; TL/PM can reassign SP with OPTIONAL remark (TL only, not SH). → ALT-347.
+  - Q2: Sales team does NOT outreach — they only attend meetings Amplior scheduled. 3 client roles (Company Admin > Sales Head > Sales Person), edit/view set per project/client setting by CRM super-admin; Company Admin can add SP/SH (super-admin approved). 3 dashboards (Agent/Sales/TL). → ALT-347 + ALT-344.
+  - Q3: only SAFE edits (company/contact status, description, comments); unassigned = TL/admin only; assigned/reassigned agent can edit; every change captured with who-edited. → already the EditableGrid scope; audit via interaction.
+  - Q4: NO direct view of sensitive details — reveal every time (sticks till tab refresh); who-can-reveal set per project setting, default owner + all uplines; enforce at DB (not client-side). Mask ab••••@domain.com / 999****999. → ALT-345.
+  - Q5: notification recipients re-engineering (lead-scheduled → ASSIGNED agent not created_by; sales gets schedule/feedback/reschedule/cancel; first schedule → SH too; TL gets downline+own incl successful/cancel/drop/reschedule; reschedule/cancel request → TL+agent; task pending + daily-summary toggle). → ALT-346.
+  - Q6: deploy posture fine — evenings after 6pm and/or weekends.
+  - Q7: PDF emails via Playwright OK, or HTML for now; Ankit may supply template UI.
+  - Minor: lite/team VIEWER users for senior stakeholders (read-only) → ALT-343; internal users don't need /sales (admin can); mobile app = backlog (not dropped).
+- Build of ALT-337/338 + research IN PROGRESS, then push. 

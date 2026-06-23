@@ -28,7 +28,11 @@ export type { Interaction } from './contacts';
 /*  Types                                                              */
 /* ------------------------------------------------------------------ */
 
-export type RecordType = 'contact' | 'company' | 'lead';
+// 'meeting' is valid here too: the interaction table is keyed by free-text
+// record_type, and the read path (data/callLogs fetchCallLogs) already filters
+// record_type='meeting'. Logging a call against a meeting therefore lands in the
+// same store the meeting's "Recent calls" preview reads (ALT-337).
+export type RecordType = 'contact' | 'company' | 'lead' | 'meeting';
 
 export interface ContactProjectStatus {
   contact_id: number;

@@ -34,7 +34,12 @@ import { ViewSwitcher, useViewMode } from '../components/ui/ViewSwitcher';
 import { CardShell } from '../components/ui/CardGrid';
 import { ListToolbar } from '../components/ui/ListToolbar';
 import { EditableGrid, type EditableColumn } from '../components/ui/EditableGrid';
-import { GenericKanban, type KanbanColumnDef } from '../components/kanban/GenericKanban';
+import { GenericKanban } from '../components/kanban/GenericKanban';
+import {
+  KanbanGroupBySelect,
+  buildKanbanGrouping,
+  type KanbanGroupDef,
+} from '../components/kanban/KanbanGroupBySelect';
 import { RecordPreviewPanel } from '../components/common/RecordPreviewPanel';
 import { LeadPreview } from '../components/leads/LeadPreview';
 import type { ColumnDef as ColDef, ExportColumn } from '../components/ui/columns';
@@ -366,6 +371,8 @@ export function LeadsPage() {
   const [projects, setProjects] = useState<string[]>([]);
   const [sources, setSources] = useState<string[]>([]);
   const [stages, setStages] = useState<string[]>([]);
+  // Kanban "Group by" field (ALT-338) — default = stage (the original fixed field).
+  const [kanbanGroupBy, setKanbanGroupBy] = useState<string>('stage');
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   // Bump to re-run the load effect (Retry on error). ALT-215 #12.
@@ -472,34 +479,31 @@ export function LeadsPage() {
     [projectScopeId, allLeads],
   );
 
-  // Kanban (Board) view — group the filtered leads by stage. Columns: the known
-  // stage list (only those present), any extra present stage, + an "Unset" bucket
-  // for blanks. Card click opens the same preview drawer the row uses.
-  const kanbanColumns = useMemo<KanbanColumnDef[]>(() => {
-    const present = new Set<string>();
-    let hasUnset = false;
-    for (const l of filteredData) {
-      if (l.stage) present.add(l.stage);
-      else hasUnset = true;
-    }
-    const cols: KanbanColumnDef[] = [];
-    for (const s of stages) {
-      if (present.has(s)) { cols.push({ key: s, label: s }); present.delete(s); }
-    }
-    for (const s of [...present].sort()) cols.push({ key: s, label: s });
-    if (hasUnset) cols.push({ key: '__unset', label: 'Unset' });
-    return cols;
-  }, [filteredData, stages]);
+  // Kanban (Board) view — selectable "Group by" field (ALT-338). Default = stage
+  // (the original fixed grouping): its lanes reuse the canonical stage order, so
+  // the board looks identical to before. City / Industry / Salesperson derive
+  // their lanes from the distinct values present. (Disposition grouping needs
+  // latest-call data not carried on the lead row → skipped for now.)
+  const kanbanGroupOptions = useMemo<KanbanGroupDef<RealLead>[]>(() => [
+    {
+      key: 'stage',
+      label: 'Stage',
+      getGroup: (l) => l.stage || null,
+      // Canonical stage order, but only the stages actually present (matches the
+      // old board which dropped empty stage lanes).
+      lanes: stages
+        .filter((s) => filteredData.some((l) => l.stage === s))
+        .map((s) => ({ key: s, label: s })),
+    },
+    { key: 'city', label: 'City', getGroup: (l) => l.city || null },
+    { key: 'industry', label: 'Industry', getGroup: (l) => l.industry || null },
+    { key: 'salesperson', label: 'Salesperson', getGroup: (l) => l.salesperson || null },
+  ], [stages, filteredData]);
 
-  const leadsByStage = useMemo(() => {
-    const map = new Map<string, RealLead[]>();
-    for (const c of kanbanColumns) map.set(c.key, []);
-    for (const l of filteredData) {
-      const key = l.stage || '__unset';
-      map.get(key)?.push(l);
-    }
-    return map;
-  }, [filteredData, kanbanColumns]);
+  const { columns: kanbanColumns, itemsByColumn: leadsByGroup } = useMemo(() => {
+    const group = kanbanGroupOptions.find((o) => o.key === kanbanGroupBy) ?? kanbanGroupOptions[0];
+    return buildKanbanGrouping<RealLead>(filteredData, group, 'Unset');
+  }, [filteredData, kanbanGroupOptions, kanbanGroupBy]);
 
   // Derive the ordered, visibility-filtered set of column keys from prefs.
   const visibleKeys = useMemo(
@@ -956,11 +960,21 @@ export function LeadsPage() {
           }
         />
 
-        {/* Kanban (Board) view — grouped by stage; cards open the preview drawer */}
+        {/* Kanban (Board) view — group-by field is selectable (ALT-338); cards
+            open the same preview drawer the row uses. */}
+        {view === 'kanban' && !loading && !loadError && (
+          <div className="flex items-center" style={{ marginBottom: 8 }}>
+            <KanbanGroupBySelect
+              value={kanbanGroupBy}
+              onChange={setKanbanGroupBy}
+              options={kanbanGroupOptions}
+            />
+          </div>
+        )}
         {view === 'kanban' && !loading && !loadError && (
           <GenericKanban<RealLead>
             columns={kanbanColumns}
-            itemsByColumn={leadsByStage}
+            itemsByColumn={leadsByGroup}
             getKey={(row) => row.id}
             getCardLabel={(row) => `Open ${row.company || row.contactName || 'lead'}`}
             onCardClick={(row) => setPreviewId(row.id)}
