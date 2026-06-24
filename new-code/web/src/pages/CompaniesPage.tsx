@@ -22,6 +22,8 @@ import { ColumnCustomizer, defaultColumnPrefs, reconcileColumns } from '../compo
 import { ViewSwitcher, useViewMode } from '../components/ui/ViewSwitcher';
 import { CardShell } from '../components/ui/CardGrid';
 import { ListToolbar } from '../components/ui/ListToolbar';
+import { SelectAllMatchingBar } from '../components/ui/SelectAllMatchingBar';
+import { useListFilters } from '../lib/listFilters';
 import { EditableGrid, type EditableColumn } from '../components/ui/EditableGrid';
 import { GenericKanban } from '../components/kanban/GenericKanban';
 import {
@@ -297,7 +299,8 @@ export function CompaniesPage() {
   const actorId = userId != null ? String(userId) : null;
   const toast = useToast();
 
-  const [filters, setFilters] = useState<Filters>(defaultFilters);
+  // Persisted across refresh per browser (ALT-369).
+  const [filters, setFilters] = useListFilters<Filters>('companies', defaultFilters);
   const [sorting, setSorting] = useState<SortingState>([]);
   const [pagination, setPagination] = useState<PaginationState>({ pageIndex: 0, pageSize: 25 });
 
@@ -831,6 +834,23 @@ export function CompaniesPage() {
     getPaginationRowModel: getPaginationRowModel(),
   });
 
+  /* ---- "Select all N matching" affordance (ALT) ----
+     allMatchingIds = every id in the full filtered set; pageRowIds = the ids the
+     user can actually see/select right now (current page in table/grid; all
+     filtered rows in kanban, which renders the whole set). */
+  const allMatchingIds = useMemo(() => filteredData.map((r) => r.id), [filteredData]);
+  const pageRowIds = useMemo(
+    () =>
+      view === 'kanban'
+        ? allMatchingIds
+        : table.getRowModel().rows.map((r) => r.original.id),
+    [view, allMatchingIds, table.getRowModel().rows],
+  );
+  const pageSelectedCount = useMemo(
+    () => pageRowIds.filter((id) => sel.isSelected(id)).length,
+    [pageRowIds, sel],
+  );
+
   /* ---- EditableGrid columns (real "Grid" view, ALT-331) ----
      Mirrors the Table columns. SAFE EDITABLE SET: Account Status only — it's the
      only per-project field this page loads onto rows AND has an option list for
@@ -1156,6 +1176,21 @@ export function CompaniesPage() {
             ) : undefined
           }
         />
+
+        {/* "Select all N matching" bar — appears once the whole visible page is
+            selected and more matching rows exist beyond it (ALT). */}
+        {!loading && !loadError && (
+          <SelectAllMatchingBar
+            noun="company"
+            nounPlural="companies"
+            pageCount={pageRowIds.length}
+            pageSelectedCount={pageSelectedCount}
+            totalMatching={allMatchingIds.length}
+            totalSelected={sel.count}
+            onSelectAllMatching={() => sel.addAll(allMatchingIds)}
+            onClear={() => sel.clear()}
+          />
+        )}
 
         {/* Kanban (Board) view — group-by field is selectable (ALT-338). Status
             and Owner grouping are per-project (gated on a project); Industry/City

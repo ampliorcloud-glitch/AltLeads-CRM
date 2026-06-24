@@ -17,6 +17,8 @@ import { ColumnCustomizer, defaultColumnPrefs } from '../components/ui/ColumnCus
 import { ViewSwitcher, useViewMode } from '../components/ui/ViewSwitcher';
 import { CardShell } from '../components/ui/CardGrid';
 import { ListToolbar } from '../components/ui/ListToolbar';
+import { SelectAllMatchingBar } from '../components/ui/SelectAllMatchingBar';
+import { useListFilters } from '../lib/listFilters';
 import { EditableGrid, type EditableColumn } from '../components/ui/EditableGrid';
 import { GenericKanban } from '../components/kanban/GenericKanban';
 import {
@@ -302,7 +304,8 @@ export function ContactsPage() {
   const [loadError, setLoadError] = useState<string | null>(null);
   // Bump to re-run the contacts-load effect (Retry on error). ALT-215 #12.
   const [reloadKey, setReloadKey] = useState(0);
-  const [filters, setFilters] = useState<Filters>(defaultFilters);
+  // Persisted across refresh per browser (ALT-369).
+  const [filters, setFilters] = useListFilters<Filters>('contacts', defaultFilters);
   const [sort, setSort] = useState<SortState>({ key: 'full_name', dir: 'asc' });
   const [pageIndex, setPageIndex] = useState(0);
   const [pageSize, setPageSize] = useState(25);
@@ -729,6 +732,19 @@ export function ContactsPage() {
 
   // Visible page contact ids (for select-all on current page)
   const pageIds = pageRows.map((r) => r.contact_id);
+
+  // "Select all N matching" affordance (mirrors LeadsPage). allMatchingIds = every
+  // id in the full filtered set; pageRowIds = the ids the user can see/select right
+  // now (all filtered rows in kanban, else the current page).
+  const allMatchingIds = useMemo(() => filteredData.map((r) => r.contact_id), [filteredData]);
+  const pageRowIds = useMemo(
+    () => (view === 'kanban' ? allMatchingIds : pageIds),
+    [view, allMatchingIds, pageIds],
+  );
+  const pageSelectedCount = useMemo(
+    () => pageRowIds.filter((id) => sel.isSelected(id)).length,
+    [pageRowIds, sel],
+  );
 
   // Inline status update handler
   function handleStatusUpdated(contactId: number, newStatus: string | null) {
@@ -1197,6 +1213,20 @@ export function ContactsPage() {
             ) : undefined
           }
         />
+
+        {/* "Select all N matching" — appears when the page selection doesn't yet
+            cover every filtered contact (mirrors LeadsPage). */}
+        {!loading && !loadError && (
+          <SelectAllMatchingBar
+            noun="contact"
+            pageCount={pageRowIds.length}
+            pageSelectedCount={pageSelectedCount}
+            totalMatching={allMatchingIds.length}
+            totalSelected={sel.count}
+            onSelectAllMatching={() => sel.addAll(allMatchingIds)}
+            onClear={() => sel.clear()}
+          />
+        )}
 
         {/* Kanban (Board) view — group-by field is selectable (ALT-338). Status
             grouping is per-project (gated on a project); City/Company/Owner work

@@ -21,6 +21,8 @@ import { MultiSelectFilter } from '../components/ui/MultiSelectFilter';
 import { ColumnCustomizer, defaultColumnPrefs, reconcileColumns } from '../components/ui/ColumnCustomizer';
 import { ViewSwitcher, useViewMode } from '../components/ui/ViewSwitcher';
 import { ListToolbar } from '../components/ui/ListToolbar';
+import { SelectAllMatchingBar } from '../components/ui/SelectAllMatchingBar';
+import { useListFilters } from '../lib/listFilters';
 import { EditableGrid, type EditableColumn } from '../components/ui/EditableGrid';
 import { CardShell } from '../components/ui/CardGrid';
 import { GenericKanban } from '../components/kanban/GenericKanban';
@@ -216,7 +218,8 @@ export function WishlistPage() {
       ? scopeProjects.find((p) => p.project_id === selectedProjectId)?.project_name ?? null
       : null;
 
-  const [filters, setFilters] = useState<Filters>(defaultFilters);
+  // Persisted across refresh per browser (ALT-369).
+  const [filters, setFilters] = useListFilters<Filters>('wishlist', defaultFilters);
   const [sorting, setSorting] = useState<SortingState>([]);
   const [pagination, setPagination] = useState<PaginationState>({ pageIndex: 0, pageSize: PAGE_SIZE });
 
@@ -515,6 +518,20 @@ export function WishlistPage() {
   // Grid / Kanban use the full filtered set (boards/cards aren't paginated).
   const allFilteredRows = filteredData;
 
+  // "Select all N matching" bar (ALT-331) — page-scoped vs full-filtered counts.
+  // allMatchingIds = every id in the full filtered set. pageRowIds = the ids the
+  // user can actually see & select right now: the current page in Table view, or
+  // the whole filtered set in Grid/Kanban (those views aren't paginated).
+  const allMatchingIds = useMemo(() => filteredData.map((r) => r.id), [filteredData]);
+  const pageRowIds = useMemo(
+    () => (view === 'table' ? table.getRowModel().rows.map((r) => r.original.id) : allMatchingIds),
+    [view, allMatchingIds, table, sorting, pagination],
+  );
+  const pageSelectedCount = useMemo(
+    () => pageRowIds.filter((id) => sel.isSelected(id)).length,
+    [pageRowIds, sel],
+  );
+
   // Kanban (Board) view — selectable "Group by" field (ALT-338). Default = status
   // (the original fixed grouping): its lanes reuse the canonical status order so
   // the board looks identical to before. City / Industry / Agent / Team Lead
@@ -774,6 +791,20 @@ export function WishlistPage() {
           }
           create={null}
         />
+
+        {/* "Select all N matching" affordance — appears when the current page is
+            fully selected but more filtered rows exist off-page (ALT-331). */}
+        {!loading && !loadError && (
+          <SelectAllMatchingBar
+            noun="wishlist item"
+            pageCount={pageRowIds.length}
+            pageSelectedCount={pageSelectedCount}
+            totalMatching={allMatchingIds.length}
+            totalSelected={sel.count}
+            onSelectAllMatching={() => sel.addAll(allMatchingIds)}
+            onClear={() => sel.clear()}
+          />
+        )}
 
         {/* Kanban (Board) view — group-by field is selectable (ALT-338); cards
             open the same preview drawer the row uses. */}

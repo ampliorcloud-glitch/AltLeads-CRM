@@ -34,6 +34,8 @@ import { ViewSwitcher, useViewMode } from '../components/ui/ViewSwitcher';
 import { CardShell } from '../components/ui/CardGrid';
 import { ListToolbar } from '../components/ui/ListToolbar';
 import { EditableGrid, type EditableColumn } from '../components/ui/EditableGrid';
+import { SelectAllMatchingBar } from '../components/ui/SelectAllMatchingBar';
+import { useListFilters } from '../lib/listFilters';
 import { GenericKanban } from '../components/kanban/GenericKanban';
 import {
   KanbanGroupBySelect,
@@ -343,7 +345,8 @@ export function LeadsPage() {
   const { selectedProjectId } = useProjectScope();
   const projectScopeId = isSalesShell ? null : selectedProjectId;
 
-  const [filters, setFilters] = useState<Filters>(defaultFilters);
+  // Persisted across refresh per browser (ALT-369).
+  const [filters, setFilters] = useListFilters<Filters>('leads', defaultFilters);
   const [sorting, setSorting] = useState<SortingState>([]);
   const [pagination, setPagination] = useState<PaginationState>({ pageIndex: 0, pageSize: 25 });
 
@@ -773,6 +776,19 @@ export function LeadsPage() {
     return selectedOnPage === gridRows.length ? 'all' : 'some';
   }, [gridRows, sel]);
 
+  // "Select all N matching" (ALT-368) — every matching row is already in memory
+  // (client-side pagination), so selecting them all is just sel.addAll(allIds).
+  // The bar shows only once the whole current page/view is selected.
+  const allMatchingIds = useMemo(() => filteredData.map((r) => r.id), [filteredData]);
+  const pageRowIds = useMemo(
+    () => (view === 'kanban' ? allMatchingIds : gridRows.map((r) => r.id)),
+    [view, allMatchingIds, gridRows],
+  );
+  const pageSelectedCount = useMemo(
+    () => pageRowIds.filter((id) => sel.isSelected(id)).length,
+    [pageRowIds, sel],
+  );
+
   return (
     <AppShell title="Leads">
       <div className="space-y-3">
@@ -982,6 +998,20 @@ export function LeadsPage() {
             ) : null
           }
         />
+
+        {/* Select-all-matching bar — only when the whole page is selected and
+            more matching rows exist beyond it (ALT-368). */}
+        {!loading && !loadError && (
+          <SelectAllMatchingBar
+            noun="lead"
+            pageCount={pageRowIds.length}
+            pageSelectedCount={pageSelectedCount}
+            totalMatching={allMatchingIds.length}
+            totalSelected={sel.count}
+            onSelectAllMatching={() => sel.addAll(allMatchingIds)}
+            onClear={() => sel.clear()}
+          />
+        )}
 
         {/* Kanban (Board) view — group-by field is selectable (ALT-338); cards
             open the same preview drawer the row uses. */}

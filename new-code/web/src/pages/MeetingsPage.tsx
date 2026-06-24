@@ -32,6 +32,8 @@ import {
 import { ViewSwitcher, useViewMode } from '../components/ui/ViewSwitcher';
 import { CardShell } from '../components/ui/CardGrid';
 import { ListToolbar } from '../components/ui/ListToolbar';
+import { SelectAllMatchingBar } from '../components/ui/SelectAllMatchingBar';
+import { useListFilters } from '../lib/listFilters';
 import { EditableGrid, type EditableColumn } from '../components/ui/EditableGrid';
 import { GenericKanban } from '../components/kanban/GenericKanban';
 import {
@@ -258,7 +260,8 @@ export function MeetingsPage() {
   // src/data/meetings.ts, matched on the same numeric id useProjectScope returns.
   const { selectedProjectId } = useProjectScope();
 
-  const [filters, setFilters] = useState<Filters>(defaultFilters);
+  // Persisted across refresh per browser (ALT-369).
+  const [filters, setFilters] = useListFilters<Filters>('meetings', defaultFilters);
   const [sorting, setSorting] = useState<SortingState>([]);
   const [pageIndex, setPageIndex] = useState(0);
 
@@ -617,6 +620,19 @@ export function MeetingsPage() {
   const firstRow = filteredData.length === 0 ? 0 : pageIndex * PAGE_SIZE + 1;
   const lastRow = Math.min((pageIndex + 1) * PAGE_SIZE, filteredData.length);
 
+  // "Select all N matching" affordance — ids the user can actually see/select now
+  // (current table/grid page; all filtered rows in kanban) vs every id in the full
+  // filtered set (ALT mirror of LeadsPage).
+  const allMatchingIds = useMemo(() => filteredData.map((r) => r.id), [filteredData]);
+  const pageRowIds = useMemo(
+    () => (view === 'kanban' ? allMatchingIds : rowsOnPage.map((r) => r.original.id)),
+    [view, allMatchingIds, rowsOnPage],
+  );
+  const pageSelectedCount = useMemo(
+    () => pageRowIds.filter((id) => sel.isSelected(id)).length,
+    [pageRowIds, sel],
+  );
+
   /* ---- EditableGrid columns (real "Grid" view, ALT-331) ----
      Mirrors the Table columns. SAFE EDITABLE SET: ALL COLUMNS READ-ONLY. Meeting
      status is workflow-driven (it changes through the meeting record's flow, not a
@@ -892,6 +908,20 @@ export function MeetingsPage() {
           }
           create={null}
         />
+
+        {/* "Select all N matching" bar — bridges page-level checkbox to the full
+            filtered set (mirrors LeadsPage). */}
+        {!loading && !loadError && (
+          <SelectAllMatchingBar
+            noun="meeting"
+            pageCount={pageRowIds.length}
+            pageSelectedCount={pageSelectedCount}
+            totalMatching={allMatchingIds.length}
+            totalSelected={sel.count}
+            onSelectAllMatching={() => sel.addAll(allMatchingIds)}
+            onClear={() => sel.clear()}
+          />
+        )}
 
         {/* Kanban (Board) view — group-by field is selectable (ALT-338); cards
             open the same preview drawer the row uses. */}
