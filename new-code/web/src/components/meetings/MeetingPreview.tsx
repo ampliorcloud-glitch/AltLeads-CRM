@@ -47,6 +47,7 @@ import { reassignMeeting, fetchAssignableUsers } from '../../data/assignment';
 import type { UserOption } from '../../data/wishlist';
 import { useAuth } from '../../contexts/AuthContext';
 import { ReassignModal } from '../common/ReassignModal';
+import { CopyButton } from '../ui/CopyButton';
 import { MeetingStatusBadge } from '../meeting/MeetingStatusBadge';
 import { CallLogPreview } from '../calls/CallLogPreview';
 import { PreviewCallLogger } from '../calls/PreviewCallLogger';
@@ -60,38 +61,42 @@ function modeIcon(mode: string) {
   return <CalendarDays size={14} />;
 }
 
-/* Compact label/value row with optional link (mirrors ContactPreview.Field). */
+/* Compact label/value row with optional link + copy (mirrors ContactPreview.Field). */
 function Field({
-  icon, label, value, href,
+  icon, label, value, href, copyValue,
 }: {
   icon: React.ReactNode;
   label: string;
   value: React.ReactNode;
   href?: string;
+  copyValue?: string | null;
 }) {
   return (
     <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10, minHeight: 28 }}>
       <span style={{ color: '#9CA3AF', marginTop: 1, flexShrink: 0 }}>{icon}</span>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 1, minWidth: 0 }}>
         <span style={{ fontSize: 10.5, color: '#9CA3AF', fontWeight: 500 }}>{label}</span>
-        {href ? (
-          <a
-            href={href}
-            target="_blank"
-            rel="noopener noreferrer"
-            title={typeof value === 'string' ? value : undefined}
-            style={{ fontSize: 13, color: BRAND, textDecoration: 'none', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
-          >
-            {value}
-          </a>
-        ) : (
-          <span
-            title={typeof value === 'string' ? value : undefined}
-            style={{ fontSize: 13, color: '#111827', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
-          >
-            {value || <span style={{ color: '#D1D5DB' }}>—</span>}
-          </span>
-        )}
+        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, minWidth: 0 }}>
+          {href ? (
+            <a
+              href={href}
+              target="_blank"
+              rel="noopener noreferrer"
+              title={copyValue ?? (typeof value === 'string' ? value : undefined)}
+              style={{ fontSize: 13, color: BRAND, textDecoration: 'none', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+            >
+              {value}
+            </a>
+          ) : (
+            <span
+              title={copyValue ?? (typeof value === 'string' ? value : undefined)}
+              style={{ fontSize: 13, color: '#111827', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+            >
+              {value || <span style={{ color: '#D1D5DB' }}>—</span>}
+            </span>
+          )}
+          {copyValue ? <CopyButton value={copyValue} label={label} /> : null}
+        </span>
       </div>
     </div>
   );
@@ -239,7 +244,7 @@ export function MeetingPreview({ meetingId }: { meetingId: number }) {
         <Field icon={modeIcon(meeting.mode)} label="Mode" value={meeting.mode} />
         {/* Virtual link for online/telephonic, location for offline. */}
         {meeting.meetingUrl ? (
-          <Field icon={<Video size={14} />} label="Meeting link" value={meeting.meetingUrl} href={meeting.meetingUrl} />
+          <Field icon={<Video size={14} />} label="Meeting link" value={meeting.meetingUrl} href={meeting.meetingUrl} copyValue={meeting.meetingUrl} />
         ) : locationLine ? (
           <Field icon={<MapPin size={14} />} label="Location" value={locationLine} />
         ) : null}
@@ -353,10 +358,10 @@ export function MeetingPreview({ meetingId }: { meetingId: number }) {
             <p style={{ fontSize: 12.5, color: '#9CA3AF', margin: 0 }}>No linked lead for this meeting.</p>
           )}
           {meeting.leadMobile && (
-            <Field icon={<Phone size={14} />} label="Contact" value={meeting.leadMobile} href={`tel:${meeting.leadMobile}`} />
+            <Field icon={<Phone size={14} />} label="Contact" value={meeting.leadMobile} href={`tel:${meeting.leadMobile}`} copyValue={meeting.leadMobile} />
           )}
           {meeting.leadEmail && (
-            <Field icon={<FileText size={14} />} label="Email" value={meeting.leadEmail} href={`mailto:${meeting.leadEmail}`} />
+            <Field icon={<FileText size={14} />} label="Email" value={meeting.leadEmail} href={`mailto:${meeting.leadEmail}`} copyValue={meeting.leadEmail} />
           )}
           {meeting.leadLinkedin && (
             <Field

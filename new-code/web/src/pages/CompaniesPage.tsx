@@ -228,6 +228,35 @@ async function fetchCompanyStatuses(
   return out;
 }
 
+/**
+ * Map each company to the DISTINCT project ids it has a per-project status row in
+ * (company_project_status). Used to AUTO-RESOLVE the inline status edit when no
+ * global project is scoped (AMBIG E1): a company with exactly one project resolves
+ * to it, so single-project agents never hit the "select a project" wall. Chunked
+ * like fetchCompanyStatuses to stay under PostgREST limits.
+ */
+async function fetchCompanyProjects(companyIds: number[]): Promise<Record<number, number[]>> {
+  const out: Record<number, number[]> = {};
+  if (companyIds.length === 0) return out;
+  const CHUNK = 200;
+  for (let i = 0; i < companyIds.length; i += CHUNK) {
+    const slice = companyIds.slice(i, i + CHUNK);
+    const { data, error } = await supabase
+      .from('company_project_status')
+      .select('company_id, project_id')
+      .in('company_id', slice);
+    if (error) {
+      console.error('[CompaniesPage] fetchCompanyProjects error', error);
+      continue;
+    }
+    for (const row of (data ?? []) as { company_id: number; project_id: number }[]) {
+      const list = out[row.company_id] ?? (out[row.company_id] = []);
+      if (!list.includes(row.project_id)) list.push(row.project_id);
+    }
+  }
+  return out;
+}
+
 /* ------------------------------------------------------------------
    Column catalogue — drives ColumnCustomizer + ExportButton.
    Keys must be stable; they are persisted in user_view_pref.
@@ -375,6 +404,12 @@ export function CompaniesPage() {
   // account_status dropdown options (for the inline-editable status cell).
   const [statusOptions, setStatusOptions] = useState<DropdownOption[]>([]);
 
+  // Per-company project membership (company_id -> distinct project ids). Only
+  // loaded when NO global project is scoped, to auto-resolve the inline status
+  // edit for single-project records (AMBIG E1). Empty/absent when a global
+  // project is selected (the global scope is used directly).
+  const [companyProjects, setCompanyProjects] = useState<Record<number, number[]>>({});
+
   // Inline status update — only called after a successful write; preserves the
   // already-resolved owner fields for the row.
   const handleStatusUpdated = useCallback((companyId: number, newStatus: string | null) => {
@@ -496,6 +531,55 @@ export function CompaniesPage() {
     loadStatuses(projectId, pageCompanyIds);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectId]);
+
+  // No global project scoped → load each visible company's project membership so a
+  // single-project company can auto-resolve its inline status edit (AMBIG E1).
+  // Then load that resolved project's status into statusMap so the badge shows the
+  // real value (not a blank, which would only appear once a project was picked).
+  useEffect(() => {
+    if (projectId != null) { setCompanyProjects({}); return; }
+    if (pageCompanyIds.length === 0) return;
+    let cancelled = false;
+    const missing = pageCompanyIds.filter((id) => !(id in companyProjects));
+    if (missing.length === 0) return;
+    void (async () => {
+      const projMap = await fetchCompanyProjects(missing);
+      if (cancelled) return;
+      setCompanyProjects((prev) => ({ ...prev, ...projMap }));
+      // For companies resolving to exactly one project, batch their status by
+      // project so the cell renders the right badge. Group ids per project id.
+      const byProject = new Map<number, number[]>();
+      for (const id of missing) {
+        const list = projMap[id];
+        if (list && list.length === 1) {
+          const arr = byProject.get(list[0]) ?? [];
+          arr.push(id);
+          byProject.set(list[0], arr);
+        }
+      }
+      for (const [pid, ids] of byProject) {
+        const result = await fetchCompanyStatuses(pid, ids);
+        if (cancelled) return;
+        setStatusMap((prev) => ({ ...prev, ...result }));
+      }
+    })();
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [projectId, pageCompanyIds]);
+
+  /**
+   * Resolve the project the inline status edit should write to for a company
+   * (AMBIG E1): the global scope when set; else the company's sole project when it
+   * belongs to exactly one; else null (genuinely ambiguous → cell stays read-only).
+   */
+  const resolveProjectFor = useCallback(
+    (numId: number): number | null => {
+      if (projectId != null) return projectId;
+      const list = companyProjects[numId];
+      return list && list.length === 1 ? list[0] : null;
+    },
+    [projectId, companyProjects],
+  );
 
   /* ---- Kanban (Board) view ----
      Companies' status is PER PROJECT (company_project_status.account_status), so
@@ -702,18 +786,24 @@ export function CompaniesPage() {
         enableSorting: false,
         cell: ({ row }) => {
           const numId = Number(row.original.id);
-          if (projectId == null) return <span className="text-zinc-300" style={{ fontSize: 12 }}>—</span>;
+          // Resolve the edit project: global scope, else the company's sole
+          // project (single-project records skip the "select a project" wall).
+          const effectiveProjectId = resolveProjectFor(numId);
           if (statusLoading && !(numId in statusMap)) {
             return <Loader2 size={12} className="animate-spin text-zinc-300" />;
           }
           const status = statusMap[numId]?.account_status ?? null;
+          // Genuinely ambiguous only when there's no global scope AND the company
+          // is in more than one project — explain why in the tooltip.
+          const inMultiple = projectId == null && (companyProjects[numId]?.length ?? 0) > 1;
           return (
             <InlineAccountStatusCell
               companyId={numId}
-              projectId={projectId}
+              projectId={effectiveProjectId}
               current={status}
               options={statusOptions}
               actorId={actorId}
+              blockedReason={inMultiple ? 'In multiple projects — pick one in the Project selector above' : 'Select a project first'}
               onUpdated={handleStatusUpdated}
             />
           );
@@ -728,7 +818,7 @@ export function CompaniesPage() {
       return visibleKeys.has(id);
     });
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [visibleKeys, statusMap, statusLoading, projectId, sel, statusOptions, actorId, handleStatusUpdated]);
+  }, [visibleKeys, statusMap, statusLoading, projectId, sel, statusOptions, actorId, handleStatusUpdated, resolveProjectFor, companyProjects]);
 
   const table = useReactTable({
     data: filteredData,
@@ -849,29 +939,37 @@ export function CompaniesPage() {
         // until the real status lands, instead of seeding the editor with "".
         render: (r) => {
           const numId = Number(r.id);
-          if (projectId != null && statusLoading && !(numId in statusMap)) {
+          if (statusLoading && !(numId in statusMap)) {
             return <Loader2 size={12} className="animate-spin text-zinc-300" />;
           }
           const status = statusMap[numId]?.account_status ?? null;
           return <StatusBadge value={status} category="account_status" />;
         },
         disabledReason: (r) => {
-          if (projectId == null) return 'Select a project first';
+          const numId = Number(r.id);
+          // Resolve the edit project (global scope, else the company's sole
+          // project). Block only when genuinely ambiguous (AMBIG E1).
+          if (resolveProjectFor(numId) == null) {
+            return (companyProjects[numId]?.length ?? 0) > 1
+              ? 'In multiple projects — pick one in the Project selector above'
+              : 'Select a project first';
+          }
           // Block editing (and let render show the spinner) until this row's
           // per-project status has loaded, so users can't edit a blank cell.
-          if (statusLoading && !(Number(r.id) in statusMap)) return 'Loading…';
+          if (statusLoading && !(numId in statusMap)) return 'Loading…';
           return null;
         },
         onSave: async (r, next) => {
-          if (projectId == null) return { error: 'Select a project first.' };
+          const pid = resolveProjectFor(Number(r.id));
+          if (pid == null) return { error: 'Select a project first.' };
           const newStatus = next === '' ? null : next;
-          const { error } = await upsertCompanyStatus(Number(r.id), projectId, { account_status: newStatus }, actorId);
+          const { error } = await upsertCompanyStatus(Number(r.id), pid, { account_status: newStatus }, actorId);
           if (!error) handleStatusUpdated(Number(r.id), newStatus);
           return { error };
         },
       },
     ];
-  }, [statusOptions, statusMap, statusLoading, projectId, actorId, handleStatusUpdated]);
+  }, [statusOptions, statusMap, statusLoading, projectId, actorId, handleStatusUpdated, resolveProjectFor, companyProjects]);
 
   const totalRows = filteredData.length;
   const pageIndex = table.getState().pagination.pageIndex;

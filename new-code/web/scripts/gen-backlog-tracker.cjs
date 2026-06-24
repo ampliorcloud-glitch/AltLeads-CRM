@@ -2462,6 +2462,61 @@ const TICKETS = [
     ];
   })()),
 
+  // ══════════════════════════════════════════════════════════════════════
+  // 2026-06-24 — SCHEMA AUDIT (docs/SCHEMA-AUDIT.md) + EMBEDDING PLAN
+  //   (docs/product/EMBEDDING-PLAN.md) + Ankit's OPEN-Q/AMBIGUOUS rulings.
+  //   Schema/DB + embedding = owner-gated (DB migration + validation).
+  // ══════════════════════════════════════════════════════════════════════
+  ...((() => {
+    const S = (id, title, type, priority, status, notes) => ({
+      id, title, type, module:'DB', wave:'Schema audit 2026-06-24', priority, status,
+      created: d(2026,6,24), updated: d(2026,6,24), finished: null, owner:'Ankit', notes,
+    });
+    const V = (id, title, type, priority, status, notes) => ({
+      id, title, type, module:'UX', wave:'Rulings 2026-06-24', priority, status,
+      created: d(2026,6,24), updated: d(2026,6,24), finished: null, owner:'Ankit', notes,
+    });
+    return [
+      // ---- Schema audit findings (see docs/SCHEMA-AUDIT.md) — DB, owner-gated ----
+      S('ALT-349','LAUNCH BLOCKER: canonical assignee model + repoint RLS off created_by','Bug','P1','Planned',
+        'SCHEMA-AUDIT NOW: ownership is split 3 ways — created_by = bulk-importer id (live numeric strings), real assignee = lead_report.user_id, dead lead_master.agent_id, + per-project owner_user_id. RLS keyed on created_by tells assigned agents "you can only edit records you own" for ~600 migrated leads. FIX: ONE canonical assignee_user_id (bigint REFERENCES user_master) backfilled from latest lead_report.user_id (597/598 leads = 1 report, ~1:1), app+RLS read only that, deprecate agent_id, keep created_by audit-only. Finish/replace apply-assignment-rls.cjs so it doesn\'t resolve assignee 3 ways. Validate w/ throwaway role-3 + TL/admin logins before prod. Reversible additive migration.'),
+      S('ALT-350','Normalize + CHECK/FK all status columns (already corrupted free text)','Bug','P1','Planned',
+        'SCHEMA-AUDIT NOW: report_status (11 drifting variants), meeting_status (incl NULL/""), dead meeting_master.status, active_status="0" string, free-text account_status/contact_status/is_feasible — none FK to stage_master/status_master/dropdown_option. One-time trim/case-fold/synonym-map UPDATE → CHECK constraints → FK into dropdown_option (28 rows, exists). Collapse meeting_master.status into meeting_status; active_status → boolean. Coordinate writers (data/meetings, projectStatus, realLeads) to emit canonical values.'),
+      S('ALT-351','Clean area_of_interest into a controlled list (worst-corrupted column)','Bug','P2','Planned',
+        'SCHEMA-AUDIT NOW: NOT NULL free text, 24+ "distinct" live values that are ~4 concepts (Security/security/Security services… ; 7 spellings of HungerBox services; " " and "" as values). Breaks segmentation + HungerBox feedback report + AI fit-scoring. Backfill via synonym map (1 human review) to dropdown_option/interest_master FK; move free elaboration to area_of_interest_note; replace useless NOT NULL with CHECK(trim()<>"").'),
+      S('ALT-352','Make `interaction` the canonical activity log (FK + one-of CHECK + dual-write + backfill)','Feature','P1','Planned',
+        'SCHEMA-AUDIT SOON: activity scattered across lead_activity (2670, no actor), 50-col boolean-soup lead_status_history, meeting_master, dormant generic interaction (18 rows, no FK on polymorphic record_id), call_log (not applied). Blocks the AI timeline. FIX: interaction = append-only event log w/ real FK + one-of CHECK + updated_by + soft-delete; dual-write all new calls/notes/status-changes/meeting-touches; backfill; retire lead_status_history to read-only. Unblocks activityTimeline + embeddings (ALT-352→ALT-359).'),
+      S('ALT-353','FORCE RLS + lock anon grants on all data tables','Bug','P1','Planned',
+        'SCHEMA-AUDIT NOW: every hot table relforcerowsecurity=false (table owner bypasses RLS) on a public Supabase URL holding PII for 111 users + 600+ leads. ALTER … FORCE ROW LEVEL SECURITY on lead_master/lead_report/company_master/contact_master/meeting_master/task/*_project_status/user_master/wishlist/lead_activity; REVOKE from anon table-wide. Verify service-role notify-service + snapshot trigger still work; validate w/ throwaway logins. Pairs with ALT-349.'),
+      S('ALT-354','Standardize + FK audit columns (created_by/updated_by/deleted_by) to user_master','Chore','P2','Planned',
+        'SCHEMA-AUDIT: audit columns are varchar holding numeric user ids with NO FK; new tables use bigint (type split); interaction/call_log/task lack updated_by. Add-new-col + backfill (cast numeric strings, map "system" to sentinel) → bigint REFERENCES user_master; add missing updated_by. Handle non-numeric legacy first. Reversible. Underpins the "who edited" audit Ankit wants (Q3).'),
+      S('ALT-355','Enforce contact/company de-duplication (unique indexes after merge)','Bug','P2','Planned',
+        'SCHEMA-AUDIT: 20 duplicate-email contact groups live, no unique constraint. Run merge (ALT-293/merge.ts) to clean dupes, then partial UNIQUE indexes on lower(email)/linkedin_clean (contacts) + cin_number/domain_clean (companies) WHERE deleted_date IS NULL; enforce upsert-on-import. Also fixes the Chrome-extension linkedin_url matching.'),
+      S('ALT-356','Tenant scoping: NOT NULL lead_master.project_id + ensure *_project_status rows','Bug','P2','Planned',
+        'SCHEMA-AUDIT: lead_master.project_id nullable; companies/contacts have no project_id; lead_master.contact_id 0/607 populated. Backfill + NOT NULL project_id; ensure every in-scope company (525)/contact (608) has a *_project_status row per project; decide canonical company/contact→project link before the sales portal (priority #2). Validate RLS before prod.'),
+      S('ALT-357','Backfill lead_master.contact_id + prune dead columns/tables','Chore','P3','Planned',
+        'SCHEMA-AUDIT: backfill lead_master.contact_id from contact_master.source_lead_id (breaks lead↔contact joins today); then drop agent_id; review/prune user_ghost, user_searches, duplicate designation tables, empty status_master after confirming no app use.'),
+      S('ALT-358','Fix id-type chaos + wrong column types (money/time)','Chore','P3','Planned',
+        'SCHEMA-AUDIT: widen int masters (city/state/countrycode/meeting_schedule) to bigint; align contact_master.city_id type to company_master.city_id + add its missing FK; numeric for money (meeting_question/new_sales_question float, lead_master.value varchar), proper time/interval for meeting_time/duration. Do before any revenue/forecast reporting.'),
+      // ---- Embedding (docs/product/EMBEDDING-PLAN.md) — AI, owner-gated ----
+      V('ALT-359','Enable pgvector + embeddings table + embed-on-write flag (capture from NOW)','Feature','P1','Planned',
+        'EMBEDDING-PLAN: cost asymmetry — embed-on-write is ~free/continuous; backfill is one-time + lossy (un-stored text can never be embedded). Phase 1: enable pgvector, add an embeddings table, embed-on-write (trigger/queue, behind a flag) for companies/contacts/interactions(call notes+dispositions)/meeting-feedback/leads. Gated behind the security/launch work (ALT-353). Depends on the clean interaction log (ALT-352). See docs/product/EMBEDDING-PLAN.md + AI-PGVECTOR-PLAN.md.'),
+      V('ALT-360','Embedding backfill job + retrieval/query patterns + vector RLS','Feature','P2','Planned',
+        'EMBEDDING-PLAN phase 2-3: backfill historical rows; retrieval (semantic search, similar-accounts, dedup, reach-out suggestions, which-100-to-target); RLS for vectors so retrieval respects record visibility. Powers the AI "superpower" (VISION). After ALT-359.'),
+      // ---- Buildable-now from Ankit's rulings (Stage-2 building this session) ----
+      V('ALT-361','Inline status edit uses global project + auto-resolves single-project (E1)','Feature','P1','In Progress',
+        'AMBIG E1: stop showing "Select a project first" — when the global project selector is set use it; when a record belongs to exactly ONE project auto-resolve to it; only prompt when genuinely ambiguous. Removes the daily wall for single-project agents. Building 2026-06-24.'),
+      V('ALT-362','QC gets Approvals access + mandatory rejection comment (B1/A5)','Feature','P1','In Progress',
+        'AMBIG B1/A5: QC (role 6) had no screen — give QC access to the Approvals queue (mirrors TL); require a non-empty comment when a reviewer REJECTS a report. (Project-scoping of the queue + the QC↔TL parallel-approver workflow = capture, needs downline link.) Building 2026-06-24.'),
+      V('ALT-363','Optional reassign reason + default-owner-self on create (Q1/A4)','Feature','P2','In Progress',
+        'OPEN-Q Q1 + AMBIG A4: optional "reason" when a TL reassigns a Sales Person (recorded on the reassignment); on create, default owner=self unless TL/manager/admin, with an "Assign to me" quick action. Building 2026-06-24.'),
+      V('ALT-364','UX-approved polish batch (grid/preview/search/auth/contrast)','Chore','P2','In Progress',
+        'UX-Audit (Ankit approved all): grid read-only truncation tooltips + frozen identity column; mailto/tel + copy on Company/Lead/Meeting/Wishlist previews; search clear-× parity on Companies/Contacts/Meetings/Wishlist; show/hide password on all auth screens + sales forgot-password + back-to-CRM switcher; conservative muted-text AA contrast bump. Building 2026-06-24.'),
+      V('ALT-365','Captured rulings refining existing tickets (access/roles/notif/calls/meeting/feedback)','Chore','P1','Planned',
+        'Ankit 2026-06-24 OPEN-Q/AMBIG rulings folded in — these refine existing tickets, mostly DB/RLS (capture): per-project access modes Public/Limited/Private/Public-edit + sensitive-field config (ALT-295/362-cap); downline/manager_id link + team-scoped visibility all modules (LAUNCH dep); notif recipient matrix incl created_by→assignee fix + cancel/drop + mandatory-comment-on-successful (ALT-346); sales role model + provisioning + super-admin approval (ALT-347); single call logger + admin-editable Call Disposition + Call-module Task-Manager-style UI (ALT-303); remove/fold Meeting module into Leads + lead→task + unified due-today queue (ALT-306, DESIGN DECISION); ONE feedback model — plain-language explain + recover earlier client-portal tweaks (ALT-311, BLOCKED on Ankit); converge MobileMeetingRecord vs PortalMeetingDetailPage (ALT-275); lite/viewer role for seniors (ALT-343); configurable create rights default-off + create-from-existing (ALT-174); design-system demos for approval (ALT-314/315/321); per-project client recording-reveal toggle (D4); edit-audit actor+role (ALT-354). Full rulings in OPEN-QUESTIONS.md + AMBIGUOUS-DECISIONS.md.'),
+    ];
+  })()),
+
   ...uxAuditTickets(),
 ];
 

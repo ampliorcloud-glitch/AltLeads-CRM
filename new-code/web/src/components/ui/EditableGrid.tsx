@@ -125,7 +125,9 @@ function EditableCell<Row>({ row, col }: { row: Row; col: EditableColumn<Row> })
     const content = col.render ? col.render(row) : (original || <span style={{ color: '#d1d5db' }}>—</span>);
     return (
       <div
-        title={disabled || undefined}
+        // Hover-to-read clipped text: tooltip the cell's own value (or the
+        // disabled reason when blocked). Skip when render() owns a node.
+        title={disabled || (!col.render && original ? original : undefined)}
         style={{
           padding: '0 10px',
           height: '100%',
@@ -276,6 +278,14 @@ export function EditableGrid<Row>({
     );
   }
 
+  // Frozen identity columns: the checkbox, the open-↗ button, and the first
+  // data column stick to the left so the record name stays visible during
+  // horizontal scroll. Offsets are the cumulative widths of the fixed leading
+  // columns (header z=2 corner, body z=1, opaque bg so rows don't bleed through).
+  const selectW = hasSelect ? 36 : 0;
+  const openW = onOpenRow ? 32 : 0;
+  const col0Left = selectW + openW;
+
   return (
     <div
       style={{
@@ -290,7 +300,7 @@ export function EditableGrid<Row>({
         <thead>
           <tr>
             {hasSelect && (
-              <th style={{ ...TH, width: 36, textAlign: 'center' }}>
+              <th style={{ ...TH, width: 36, textAlign: 'center', position: 'sticky', left: 0, zIndex: 2 }}>
                 <input
                   ref={selectAllRef}
                   type="checkbox"
@@ -301,9 +311,15 @@ export function EditableGrid<Row>({
                 />
               </th>
             )}
-            {onOpenRow && <th style={{ ...TH, width: 32 }} aria-label="Open" />}
-            {columns.map((c) => (
-              <th key={c.key} style={{ ...TH, width: c.width, textAlign: c.align ?? 'left' }}>
+            {onOpenRow && <th style={{ ...TH, width: 32, position: 'sticky', left: selectW, zIndex: 2 }} aria-label="Open" />}
+            {columns.map((c, ci) => (
+              <th
+                key={c.key}
+                style={{
+                  ...TH, width: c.width, textAlign: c.align ?? 'left',
+                  ...(ci === 0 ? { position: 'sticky' as const, left: col0Left, zIndex: 2 } : null),
+                }}
+              >
                 {c.header}
               </th>
             ))}
@@ -312,13 +328,14 @@ export function EditableGrid<Row>({
         <tbody>
           {rows.map((row) => {
             const selected = hasSelect && isSelected!(row);
+            const stickyBg = selected ? '#EFF6FF' : 'var(--color-surface)';
             return (
               <tr
                 key={getKey(row)}
                 style={{ background: selected ? '#EFF6FF' : undefined, transition: 'background 0.1s' }}
               >
                 {hasSelect && (
-                  <td style={{ ...TD, width: 36, textAlign: 'center' }}>
+                  <td style={{ ...TD, width: 36, textAlign: 'center', position: 'sticky', left: 0, zIndex: 1, background: stickyBg }}>
                     <input
                       type="checkbox"
                       aria-label="Select row"
@@ -329,7 +346,7 @@ export function EditableGrid<Row>({
                   </td>
                 )}
                 {onOpenRow && (
-                  <td style={{ ...TD, width: 32, textAlign: 'center' }}>
+                  <td style={{ ...TD, width: 32, textAlign: 'center', position: 'sticky', left: selectW, zIndex: 1, background: stickyBg }}>
                     <button
                       type="button"
                       title="Open record"
@@ -346,8 +363,14 @@ export function EditableGrid<Row>({
                     </button>
                   </td>
                 )}
-                {columns.map((c) => (
-                  <td key={c.key} style={{ ...TD, width: c.width, textAlign: c.align ?? 'left' }}>
+                {columns.map((c, ci) => (
+                  <td
+                    key={c.key}
+                    style={{
+                      ...TD, width: c.width, textAlign: c.align ?? 'left',
+                      ...(ci === 0 ? { position: 'sticky' as const, left: col0Left, zIndex: 1, background: stickyBg } : null),
+                    }}
+                  >
                     <EditableCell row={row} col={c} />
                   </td>
                 ))}

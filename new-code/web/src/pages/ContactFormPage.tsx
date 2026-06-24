@@ -190,6 +190,10 @@ export function ContactFormPage() {
 
     setSubmitting(true);
     const linkedinClean = deriveLinkedinClean(linkedinUrl);
+    // Default-owner-self (AMBIG A4) intentionally does NOT apply here: a contact
+    // has no owner field on this create form — ownership is per-project
+    // (contact_project_status.owner_user_id) and assigned later via the Reassign
+    // flow, so there is no assignee picker to default. Skipped gracefully.
     const createdBy = user?.email ?? profile?.email ?? 'unknown';
 
     const { contactId, error } = await insertContact({

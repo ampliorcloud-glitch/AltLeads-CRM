@@ -14,7 +14,7 @@ import {
   useProjectScope,
   defaultProjectKey,
 } from '../contexts/ProjectContext';
-import { Loader2, Check, Lock, User as UserIcon, Bell, Layers } from 'lucide-react';
+import { Loader2, Check, Lock, User as UserIcon, Bell, Layers, Eye, EyeOff } from 'lucide-react';
 
 const inputBase: React.CSSProperties = {
   fontSize: 13,
@@ -34,6 +34,23 @@ const readonlyBase: React.CSSProperties = {
   background: '#f4f4f5',
   color: '#52525b',
   cursor: 'not-allowed',
+};
+
+// Eye-toggle button for the change-password fields (UX-Audit Top #20). Sits at the
+// right edge of the relatively-positioned input wrapper; matches the auth screens.
+const pwToggleStyle: React.CSSProperties = {
+  position: 'absolute',
+  top: '50%',
+  right: 9,
+  transform: 'translateY(-50%)',
+  background: 'transparent',
+  border: 'none',
+  cursor: 'pointer',
+  color: 'var(--color-gray-400)',
+  padding: 0,
+  lineHeight: 0,
+  display: 'flex',
+  alignItems: 'center',
 };
 
 function initials(name: string): string {
@@ -143,6 +160,8 @@ export function SettingsPage() {
   // Password form state
   const [pw, setPw] = useState('');
   const [pwConfirm, setPwConfirm] = useState('');
+  const [showPw, setShowPw] = useState(false);
+  const [showPwConfirm, setShowPwConfirm] = useState(false);
   const [pwSaving, setPwSaving] = useState(false);
   const [pwError, setPwError] = useState<string | null>(null);
   const [pwOk, setPwOk] = useState(false);
@@ -457,28 +476,50 @@ export function SettingsPage() {
 
               <div className="grid grid-cols-2 gap-3">
                 <Field label="New password">
-                  <TextInput
-                    type="password"
-                    value={pw}
-                    onChange={(e) => {
-                      setPw(e.target.value);
-                      setPwOk(false);
-                    }}
-                    autoComplete="new-password"
-                    placeholder="••••••••"
-                  />
+                  <div style={{ position: 'relative' }}>
+                    <TextInput
+                      type={showPw ? 'text' : 'password'}
+                      value={pw}
+                      onChange={(e) => {
+                        setPw(e.target.value);
+                        setPwOk(false);
+                      }}
+                      autoComplete="new-password"
+                      placeholder="••••••••"
+                      style={{ paddingRight: 36 }}
+                    />
+                    <button
+                      type="button"
+                      aria-label={showPw ? 'Hide password' : 'Show password'}
+                      onClick={() => setShowPw((v) => !v)}
+                      style={pwToggleStyle}
+                    >
+                      {showPw ? <EyeOff size={15} /> : <Eye size={15} />}
+                    </button>
+                  </div>
                 </Field>
                 <Field label="Confirm new password">
-                  <TextInput
-                    type="password"
-                    value={pwConfirm}
-                    onChange={(e) => {
-                      setPwConfirm(e.target.value);
-                      setPwOk(false);
-                    }}
-                    autoComplete="new-password"
-                    placeholder="••••••••"
-                  />
+                  <div style={{ position: 'relative' }}>
+                    <TextInput
+                      type={showPwConfirm ? 'text' : 'password'}
+                      value={pwConfirm}
+                      onChange={(e) => {
+                        setPwConfirm(e.target.value);
+                        setPwOk(false);
+                      }}
+                      autoComplete="new-password"
+                      placeholder="••••••••"
+                      style={{ paddingRight: 36 }}
+                    />
+                    <button
+                      type="button"
+                      aria-label={showPwConfirm ? 'Hide password' : 'Show password'}
+                      onClick={() => setShowPwConfirm((v) => !v)}
+                      style={pwToggleStyle}
+                    >
+                      {showPwConfirm ? <EyeOff size={15} /> : <Eye size={15} />}
+                    </button>
+                  </div>
                 </Field>
               </div>
 

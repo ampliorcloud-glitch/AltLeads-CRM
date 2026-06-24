@@ -201,15 +201,23 @@ const PAGE_SIZE_OPTIONS = [25, 50, 100];
 
 interface InlineStatusCellProps {
   contactId: number;
+  /**
+   * The project this inline edit writes to — RESOLVED by the parent (AMBIG E1):
+   * the global scope when set, else the contact's sole project when it belongs to
+   * exactly one. Only null when genuinely ambiguous (no global scope AND the
+   * contact is in multiple projects), in which case the cell stays read-only.
+   */
   projectId: number | null;
   current: string | null;
   options: DropdownOption[];
   actorId: string | null;
+  /** Tooltip when read-only (projectId null). Defaults to "Select a project first". */
+  blockedReason?: string;
   onUpdated: (contactId: number, newStatus: string | null) => void;
 }
 
 function InlineStatusCell({
-  contactId, projectId, current, options, actorId, onUpdated,
+  contactId, projectId, current, options, actorId, blockedReason, onUpdated,
 }: InlineStatusCellProps) {
   const [editing, setEditing] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -244,7 +252,7 @@ function InlineStatusCell({
     return (
       <span
         onClick={(e) => { e.stopPropagation(); if (projectId) setEditing(true); }}
-        title={projectId ? 'Click to change status' : 'Select a project first'}
+        title={projectId ? 'Click to change status' : (blockedReason ?? 'Select a project first')}
         style={{ cursor: projectId ? 'pointer' : 'default', display: 'inline-block' }}
       >
         <StatusBadge value={current} category="contact_status" />
@@ -403,6 +411,12 @@ export function ContactsPage() {
   // contact_status dropdown options
   const [statusOptions, setStatusOptions] = useState<DropdownOption[]>([]);
 
+  // Per-contact project membership (contact_id -> distinct project ids). Only
+  // loaded when NO global project is scoped, to auto-resolve the inline status
+  // edit for single-project contacts (AMBIG E1). Cleared when a global project is
+  // selected (the global scope is used directly).
+  const [contactProjects, setContactProjects] = useState<Record<number, number[]>>({});
+
   // Column customizer state
   const [columnPrefs, setColumnPrefs] = useState<ColumnPref[]>(() => defaultColumnPrefs(ALL_COLUMNS));
 
@@ -523,6 +537,66 @@ export function ContactsPage() {
     void loadOwners(projectId, ids, () => !cancelled);
     return () => { cancelled = true; };
   }, [projectId, allContacts, loadOwners]);
+
+  // No global project scoped → load each contact's project membership so a
+  // single-project contact can auto-resolve its inline status edit (AMBIG E1).
+  // Then load that resolved project's status into statusMap so the badge shows
+  // the real value (not a blank that only appears once a project is picked).
+  useEffect(() => {
+    if (projectId != null || allContacts.length === 0) { setContactProjects({}); return; }
+    let cancelled = false;
+    const ids = allContacts.map((c) => c.contact_id);
+    void (async () => {
+      // Membership: contact_id -> distinct project ids (chunked like the status fetch).
+      const projMap: Record<number, number[]> = {};
+      const CHUNK = 200;
+      for (let i = 0; i < ids.length; i += CHUNK) {
+        const slice = ids.slice(i, i + CHUNK);
+        const { data, error } = await supabase
+          .from('contact_project_status')
+          .select('contact_id, project_id')
+          .in('contact_id', slice);
+        if (error) { console.error('[ContactsPage] contact projects fetch error', error); continue; }
+        for (const row of (data ?? []) as { contact_id: number; project_id: number }[]) {
+          const list = projMap[row.contact_id] ?? (projMap[row.contact_id] = []);
+          if (!list.includes(row.project_id)) list.push(row.project_id);
+        }
+      }
+      if (cancelled) return;
+      setContactProjects(projMap);
+      // For contacts resolving to exactly one project, load that project's status
+      // so the badge renders the real value. Group ids per project id.
+      const byProject = new Map<number, number[]>();
+      for (const id of ids) {
+        const list = projMap[id];
+        if (list && list.length === 1) {
+          const arr = byProject.get(list[0]) ?? [];
+          arr.push(id);
+          byProject.set(list[0], arr);
+        }
+      }
+      for (const [pid, pids] of byProject) {
+        const map = await fetchContactStatuses(pid, pids);
+        if (cancelled) return;
+        setStatusMap((prev) => ({ ...prev, ...map }));
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [projectId, allContacts]);
+
+  /**
+   * Resolve the project the inline status edit should write to for a contact
+   * (AMBIG E1): the global scope when set; else the contact's sole project when it
+   * belongs to exactly one; else null (genuinely ambiguous → read-only).
+   */
+  const resolveProjectFor = useCallback(
+    (contactId: number): number | null => {
+      if (projectId != null) return projectId;
+      const list = contactProjects[contactId];
+      return list && list.length === 1 ? list[0] : null;
+    },
+    [projectId, contactProjects],
+  );
 
   // TODO visibility: per-project status/notes are owner + admin only (security pass).
 
@@ -711,8 +785,15 @@ export function ContactsPage() {
   /*  owner) are read-only. Saves reuse the page's existing audited       */
   /*  writer (upsertContactStatus), same as the inline status cell.       */
   /* ----------------------------------------------------------------- */
-  const projectGate = (): string | null =>
-    projectId == null ? 'Select a project first' : null;
+  // Per-row gate for the editable per-project cells: resolve the edit project
+  // (global scope, else the contact's sole project — AMBIG E1). Read-only only
+  // when genuinely ambiguous (no global scope AND the contact is in >1 project).
+  const projectGate = (r: ContactRow): string | null => {
+    if (resolveProjectFor(r.contact_id) != null) return null;
+    return (contactProjects[r.contact_id]?.length ?? 0) > 1
+      ? 'In multiple projects — pick one in the Project selector above'
+      : 'Select a project first';
+  };
 
   const EDITABLE_COLUMNS = useMemo<EditableColumn<ContactRow>[]>(() => [
     {
@@ -779,9 +860,10 @@ export function ContactsPage() {
       disabledReason: projectGate,
       render: (r) => <StatusBadge value={r.contact_status} category="contact_status" />,
       onSave: async (r, next) => {
-        if (projectId == null) return { error: 'Select a project first' };
+        const pid = resolveProjectFor(r.contact_id);
+        if (pid == null) return { error: 'Select a project first' };
         const newStatus = next === '' ? null : next;
-        const res = await upsertContactStatus(r.contact_id, projectId, { contact_status: newStatus }, actorId);
+        const res = await upsertContactStatus(r.contact_id, pid, { contact_status: newStatus }, actorId);
         if (!res.error) handleStatusUpdated(r.contact_id, newStatus);
         return res;
       },
@@ -811,9 +893,10 @@ export function ContactsPage() {
       getValue: (r) => r.description ?? '',
       disabledReason: projectGate,
       onSave: async (r, next) => {
-        if (projectId == null) return { error: 'Select a project first' };
+        const pid = resolveProjectFor(r.contact_id);
+        if (pid == null) return { error: 'Select a project first' };
         const value = next.trim() === '' ? null : next;
-        const res = await upsertContactStatus(r.contact_id, projectId, { description: value }, actorId);
+        const res = await upsertContactStatus(r.contact_id, pid, { description: value }, actorId);
         if (!res.error) {
           setStatusMap((prev) => ({
             ...prev,
@@ -836,9 +919,10 @@ export function ContactsPage() {
       getValue: (r) => r.comments ?? '',
       disabledReason: projectGate,
       onSave: async (r, next) => {
-        if (projectId == null) return { error: 'Select a project first' };
+        const pid = resolveProjectFor(r.contact_id);
+        if (pid == null) return { error: 'Select a project first' };
         const value = next.trim() === '' ? null : next;
-        const res = await upsertContactStatus(r.contact_id, projectId, { comments: value }, actorId);
+        const res = await upsertContactStatus(r.contact_id, pid, { comments: value }, actorId);
         if (!res.error) {
           setStatusMap((prev) => ({
             ...prev,
@@ -854,7 +938,7 @@ export function ContactsPage() {
     },
     { key: 'designation', header: 'Designation', getValue: (r) => r.designation ?? '' },
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  ], [statusOptions, projectId, actorId, statusLoading]);
+  ], [statusOptions, projectId, actorId, statusLoading, resolveProjectFor, contactProjects]);
 
   /* -------------------------------------------------------- render -- */
 
@@ -1420,7 +1504,12 @@ export function ContactsPage() {
                                 </td>
                               );
 
-                            case 'contact_status':
+                            case 'contact_status': {
+                              // Resolve the edit project: global scope, else the
+                              // contact's sole project (AMBIG E1) — single-project
+                              // contacts skip the "select a project" wall.
+                              const effectiveProjectId = resolveProjectFor(row.contact_id);
+                              const inMultiple = projectId == null && (contactProjects[row.contact_id]?.length ?? 0) > 1;
                               return (
                                 <td key={p.key} style={{ ...tdStyle, maxWidth: 160 }}>
                                   {statusLoading ? (
@@ -1428,15 +1517,17 @@ export function ContactsPage() {
                                   ) : (
                                     <InlineStatusCell
                                       contactId={row.contact_id}
-                                      projectId={projectId}
+                                      projectId={effectiveProjectId}
                                       current={row.contact_status}
                                       options={statusOptions}
                                       actorId={actorId}
+                                      blockedReason={inMultiple ? 'In multiple projects — pick one in the Project selector above' : 'Select a project first'}
                                       onUpdated={handleStatusUpdated}
                                     />
                                   )}
                                 </td>
                               );
+                            }
 
                             case 'owner_name':
                               return (

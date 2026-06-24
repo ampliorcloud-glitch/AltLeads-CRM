@@ -223,7 +223,7 @@ export function LeadFormPage() {
   const { id } = useParams<{ id: string }>();
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
-  const { profile } = useAuth();
+  const { profile, canReassign } = useAuth();
   const isEdit = Boolean(id);
   const leadId = id ? Number(id) : null;
 
@@ -318,11 +318,15 @@ export function LeadFormPage() {
         contact_id: null, // will be set if lead has contact_id in the future
       });
     } else if (!isEdit) {
-      // Default the Agent (Owner) to the current user. Match by user_id (the lookup
-      // option id IS user_master.user_id) — matching by full_name is ambiguous and
-      // breaks for blank/duplicate names.
+      // Default the Agent (Owner) to the current user (AMBIG A4) — but only for
+      // outreach roles; a TL/manager/admin (canReassign) may pick freely so we
+      // leave their picker empty. Match by user_id (the lookup option id IS
+      // user_master.user_id) — matching by full_name is ambiguous and breaks for
+      // blank/duplicate names.
       const currentUser =
-        profile?.user_id != null ? lookupsData.users.find((u) => u.id === profile.user_id) : undefined;
+        !canReassign && profile?.user_id != null
+          ? lookupsData.users.find((u) => u.id === profile.user_id)
+          : undefined;
 
       // Prefill from query params when launched via "+ New Lead" from a contact or
       // company detail page: /leads/new?contact=<id>&company=<id>.
@@ -357,7 +361,7 @@ export function LeadFormPage() {
       });
     }
     setLoading(false);
-  }, [isEdit, leadId, profile, searchParams]);
+  }, [isEdit, leadId, profile, canReassign, searchParams]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -705,6 +709,16 @@ export function LeadFormPage() {
                   options={users}
                   placeholder="Select agent..."
                 />
+                {profile?.user_id != null && form.agent_id !== profile.user_id && (
+                  <button
+                    type="button"
+                    onClick={() => set('agent_id', profile.user_id)}
+                    className="self-start text-blue-600 hover:text-blue-700 font-medium"
+                    style={{ fontSize: 11 }}
+                  >
+                    Assign to me
+                  </button>
+                )}
               </FieldGroup>
               <FieldGroup label="Source" error={errors.source_id}>
                 <SelectInput

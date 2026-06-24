@@ -8,6 +8,11 @@
  * skip dedup entirely and always insert with is_demo=true.
  *
  * Owner is always "Unassigned" for now. // TODO ownership
+ *
+ * Default-owner-self (AMBIG A4) intentionally does NOT apply here: this form has
+ * no owner/assignee picker — company ownership is per-project
+ * (company_project_status.owner_user_id) and assigned later via the Reassign
+ * flow. Skipped gracefully (no picker to default).
  */
 
 import React, { useEffect, useRef, useState } from 'react';

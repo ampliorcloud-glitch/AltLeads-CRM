@@ -34,6 +34,12 @@ interface AuthContextType {
   /** True when the user holds the SALES_HEAD role. */
   isSalesHead: boolean;
   /**
+   * Whether this user may access the Lead Report Approvals queue. Admins and
+   * Team Leads review reports; QC (role 6) mirrors the Team Lead's approvals
+   * access since QC has no other screen today (AMBIG B1/A5).
+   */
+  isApprover: boolean;
+  /**
    * Whether this user may reassign / change the owner of a record (lead,
    * company, contact, meeting). Admin or any manager (Team Lead / Sales Head).
    * Plain agents and sales persons cannot reassign (ALT-288 OD-4). Sales-side
@@ -167,6 +173,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const isAdmin = roles.includes('ADMIN');
   const isTeamLead = roles.includes('TEAM_LEAD');
   const isSalesHead = roles.includes('SALES_HEAD');
+  const isApprover = isAdmin || isTeamLead || roles.includes('QC');
   const canReassign = isAdmin || isTeamLead || isSalesHead;
   const canCreateData = isAdmin;
 
@@ -181,6 +188,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       isAdmin,
       isTeamLead,
       isSalesHead,
+      isApprover,
       canReassign,
       canCreateData,
       loading,

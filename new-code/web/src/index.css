@@ -18,10 +18,19 @@
   --color-gray-100:  #F3F4F6;
   --color-gray-200:  #E5E7EB;
   --color-gray-300:  #D1D5DB;
-  --color-gray-400:  #9CA3AF;
+  /* gray-400 nudged one step darker (#9CA3AF -> #717784) for WCAG AA on white.
+     #9CA3AF on #fff is ~2.6:1 and fails AA wherever it carries readable body/label
+     text (help copy, secondary labels, timestamps). #717784 measures ~4.6:1 (AA) and
+     is still clearly lighter than gray-500, so the muted hierarchy is preserved
+     without restyling the app. (UX-Audit / persona ALT-319.) */
+  --color-gray-400:  #717784;
   --color-gray-500:  #6B7280;
   --color-gray-700:  #374151;
   --color-gray-900:  #111827;
+
+  /* Muted body/label text — AA-compliant on white (~4.8:1). Prefer this for
+     meaningful secondary text rather than the lighter decorative grays. */
+  --color-text-muted: #6B7280;
 
   /* Surface */
   --color-surface:   #FFFFFF;

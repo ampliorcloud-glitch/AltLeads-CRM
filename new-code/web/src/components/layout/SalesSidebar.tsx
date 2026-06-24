@@ -1,6 +1,6 @@
 import React from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
-import { Users, CalendarDays, MessageSquare, Star, LogOut } from 'lucide-react';
+import { Users, CalendarDays, MessageSquare, Star, LogOut, ArrowLeft } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { Logo } from '../ui/Logo';
 
@@ -20,7 +20,7 @@ const navItems: SalesNavItem[] = [
 ];
 
 export function SalesSidebar() {
-  const { signOut } = useAuth();
+  const { signOut, isInternalUser } = useAuth();
   const navigate = useNavigate();
 
   const handleLogout = async () => {
@@ -130,8 +130,54 @@ export function SalesSidebar() {
         ))}
       </nav>
 
-      {/* Bottom: logout */}
+      {/* Bottom: back-to-CRM (internal/admin users only) + logout */}
       <div style={{ padding: '8px 10px 16px', borderTop: '1px solid var(--border-color)' }}>
+        {isInternalUser && (
+          <button
+            onClick={() => navigate('/dashboard')}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 10,
+              padding: '0 10px',
+              height: 36,
+              borderRadius: 'var(--radius-btn)',
+              width: '100%',
+              border: 'none',
+              background: 'transparent',
+              color: 'var(--color-gray-500)',
+              fontSize: 13,
+              fontWeight: 400,
+              cursor: 'pointer',
+              transition: 'background 0.12s, color 0.12s',
+              textAlign: 'left',
+              marginBottom: 2,
+            }}
+            onMouseEnter={(e) => {
+              (e.currentTarget as HTMLElement).style.background = 'var(--color-gray-100)';
+              (e.currentTarget as HTMLElement).style.color = 'var(--color-gray-700)';
+            }}
+            onMouseLeave={(e) => {
+              (e.currentTarget as HTMLElement).style.background = 'transparent';
+              (e.currentTarget as HTMLElement).style.color = 'var(--color-gray-500)';
+            }}
+          >
+            <span
+              style={{
+                width: 28,
+                height: 28,
+                borderRadius: 6,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                flexShrink: 0,
+              }}
+            >
+              <ArrowLeft size={15} strokeWidth={1.75} />
+            </span>
+            Back to CRM
+          </button>
+        )}
         <button
           onClick={handleLogout}
           style={{

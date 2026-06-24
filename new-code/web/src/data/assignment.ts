@@ -52,6 +52,8 @@ function fireOwnerNotify(p: {
   entityWord: string; // 'lead' | 'company' | 'contact'
   lead_id?: number;
   meeting_id?: number;
+  /** Optional free-text reason typed by the actor; appended to the note/email. */
+  reason?: string;
 }): void {
   if (!p.recipientUserId || p.recipientUserId <= 0) return;
   void (async () => {
@@ -59,18 +61,21 @@ function fireOwnerNotify(p: {
       const { email } = await resolveUserEmailAndName(supabase, p.recipientUserId);
       const actorInfo = await resolveUserEmailAndName(supabase, Number(p.actor));
       const name = p.recordName || `#${p.lead_id ?? p.meeting_id ?? ''}`;
+      const reason = p.reason?.trim();
+      const reasonSuffix = reason ? ` — Reason: ${reason}` : '';
       if (email) {
         await notify(p.isReassign ? 'lead_reassigned' : 'lead_assigned', email, {
           leadName: name,
           company: p.company ?? '',
           assignedByName: actorInfo.name || p.actor,
+          reason: reason ?? '',
         });
       }
       await notifyInApp(supabase, p.recipientUserId, {
         status: p.isReassign ? `${cap(p.entityWord)} Reassigned` : `${cap(p.entityWord)} Assigned`,
         notif_descr: p.isReassign
-          ? `A ${p.entityWord} has been reassigned to you: "${name}"`
-          : `A new ${p.entityWord} has been assigned to you: "${name}"`,
+          ? `A ${p.entityWord} has been reassigned to you: "${name}"${reasonSuffix}`
+          : `A new ${p.entityWord} has been assigned to you: "${name}"${reasonSuffix}`,
         route: p.route,
         lead_id: p.lead_id,
         meeting_id: p.meeting_id,
@@ -166,6 +171,7 @@ export async function reassignLead(input: {
   leadName?: string;
   company?: string;
   isReassign?: boolean;
+  reason?: string;
 }): Promise<{ error: string } | null> {
   const actorErr = assertNumericActor(input.actor);
   if (actorErr) return actorErr;
@@ -185,6 +191,7 @@ export async function reassignLead(input: {
     route: `/leads/${input.leadId}`,
     entityWord: 'lead',
     lead_id: input.leadId,
+    reason: input.reason,
   });
   return null;
 }
@@ -221,6 +228,7 @@ export async function reassignMeeting(input: {
   meetingName?: string;
   company?: string;
   isReassign?: boolean;
+  reason?: string;
 }): Promise<{ error: string } | null> {
   const actorErr = assertNumericActor(input.actor);
   if (actorErr) return actorErr;
@@ -247,6 +255,7 @@ export async function reassignMeeting(input: {
     entityWord: 'lead',
     lead_id: leadId,
     meeting_id: input.meetingId,
+    reason: input.reason,
   });
   return null;
 }
@@ -314,6 +323,7 @@ export async function reassignCompany(input: {
   actor: string;
   companyName?: string;
   isReassign?: boolean;
+  reason?: string;
 }): Promise<{ error: string } | null> {
   const actorErr = assertNumericActor(input.actor);
   if (actorErr) return actorErr;
@@ -354,6 +364,7 @@ export async function reassignCompany(input: {
     recordName: input.companyName,
     route: `/companies/${input.companyId}`,
     entityWord: 'company',
+    reason: input.reason,
   });
   return null;
 }
@@ -369,6 +380,7 @@ export async function reassignContact(input: {
   actor: string;
   contactName?: string;
   isReassign?: boolean;
+  reason?: string;
 }): Promise<{ error: string } | null> {
   const actorErr = assertNumericActor(input.actor);
   if (actorErr) return actorErr;
@@ -405,6 +417,7 @@ export async function reassignContact(input: {
     recordName: input.contactName,
     route: `/contacts/${input.contactId}`,
     entityWord: 'contact',
+    reason: input.reason,
   });
   return null;
 }

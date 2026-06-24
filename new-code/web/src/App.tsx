@@ -70,6 +70,24 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
 }
 
 /**
+ * Guards the Lead Report Approvals queue (/approvals). Builds on ProtectedRoute
+ * (session + internal-only), then narrows access to approvers — Admin, Team Lead,
+ * or QC (role 6), which mirrors the Team Lead's approvals access since QC has no
+ * other screen today (AMBIG B1/A5). Non-approver internal users (e.g. plain
+ * agents) are bounced to the dashboard.
+ */
+function ApproverRoute({ children }: { children: React.ReactNode }) {
+  const { loading, session, isApprover } = useAuth();
+
+  // Narrow to approvers only once auth/roles have hydrated and a session exists.
+  // ProtectedRoute owns the loading spinner + no-session / pure-sales redirects;
+  // here we only bounce a logged-in internal non-approver (e.g. a plain agent).
+  if (!loading && session && !isApprover) return <Navigate to="/dashboard" replace />;
+
+  return <ProtectedRoute>{children}</ProtectedRoute>;
+}
+
+/**
  * Guards the Sales Portal routes (/sales/*). Requires a session AND that the user
  * is either a sales user OR an internal user — i.e. sales staff use it day-to-day,
  * and internal staff (e.g. admins) may also view it. Not logged in → /sales/login.
@@ -325,9 +343,9 @@ function AppRoutes() {
       <Route
         path="/approvals"
         element={
-          <ProtectedRoute>
+          <ApproverRoute>
             <ApprovalsPage />
-          </ProtectedRoute>
+          </ApproverRoute>
         }
       />
       <Route

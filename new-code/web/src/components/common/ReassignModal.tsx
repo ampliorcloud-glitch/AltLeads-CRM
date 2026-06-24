@@ -20,6 +20,10 @@ const selectCls =
   'w-full border border-zinc-300 rounded-md px-3 text-zinc-800 bg-white ' +
   'focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-colors';
 
+const textareaCls =
+  'w-full border border-zinc-300 rounded-md px-3 py-2 text-zinc-800 bg-white resize-y ' +
+  'focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-colors';
+
 export function ReassignModal({
   /** Heading noun, e.g. "Lead", "Meeting", "Company". */
   entityLabel,
@@ -41,10 +45,15 @@ export function ReassignModal({
   owners: UserOption[];
   saving: boolean;
   error: string | null;
-  onConfirm: (ownerId: number) => void;
+  /**
+   * Confirm callback. `reason` is the optional, free-text note typed by the
+   * actor (empty string when left blank) — callers that don't care may ignore it.
+   */
+  onConfirm: (ownerId: number, reason?: string) => void;
   onClose: () => void;
 }) {
   const [ownerId, setOwnerId] = useState<number | null>(currentOwnerId);
+  const [reason, setReason] = useState('');
 
   // "Reassign" when a current owner exists (single record); bulk is always a (re)assign.
   const isBulk = count > 1;
@@ -94,6 +103,26 @@ export function ReassignModal({
           )}
         </div>
 
+        <div>
+          <label
+            htmlFor="reassign-reason"
+            className="block mb-1 text-zinc-600 font-medium"
+            style={{ fontSize: 12 }}
+          >
+            Reason <span className="text-zinc-400 font-normal">(optional)</span>
+          </label>
+          <textarea
+            id="reassign-reason"
+            value={reason}
+            onChange={(e) => setReason(e.target.value)}
+            className={textareaCls}
+            style={{ fontSize: 13, minHeight: 60 }}
+            rows={2}
+            placeholder="Why is this being reassigned? (recorded in the activity log)"
+            disabled={saving}
+          />
+        </div>
+
         {error && (
           <p className="text-red-600" style={{ fontSize: 12 }}>
             {error}
@@ -111,7 +140,7 @@ export function ReassignModal({
           Cancel
         </button>
         <button
-          onClick={() => ownerId != null && onConfirm(ownerId)}
+          onClick={() => ownerId != null && onConfirm(ownerId, reason.trim() || undefined)}
           disabled={saving || ownerId == null || (!isBulk && ownerId === currentOwnerId)}
           className="inline-flex items-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed text-white font-medium rounded-md transition-colors"
           style={{ fontSize: 13, padding: '7px 14px', height: 34, background: 'var(--color-brand)' }}

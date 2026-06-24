@@ -36,6 +36,7 @@ import {
   STATUS_CONVERTED,
   type WishlistDetail,
 } from '../../data/wishlist';
+import { CopyButton } from '../ui/CopyButton';
 
 const BRAND = 'var(--color-brand, #1A7EE8)';
 
@@ -75,38 +76,42 @@ function companyInitials(name: string): string {
   return (words[0][0] + words[1][0]).toUpperCase();
 }
 
-/* Compact label/value row (mirrors ContactPreview Field). */
+/* Compact label/value row with optional link + copy (mirrors ContactPreview Field). */
 function Field({
-  icon, label, value, href,
+  icon, label, value, href, copyValue,
 }: {
   icon: React.ReactNode;
   label: string;
   value: React.ReactNode;
   href?: string;
+  copyValue?: string | null;
 }) {
   return (
     <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10, minHeight: 28 }}>
       <span style={{ color: '#9CA3AF', marginTop: 1, flexShrink: 0 }}>{icon}</span>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 1, minWidth: 0 }}>
         <span style={{ fontSize: 10.5, color: '#9CA3AF', fontWeight: 500 }}>{label}</span>
-        {href ? (
-          <a
-            href={href}
-            target={href.startsWith('http') ? '_blank' : undefined}
-            rel="noopener noreferrer"
-            title={typeof value === 'string' ? value : undefined}
-            style={{ fontSize: 13, color: BRAND, textDecoration: 'none', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
-          >
-            {value}
-          </a>
-        ) : (
-          <span
-            title={typeof value === 'string' ? value : undefined}
-            style={{ fontSize: 13, color: '#111827', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
-          >
-            {value || <span style={{ color: '#D1D5DB' }}>—</span>}
-          </span>
-        )}
+        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, minWidth: 0 }}>
+          {href ? (
+            <a
+              href={href}
+              target={href.startsWith('http') ? '_blank' : undefined}
+              rel="noopener noreferrer"
+              title={copyValue ?? (typeof value === 'string' ? value : undefined)}
+              style={{ fontSize: 13, color: BRAND, textDecoration: 'none', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+            >
+              {value}
+            </a>
+          ) : (
+            <span
+              title={copyValue ?? (typeof value === 'string' ? value : undefined)}
+              style={{ fontSize: 13, color: '#111827', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+            >
+              {value || <span style={{ color: '#D1D5DB' }}>—</span>}
+            </span>
+          )}
+          {copyValue ? <CopyButton value={copyValue} label={label} /> : null}
+        </span>
       </div>
     </div>
   );
@@ -239,6 +244,7 @@ export function WishlistPreview({ wishlistId }: { wishlistId: number }) {
             label="Lead Number / Phone"
             value={item.phone}
             href={item.phone ? `tel:${item.phone}` : undefined}
+            copyValue={item.phone}
           />
           <Field icon={<Briefcase size={14} />} label="Industry" value={item.industry} />
           <Field icon={<Building2 size={14} />} label="Designation" value={item.designation} />

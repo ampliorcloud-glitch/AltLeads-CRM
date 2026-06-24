@@ -398,15 +398,13 @@ function RejectModal({
 /* ─────────────── Page ───────────────────────────────────────── */
 
 export function ApprovalsPage() {
-  const { profile } = useAuth();
+  const { profile, isApprover } = useAuth();
   const navigate = useNavigate();
   const confirm = useConfirm();
 
   // Audit identifier must ALWAYS be the current user's user_id (never a name),
   // since created_by/updated_by are keyed on user_id for ownership/RLS.
   const actor = profile?.user_id != null ? String(profile.user_id) : null;
-
-  const isApprover = profile?.role === 'ADMIN' || profile?.role === 'TEAM_LEAD';
 
   const [loading, setLoading] = useState(true);
   const [rows, setRows] = useState<PendingApprovalRow[]>([]);
@@ -488,7 +486,7 @@ export function ApprovalsPage() {
           <ShieldOff size={32} />
           <div className="text-center">
             <p className="font-medium text-zinc-600" style={{ fontSize: 15 }}>Access Restricted</p>
-            <p style={{ fontSize: 13, marginTop: 4 }}>Only Team Leads and Admins can access the approvals queue.</p>
+            <p style={{ fontSize: 13, marginTop: 4 }}>Only Team Leads, QC, and Admins can access the approvals queue.</p>
           </div>
           <button
             onClick={() => navigate('/dashboard')}

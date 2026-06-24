@@ -18,22 +18,36 @@ const inputBase: React.CSSProperties = {
 
 interface InlineAccountStatusCellProps {
   companyId: number;
+  /**
+   * The project this inline edit writes to. The parent RESOLVES this before
+   * passing it in (AMBIG E1): the global scope when one is selected, else the
+   * record's sole project when it belongs to exactly one. It's only null when
+   * genuinely ambiguous (no global scope AND the record is in multiple
+   * projects) — in which case the cell stays read-only with `blockedReason`.
+   */
   projectId: number | null;
   current: string | null;
   options: DropdownOption[];
   actorId: string | null;
+  /**
+   * Tooltip shown when `projectId` is null (read-only). Lets the parent explain
+   * WHY (e.g. "in multiple projects — pick one above"). Defaults to the original
+   * "Select a project first".
+   */
+  blockedReason?: string;
   /** Called with the saved value (null = cleared) only after a successful write. */
   onUpdated: (companyId: number, newStatus: string | null) => void;
 }
 
 /**
  * Inline-editable per-project Account Status cell — mirrors Contacts'
- * InlineStatusCell. Project-gated (read-only when no project selected). On save
- * it calls upsertCompanyStatus, toasts, and only updates the parent on success
- * (so an RLS 42501 surfaces a friendly message instead of silently flipping).
+ * InlineStatusCell. Project-gated (read-only only when the project can't be
+ * resolved). On save it calls upsertCompanyStatus, toasts, and only updates the
+ * parent on success (so an RLS 42501 surfaces a friendly message instead of
+ * silently flipping).
  */
 export function InlineAccountStatusCell({
-  companyId, projectId, current, options, actorId, onUpdated,
+  companyId, projectId, current, options, actorId, blockedReason, onUpdated,
 }: InlineAccountStatusCellProps) {
   const [editing, setEditing] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -67,7 +81,7 @@ export function InlineAccountStatusCell({
     return (
       <span
         onClick={(e) => { e.stopPropagation(); if (projectId) setEditing(true); }}
-        title={projectId ? 'Click to change status' : 'Select a project first'}
+        title={projectId ? 'Click to change status' : (blockedReason ?? 'Select a project first')}
         style={{ cursor: projectId ? 'pointer' : 'default', display: 'inline-block' }}
       >
         <StatusBadge value={current} category="account_status" />
