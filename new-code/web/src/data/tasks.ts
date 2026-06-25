@@ -14,6 +14,7 @@
  * components/tasks/taskScheduling.ts for the shared helper.
  */
 import { supabase } from '../lib/supabase';
+import { humanizeWriteError } from '../lib/writeError';
 import { bucketOf, type TaskBucket } from '../components/tasks/taskScheduling';
 
 export type { TaskBucket };
@@ -170,7 +171,7 @@ export async function createTask(
     .select(TASK_COLUMNS)
     .single();
 
-  if (error) return { task: null, error: error.message };
+  if (error) return { task: null, error: humanizeWriteError(error) };
   return { task: data as unknown as Task, error: null };
 }
 
@@ -207,7 +208,7 @@ export async function updateTask(
     .select(TASK_COLUMNS)
     .single();
 
-  if (error) return { task: null, error: error.message };
+  if (error) return { task: null, error: humanizeWriteError(error) };
   return { task: data as unknown as Task, error: null };
 }
 
@@ -274,5 +275,5 @@ export async function setDigestPref(
       { onConflict: 'user_id' },
     );
 
-  return { error: error ? error.message : null };
+  return { error: error ? humanizeWriteError(error) : null };
 }

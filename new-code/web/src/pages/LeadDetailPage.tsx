@@ -37,6 +37,7 @@ import {
 } from '../data/leadWorkspace';
 import { ReassignModal } from '../components/common/ReassignModal';
 import { reassignLead, fetchAssignableUsers } from '../data/assignment';
+import { humanizeWriteError } from '../lib/writeError';
 import type { UserOption } from '../data/wishlist';
 import { LeadInfoPanel } from '../components/lead/LeadInfoPanel';
 import { ActivityTab } from '../components/lead/ActivityTab';
@@ -387,7 +388,7 @@ export function LeadDetailPage() {
       setLead((prev) => (prev ? { ...prev, is_closed: true } : prev));
       toast.success('Lead clinched — meeting marked successful');
     } else {
-      toast.error(res?.error || 'Could not clinch the lead. Please try again.');
+      toast.error(humanizeWriteError(res?.error) || 'Could not clinch the lead. Please try again.');
     }
   };
 
@@ -413,7 +414,7 @@ export function LeadDetailPage() {
     });
     setReassignSaving(false);
     if (res?.error) {
-      setReassignError(res.error);
+      setReassignError(humanizeWriteError(res.error));
       return;
     }
     setShowReassign(false);

@@ -15,6 +15,7 @@ import { fetchCompanies, type Company } from '../data/companies';
 import { useAuth } from '../contexts/AuthContext';
 import { useProjectScope } from '../contexts/ProjectContext';
 import { supabase } from '../lib/supabase';
+import { humanizeWriteError } from '../lib/writeError';
 import { useRowSelection } from '../components/ui/useRowSelection';
 import { ExportButton } from '../components/ui/ExportButton';
 import { MultiSelectFilter } from '../components/ui/MultiSelectFilter';
@@ -349,7 +350,7 @@ export function CompaniesPage() {
     setReassignError(null);
     const res = await reassignCompaniesBulk(ids, projectId, newUserId, profile?.user_id != null ? String(profile.user_id) : '');
     setReassignSaving(false);
-    if (res.ok === 0 && res.error) { setReassignError(res.error); return; }
+    if (res.ok === 0 && res.error) { setReassignError(humanizeWriteError(res.error)); return; }
     setShowReassign(false);
     sel.clear();
     // Refresh the per-project owner/status for the reassigned rows so the Owner
@@ -368,7 +369,7 @@ export function CompaniesPage() {
     setAddProjectError(null);
     const res = await addCompaniesToProject(ids, targetProjectId, profile?.user_id != null ? String(profile.user_id) : '');
     setAddProjectSaving(false);
-    if (res.ok === 0 && res.error) { setAddProjectError(res.error); return; }
+    if (res.ok === 0 && res.error) { setAddProjectError(humanizeWriteError(res.error)); return; }
     setShowAddProject(false);
     sel.clear();
     toast.success(
@@ -384,7 +385,7 @@ export function CompaniesPage() {
     setSetStatusError(null);
     const res = await setCompaniesStatus(ids, projectId, status, actorId ?? '');
     setSetStatusSaving(false);
-    if (res.ok === 0 && res.error) { setSetStatusError(res.error); return; }
+    if (res.ok === 0 && res.error) { setSetStatusError(humanizeWriteError(res.error)); return; }
     setShowSetStatus(false);
     sel.clear();
     // Refresh statuses for the affected rows so the new status shows immediately.

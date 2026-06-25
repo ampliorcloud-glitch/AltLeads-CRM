@@ -22,6 +22,7 @@
  */
 
 import { supabase } from '../lib/supabase';
+import { humanizeWriteError } from '../lib/writeError';
 
 /* ------------------------------------------------------------------ */
 /*  Types                                                              */
@@ -214,7 +215,7 @@ export async function setUserEnabled(userId: number, enabled: boolean, actorId: 
     .from('user_master')
     .update({ enabled, updated_by: actorId, updated_date: new Date().toISOString() })
     .eq('user_id', userId);
-  return error?.message ?? null;
+  return error ? humanizeWriteError(error) : null;
 }
 
 /**
@@ -268,7 +269,7 @@ async function removeUserRole(userId: number, roleId: number, actorId: string): 
     .eq('user_id', userId)
     .eq('role_id', roleId)
     .is('deleted_date', null);
-  return error?.message ?? null;
+  return error ? humanizeWriteError(error) : null;
 }
 
 /**
@@ -385,7 +386,7 @@ export async function createProject(
     created_by: actorId,
     created_date: new Date().toISOString(),
   });
-  return error?.message ?? null;
+  return error ? humanizeWriteError(error) : null;
 }
 
 export async function setProjectEnabled(projectId: number, enabled: boolean, actorId: string): Promise<string | null> {
@@ -393,7 +394,7 @@ export async function setProjectEnabled(projectId: number, enabled: boolean, act
     .from('project')
     .update({ enabled, updated_by: actorId, updated_date: new Date().toISOString() })
     .eq('project_id', projectId);
-  return error?.message ?? null;
+  return error ? humanizeWriteError(error) : null;
 }
 
 export async function assignUserToProject(
@@ -421,7 +422,7 @@ export async function assignUserToProject(
     created_by: actorId,
     created_date: new Date().toISOString(),
   });
-  return error?.message ?? null;
+  return error ? humanizeWriteError(error) : null;
 }
 
 export async function unassignProjectUser(projectUserId: number, actorId: string): Promise<string | null> {
@@ -429,7 +430,7 @@ export async function unassignProjectUser(projectUserId: number, actorId: string
     .from('project_user')
     .update({ deleted_by: actorId, deleted_date: new Date().toISOString() })
     .eq('project_user_id', projectUserId);
-  return error?.message ?? null;
+  return error ? humanizeWriteError(error) : null;
 }
 
 /** Minimal project shape used by the global Project Switcher / project-scope context. */
@@ -534,7 +535,7 @@ export async function setClientEnabled(
     .from('client_association')
     .update({ enabled, updated_by: actorId, updated_date: new Date().toISOString() })
     .eq('client_assoc_id', clientAssocId);
-  return error?.message ?? null;
+  return error ? humanizeWriteError(error) : null;
 }
 
 export interface ClientEditInput {
@@ -598,7 +599,8 @@ function friendlyWriteError(error: { code?: string; message: string } | null): s
     if (/cin/i.test(error.message)) return 'A client with this CIN number already exists.';
     return 'A record with these details already exists.';
   }
-  return error.message;
+  // RLS / missing-table / schema-cache (42501 / 42P01 / PGRST205) → friendly line.
+  return humanizeWriteError(error);
 }
 
 export async function updateClient(
@@ -701,7 +703,7 @@ export async function addSource(name: string, actorId: string): Promise<string |
     created_by: actorId,
     created_date: new Date().toISOString(),
   });
-  return error?.message ?? null;
+  return error ? humanizeWriteError(error) : null;
 }
 
 export async function addDesignation(name: string, actorId: string): Promise<string | null> {
@@ -710,7 +712,7 @@ export async function addDesignation(name: string, actorId: string): Promise<str
     created_by: actorId,
     created_date: new Date().toISOString(),
   });
-  return error?.message ?? null;
+  return error ? humanizeWriteError(error) : null;
 }
 
 export async function addDomain(name: string, actorId: string): Promise<string | null> {
@@ -719,7 +721,7 @@ export async function addDomain(name: string, actorId: string): Promise<string |
     created_by: actorId,
     created_date: new Date().toISOString(),
   });
-  return error?.message ?? null;
+  return error ? humanizeWriteError(error) : null;
 }
 
 /* Edit existing reference-data rows. Writes are admin-gated by RLS (is_admin());
@@ -729,7 +731,7 @@ export async function updateSource(id: number, name: string, actorId: string): P
     .from('source_master')
     .update({ source_name: name, updated_by: actorId, updated_date: new Date().toISOString() })
     .eq('source_id', id);
-  return error?.message ?? null;
+  return error ? humanizeWriteError(error) : null;
 }
 
 export async function updateDesignation(id: number, name: string, actorId: string): Promise<string | null> {
@@ -737,7 +739,7 @@ export async function updateDesignation(id: number, name: string, actorId: strin
     .from('designation_master')
     .update({ designation_name: name, updated_by: actorId, updated_date: new Date().toISOString() })
     .eq('designation_id', id);
-  return error?.message ?? null;
+  return error ? humanizeWriteError(error) : null;
 }
 
 export async function updateDomain(id: number, name: string, actorId: string): Promise<string | null> {
@@ -745,7 +747,7 @@ export async function updateDomain(id: number, name: string, actorId: string): P
     .from('domain_master')
     .update({ domain_name: name, updated_by: actorId, updated_date: new Date().toISOString() })
     .eq('domain_id', id);
-  return error?.message ?? null;
+  return error ? humanizeWriteError(error) : null;
 }
 
 /* ------------------------------------------------------------------ */
@@ -883,7 +885,7 @@ export async function addPreSalesQuestion(input: {
     created_by: input.actorId,
     created_date: now,
   });
-  return error?.message ?? null;
+  return error ? humanizeWriteError(error) : null;
 }
 
 /** Edit the label / full text / domain of an existing question. */
@@ -904,7 +906,7 @@ export async function updatePreSalesQuestion(input: {
       updated_date: new Date().toISOString(),
     })
     .eq('pre_sa_que_id', input.pre_sa_que_id);
-  return error?.message ?? null;
+  return error ? humanizeWriteError(error) : null;
 }
 
 /**
@@ -926,7 +928,7 @@ export async function setPreSalesQuestionActive(
       updated_date: new Date().toISOString(),
     })
     .eq('pre_sa_que_id', pre_sa_que_id);
-  return error?.message ?? null;
+  return error ? humanizeWriteError(error) : null;
 }
 
 /**
@@ -952,5 +954,5 @@ export async function deletePreSalesQuestion(
     .from('pre_sales_question')
     .update({ deleted_by: actorId, deleted_date: now })
     .eq('pre_sa_que_id', pre_sa_que_id);
-  return error?.message ?? null;
+  return error ? humanizeWriteError(error) : null;
 }

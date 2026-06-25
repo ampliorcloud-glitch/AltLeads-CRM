@@ -43,6 +43,7 @@ import {
 } from 'lucide-react';
 import { ReassignModal } from '../components/common/ReassignModal';
 import { reassignMeeting, fetchAssignableUsers } from '../data/assignment';
+import { humanizeWriteError } from '../lib/writeError';
 import type { UserOption } from '../data/wishlist';
 import { CopyButton } from '../components/ui/CopyButton';
 
@@ -359,7 +360,7 @@ export function MeetingDetailPage() {
     const res = await confirmMeeting(Number(meeting.id), meeting.reportId, actor);
     setConfirming(false);
     if (res?.error) {
-      setActionError(res.error);
+      setActionError(humanizeWriteError(res.error) ?? 'Something went wrong. Please try again.');
       return;
     }
     await load();
@@ -388,7 +389,7 @@ export function MeetingDetailPage() {
     });
     setReassignSaving(false);
     if (res?.error) {
-      setReassignError(res.error);
+      setReassignError(humanizeWriteError(res.error));
       return;
     }
     setShowReassign(false);

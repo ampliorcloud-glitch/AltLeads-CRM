@@ -117,7 +117,7 @@ async function appendInteraction(params: {
     return {
       error: error.code === '42501'
         ? "You can only edit records you own (ask an admin or the owner's manager)."
-        : error.message,
+        : humanizeWriteError(error),
     };
   }
   return { error: null };
@@ -231,7 +231,7 @@ export async function upsertContactStatus(
     return {
       error: error.code === '42501'
         ? "You can only edit records you own (ask an admin or the owner's manager)."
-        : error.message,
+        : humanizeWriteError(error),
     };
   }
 
@@ -306,7 +306,7 @@ export async function upsertCompanyStatus(
     return {
       error: error.code === '42501'
         ? "You can only edit records you own (ask an admin or the owner's manager)."
-        : error.message,
+        : humanizeWriteError(error),
     };
   }
 

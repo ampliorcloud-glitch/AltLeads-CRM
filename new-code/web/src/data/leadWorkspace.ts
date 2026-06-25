@@ -17,6 +17,7 @@
 
 import { supabase } from '../lib/supabase';
 import { notify, notifyInApp, resolveUserEmailAndName } from '../lib/notify';
+import { humanizeWriteError } from '../lib/writeError';
 
 /* ─────────────────────────── Types ─────────────────────────── */
 
@@ -216,7 +217,7 @@ export async function addActivityComment(
     .select('activity_id')
     .single();
 
-  if (error || !data) return { error: error?.message ?? 'Failed to add comment.' };
+  if (error || !data) return { error: humanizeWriteError(error) ?? 'Failed to add comment.' };
   return { activity_id: (data as { activity_id: number }).activity_id };
 }
 
@@ -541,7 +542,7 @@ export async function saveReport(input: SaveReportInput): Promise<{ report_id: n
     };
     if (input.assignedUserId) patch.user_id = input.assignedUserId;
     const { error } = await supabase.from('lead_report').update(patch).eq('report_id', reportId);
-    if (error) return { error: error.message };
+    if (error) return { error: humanizeWriteError(error) ?? error.message };
   } else {
     const { data, error } = await supabase
       .from('lead_report')
@@ -557,7 +558,7 @@ export async function saveReport(input: SaveReportInput): Promise<{ report_id: n
       })
       .select('report_id')
       .single();
-    if (error || !data) return { error: error?.message ?? 'Failed to create report.' };
+    if (error || !data) return { error: humanizeWriteError(error) ?? 'Failed to create report.' };
     reportId = (data as { report_id: number }).report_id;
   }
 
@@ -578,7 +579,7 @@ export async function saveReport(input: SaveReportInput): Promise<{ report_id: n
     }));
   if (answerRows.length > 0) {
     const { error } = await supabase.from('pre_sales_answer').insert(answerRows);
-    if (error) return { error: error.message };
+    if (error) return { error: humanizeWriteError(error) ?? error.message };
   }
 
   // 3) replace new_sales_question rows
@@ -598,7 +599,7 @@ export async function saveReport(input: SaveReportInput): Promise<{ report_id: n
     }));
   if (nqRows.length > 0) {
     const { error } = await supabase.from('new_sales_question').insert(nqRows);
-    if (error) return { error: error.message };
+    if (error) return { error: humanizeWriteError(error) ?? error.message };
   }
 
   // 4) meeting outcome
@@ -620,14 +621,14 @@ export async function saveReport(input: SaveReportInput): Promise<{ report_id: n
     };
     if (meetingId) {
       const { error } = await supabase.from('meeting_master').update(meetingPayload).eq('meeting_id', meetingId);
-      if (error) return { error: error.message };
+      if (error) return { error: humanizeWriteError(error) ?? error.message };
     } else {
       const { data, error } = await supabase
         .from('meeting_master')
         .insert({ ...meetingPayload, created_by: actor, created_date: now })
         .select('meeting_id')
         .single();
-      if (error || !data) return { error: error?.message ?? 'Failed to create meeting.' };
+      if (error || !data) return { error: humanizeWriteError(error) ?? 'Failed to create meeting.' };
       meetingId = (data as { meeting_id: number }).meeting_id;
     }
 
@@ -775,7 +776,7 @@ export async function requestApproval(
       updated_date: now,
     })
     .eq('report_id', reportId);
-  if (error) return { error: error.message };
+  if (error) return { error: humanizeWriteError(error) ?? error.message };
   await logSystemActivity(leadId, 'Lead report shared for approval.', actor);
   return null;
 }
@@ -843,7 +844,7 @@ export async function updateMeetingUrl(
     .from('meeting_master')
     .update({ meeting_url: url.trim(), updated_by: actor, updated_date: new Date().toISOString() })
     .eq('meeting_id', meetingId);
-  if (error) return { error: error.message };
+  if (error) return { error: humanizeWriteError(error) ?? error.message };
   return null;
 }
 
@@ -882,7 +883,7 @@ export async function confirmMeeting(
     .from('meeting_master')
     .update({ meeting_confirm: true, updated_by: actor, updated_date: now })
     .eq('meeting_id', meetingId);
-  if (error) return { error: error.message };
+  if (error) return { error: humanizeWriteError(error) ?? error.message };
 
   // Move lead to "Meeting Confirmed" (stage_id 5) — but never regress a lead that
   // has already progressed to/past "Meeting Successful" or a terminal/cancelled stage.
@@ -913,7 +914,7 @@ export async function saveAgentFeedback(
     .from('meeting_master')
     .update({ agent_feedback: feedback.trim(), updated_by: actor, updated_date: new Date().toISOString() })
     .eq('meeting_id', meetingId);
-  if (error) return { error: error.message };
+  if (error) return { error: humanizeWriteError(error) ?? error.message };
   return null;
 }
 
@@ -971,7 +972,7 @@ export async function updateMeeting(input: {
     if (input.newTime) patch.meeting_time = input.newTime;
     if (input.newDuration) patch.duration = input.newDuration;
     const { error } = await supabase.from('meeting_master').update(patch).eq('meeting_id', meetingId);
-    if (error) return { error: error.message };
+    if (error) return { error: humanizeWriteError(error) ?? error.message };
 
     // Stage: "Meeting postponed by lead" (12) vs "Meeting postponed by Salesperson" (11)
     const stageId = by === 'Salesperson' ? 11 : 12;
@@ -992,7 +993,7 @@ export async function updateMeeting(input: {
         updated_date: now,
       })
       .eq('meeting_id', meetingId);
-    if (error) return { error: error.message };
+    if (error) return { error: humanizeWriteError(error) ?? error.message };
 
     // Stage: cancelled by Altleads (13) / sales team (14) / Lead (15)
     const stageId = by === 'Sales Team' ? 14 : by === 'Lead' ? 15 : 13;
@@ -1088,7 +1089,7 @@ export async function clinchLead(leadId: number, actor: string): Promise<{ error
     .from('lead_master')
     .update({ is_closed: true, updated_by: actor, updated_date: now })
     .eq('lead_id', leadId);
-  if (error) return { error: error.message };
+  if (error) return { error: humanizeWriteError(error) ?? error.message };
   await logSystemActivity(leadId, 'Deal clinched (closed).', actor);
   return null;
 }
@@ -1186,7 +1187,7 @@ export async function submitMeetingFeedback(params: {
   const friendly = (err: { code?: string; message: string }): string =>
     err.code === '42501'
       ? 'You can only submit feedback for meetings assigned to you (ask an admin or the owner’s manager).'
-      : err.message;
+      : (humanizeWriteError(err) ?? err.message);
 
   // 1) Read existing answers so we update-in-place rather than duplicate rows.
   const { data: existingRaw, error: readErr } = await supabase

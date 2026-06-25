@@ -41,6 +41,7 @@
  */
 
 import { supabase } from '../lib/supabase';
+import { humanizeWriteError } from '../lib/writeError';
 
 /* ------------------------------------------------------------------ */
 /* OWNER-DEFAULT decisions baked into this module                      */
@@ -936,7 +937,7 @@ export async function updateMeetingStatus(input: {
     if (input.newTime) patch.meeting_time = input.newTime;
     if (input.newDuration) patch.duration = input.newDuration;
     const { error } = await supabase.from('meeting_master').update(patch).eq('meeting_id', meetingId);
-    if (error) return { error: error.message };
+    if (error) return { error: humanizeWriteError(error) ?? error.message };
 
     // history row
     await supabase.from('meeting_reschedule').insert({
@@ -967,7 +968,7 @@ export async function updateMeetingStatus(input: {
         updated_date: now,
       })
       .eq('meeting_id', meetingId);
-    if (error) return { error: error.message };
+    if (error) return { error: humanizeWriteError(error) ?? error.message };
 
     // history row
     await supabase.from('meeting_reschedule').insert({
@@ -1039,7 +1040,7 @@ export async function confirmMeeting(
     .from('meeting_master')
     .update({ meeting_confirm: true, meeting_status: 'Confirmed', updated_by: actor, updated_date: now })
     .eq('meeting_id', meetingId);
-  if (error) return { error: error.message };
+  if (error) return { error: humanizeWriteError(error) ?? error.message };
 
   if (reportId) {
     // Only advance the stage — never regress a lead that is already at Meeting Successful (8)
@@ -1087,7 +1088,7 @@ export async function editMeetingDetails(input: EditMeetingInput): Promise<{ err
       updated_date: new Date().toISOString(),
     })
     .eq('meeting_id', input.meetingId);
-  if (error) return { error: error.message };
+  if (error) return { error: humanizeWriteError(error) ?? error.message };
   return null;
 }
 

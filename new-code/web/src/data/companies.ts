@@ -18,6 +18,7 @@
  */
 
 import { supabase } from '../lib/supabase';
+import { humanizeWriteError } from '../lib/writeError';
 
 /* ------------------------------------------------------------------
    Public types
@@ -449,7 +450,7 @@ export async function createCompany(
     .insert(insertRow)
     .select('company_id')
     .single();
-  if (error) return { kind: 'error', message: error.message };
+  if (error) return { kind: 'error', message: humanizeWriteError(error) ?? error.message };
   return { kind: 'created', id: String((data as { company_id: number }).company_id) };
 }
 

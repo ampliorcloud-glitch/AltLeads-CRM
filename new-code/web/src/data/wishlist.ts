@@ -508,7 +508,7 @@ export async function assignWishlist(input: {
   if (input.teamLeadId != null) patch.assign_tl = input.teamLeadId;
 
   const { error } = await supabase.from('wishlist').update(patch).eq('wishlist_id', input.wishlistId);
-  if (error) return { error: error.message };
+  if (error) return { error: humanizeWriteError(error) ?? error.message };
 
   // Fire-and-forget: notify the assigned agent — BOTH email and in-app.
   // TODO recipients: owner will tune per-action later
@@ -808,7 +808,7 @@ export async function addWishlist(
     .select('wishlist_id')
     .maybeSingle();
 
-  if (error) return { error: error.message };
+  if (error) return { error: humanizeWriteError(error) ?? error.message };
   return { id: (data as { wishlist_id: number } | null)?.wishlist_id, error: null };
 }
 

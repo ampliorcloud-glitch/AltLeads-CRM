@@ -1,4 +1,5 @@
 import { supabase } from '../lib/supabase';
+import { humanizeWriteError } from '../lib/writeError';
 
 /* ------------------------------------------------------------------
    Notifications  (in_app_notification)
@@ -93,7 +94,7 @@ export async function markNotificationSeen(
 
   const { error } = await query;
 
-  return { error: error ? error.message : null };
+  return { error: error ? humanizeWriteError(error) : null };
 }
 
 /**
@@ -126,7 +127,7 @@ export async function markAllNotificationsSeen(
     .eq('user_id', userId)
     .eq('is_seen', false);
 
-  return { error: error ? error.message : null };
+  return { error: error ? humanizeWriteError(error) : null };
 }
 
 /* ------------------------------------------------------------------
@@ -227,7 +228,7 @@ export async function updateUserProfile(
     })
     .eq('user_id', userId);
 
-  return { error: error ? error.message : null };
+  return { error: error ? humanizeWriteError(error) : null };
 }
 
 /* ------------------------------------------------------------------

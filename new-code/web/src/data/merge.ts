@@ -51,6 +51,7 @@
  */
 
 import { supabase } from '../lib/supabase';
+import { humanizeWriteError } from '../lib/writeError';
 
 export interface MergeArgs {
   /** The record that SURVIVES (children get re-pointed to it). */
@@ -79,7 +80,9 @@ function friendlyError(error: { code?: string; message?: string } | null, fallba
     // Unique violation — almost always the per-project status collision.
     return 'Both records already have a status for the same project. Resolve that conflicting project status first, then merge.';
   }
-  return error.message || fallback;
+  // Missing-table / RLS / schema-cache (42P01 / PGRST205 / 42501) → friendly line;
+  // otherwise the writer's own message, then the step fallback.
+  return humanizeWriteError(error) || error.message || fallback;
 }
 
 const nowIso = () => new Date().toISOString();

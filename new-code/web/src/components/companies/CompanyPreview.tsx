@@ -53,6 +53,7 @@ import {
   type CompanyProjectStatus,
 } from '../../data/projectStatus';
 import { reassignCompany, fetchAssignableUsers, fetchUserLabel } from '../../data/assignment';
+import { humanizeWriteError } from '../../lib/writeError';
 import { fetchOptions, type DropdownOption } from '../../data/dropdowns';
 import type { UserOption } from '../../data/wishlist';
 import type { Interaction } from '../../data/contacts';
@@ -315,12 +316,9 @@ export function CompanyPreview({
     );
     setSavingStatus(false);
     if (err) {
-      // Map RLS 42501 ("you can only edit records you own") to a friendlier line.
-      setStatusError(
-        /42501|row-level security|permission/i.test(err)
-          ? 'You can only edit companies assigned to you.'
-          : err,
-      );
+      // The data layer already humanizes (RLS 42501 / missing-table); pass it
+      // through humanizeWriteError as a final guard so nothing raw ever shows.
+      setStatusError(humanizeWriteError(err));
       return;
     }
     setStatusSuccess(true);

@@ -23,6 +23,7 @@ import { useProjectScope } from '../contexts/ProjectContext';
 import { useRowSelection } from '../components/ui/useRowSelection';
 import { ExportButton } from '../components/ui/ExportButton';
 import { MultiSelectFilter } from '../components/ui/MultiSelectFilter';
+import { humanizeWriteError } from '../lib/writeError';
 import { Skeleton } from '../components/ui/Skeleton';
 import {
   ColumnCustomizer,
@@ -308,7 +309,7 @@ export function MeetingsPage() {
     setReassignError(null);
     const res = await reassignMeetingsBulk(ids, newUserId, profile?.user_id != null ? String(profile.user_id) : '');
     setReassignSaving(false);
-    if (res.ok === 0 && res.error) { setReassignError(res.error); return; }
+    if (res.ok === 0 && res.error) { setReassignError(humanizeWriteError(res.error)); return; }
     setShowReassign(false);
     sel.clear();
     setReloadKey((k) => k + 1);

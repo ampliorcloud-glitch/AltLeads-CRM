@@ -21,6 +21,7 @@
  */
 
 import { supabase } from '../lib/supabase';
+import { humanizeWriteError } from '../lib/writeError';
 
 /* ------------------------------------------------------------------ */
 /*  Types                                                               */
@@ -148,7 +149,7 @@ export async function createOption(params: {
     updated_date: nowIso(),
   });
 
-  if (error) return error.message;
+  if (error) return humanizeWriteError(error);
   return null;
 }
 
@@ -174,7 +175,7 @@ export async function updateOption(
     .update(updates)
     .eq('option_id', option_id);
 
-  if (error) return error.message;
+  if (error) return humanizeWriteError(error);
   return null;
 }
 

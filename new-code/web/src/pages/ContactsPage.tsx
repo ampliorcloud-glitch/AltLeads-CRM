@@ -19,6 +19,7 @@ import { CardShell } from '../components/ui/CardGrid';
 import { ListToolbar } from '../components/ui/ListToolbar';
 import { SelectAllMatchingBar } from '../components/ui/SelectAllMatchingBar';
 import { useListFilters } from '../lib/listFilters';
+import { humanizeWriteError } from '../lib/writeError';
 import { EditableGrid, type EditableColumn } from '../components/ui/EditableGrid';
 import { GenericKanban } from '../components/kanban/GenericKanban';
 import {
@@ -245,7 +246,7 @@ function InlineStatusCell({
     setEditing(false);
     // Surface failures instead of silently flipping the badge (e.g. RLS 42501
     // "you can only edit records you own"). Only update on success.
-    if (error) { toast.error(error); return; }
+    if (error) { toast.error(humanizeWriteError(error) ?? 'Something went wrong. Please try again.'); return; }
     onUpdated(contactId, newStatus);
     toast.success('Status updated');
   }
@@ -348,7 +349,7 @@ export function ContactsPage() {
     setReassignError(null);
     const res = await reassignContactsBulk(ids, projectId, newUserId, profile?.user_id != null ? String(profile.user_id) : '');
     setReassignSaving(false);
-    if (res.ok === 0 && res.error) { setReassignError(res.error); return; }
+    if (res.ok === 0 && res.error) { setReassignError(humanizeWriteError(res.error)); return; }
     setShowReassign(false);
     sel.clear();
     // Refresh the per-project owner names for the reassigned rows so the Owner
@@ -367,7 +368,7 @@ export function ContactsPage() {
     setAddProjectError(null);
     const res = await addContactsToProject(ids, targetProjectId, profile?.user_id != null ? String(profile.user_id) : '');
     setAddProjectSaving(false);
-    if (res.ok === 0 && res.error) { setAddProjectError(res.error); return; }
+    if (res.ok === 0 && res.error) { setAddProjectError(humanizeWriteError(res.error)); return; }
     setShowAddProject(false);
     sel.clear();
     toast.success(
@@ -383,7 +384,7 @@ export function ContactsPage() {
     setSetStatusError(null);
     const res = await setContactsStatus(ids, projectId, status, actorId ?? '');
     setSetStatusSaving(false);
-    if (res.ok === 0 && res.error) { setSetStatusError(res.error); return; }
+    if (res.ok === 0 && res.error) { setSetStatusError(humanizeWriteError(res.error)); return; }
     setShowSetStatus(false);
     sel.clear();
     // Reflect the new statuses. On a clean run we can optimistically flip each

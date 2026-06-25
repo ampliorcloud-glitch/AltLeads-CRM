@@ -29,6 +29,7 @@ import {
 import { AppShell } from '../components/layout/AppShell';
 import { ReassignModal } from '../components/common/ReassignModal';
 import { reassignCompany, fetchAssignableUsers, fetchUserLabel } from '../data/assignment';
+import { humanizeWriteError } from '../lib/writeError';
 import type { UserOption } from '../data/wishlist';
 import { StageBadge } from '../components/ui/Badge';
 import { CopyButton } from '../components/ui/CopyButton';
@@ -344,7 +345,7 @@ function AccountPanel({ companyId, projectId, actorId }: AccountPanelProps) {
       isReassign: status?.owner_user_id != null,
     });
     setReassignSaving(false);
-    if (res?.error) { setReassignError(res.error); return; }
+    if (res?.error) { setReassignError(humanizeWriteError(res.error)); return; }
     setShowReassign(false);
     const refreshed = await getCompanyStatus(companyId, projectId);
     setStatus(refreshed);
@@ -646,7 +647,7 @@ function ContactRowPanel({
     };
     const { error } = await upsertContactStatus(contactIdNum, projectId, patch, actorId);
     setSaving(false);
-    if (error) { toast.error(error); return; }
+    if (error) { toast.error(humanizeWriteError(error) ?? 'Something went wrong. Please try again.'); return; }
     onStatusChange(contactIdNum, {
       contact_status: draftStatus || null,
       description: draftDesc || null,

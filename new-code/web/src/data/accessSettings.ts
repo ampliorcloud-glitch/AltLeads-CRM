@@ -17,6 +17,7 @@
  */
 
 import { supabase } from '../lib/supabase';
+import { humanizeWriteError } from '../lib/writeError';
 
 export type VisibilityScope = 'owner' | 'team' | 'everyone';
 export type ObjectType = 'lead' | 'company' | 'contact';
@@ -105,7 +106,7 @@ export async function upsertProjectVisibility(
   if (error.code === '42501') {
     return 'Permission denied: only admins and project managers can change access settings.';
   }
-  return error.message;
+  return humanizeWriteError(error) ?? error.message;
 }
 
 /**

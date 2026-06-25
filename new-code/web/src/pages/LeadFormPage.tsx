@@ -32,6 +32,7 @@ import { useToast } from '../components/ui/Toast';
 import { useConfirm } from '../components/ui/ConfirmDialog';
 import { useUnsavedChanges } from '../components/ui/useUnsavedChanges';
 import { fetchAllContacts, type Contact } from '../data/contacts';
+import { humanizeWriteError } from '../lib/writeError';
 
 /* ── Shared styles ───────────────────────────────────────────────────────── */
 
@@ -464,8 +465,9 @@ export function LeadFormPage() {
       );
       setSubmitting(false);
       if (result?.error) {
-        setErrors({ submit: result.error });
-        toast.error(result.error);
+        const msg = humanizeWriteError(result.error) ?? 'Something went wrong. Please try again.';
+        setErrors({ submit: msg });
+        toast.error(msg);
       } else {
         setSubmitSuccess(true);
         clearCache();
@@ -476,8 +478,9 @@ export function LeadFormPage() {
       const result = await createLead(form, byIdentifier, DEFAULT_SOURCE_ID, DEFAULT_CLIENT_ASSOC_ID);
       setSubmitting(false);
       if ('error' in result) {
-        setErrors({ submit: result.error });
-        toast.error(result.error);
+        const msg = humanizeWriteError(result.error) ?? 'Something went wrong. Please try again.';
+        setErrors({ submit: msg });
+        toast.error(msg);
       } else {
         setSubmitSuccess(true);
         clearCache();

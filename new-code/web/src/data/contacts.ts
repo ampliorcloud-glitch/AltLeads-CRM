@@ -1,4 +1,5 @@
 import { supabase } from '../lib/supabase';
+import { humanizeWriteError } from '../lib/writeError';
 
 export interface Contact {
   contact_id: number;
@@ -296,7 +297,7 @@ export async function updateContactCompany(
     if (error.code === '42501') {
       return { error: "You can only edit records you own (ask an admin or the owner's manager)." };
     }
-    return { error: error.message };
+    return { error: humanizeWriteError(error) };
   }
   if (!data || (data as { contact_id: number }[]).length === 0) {
     return { error: "You can only edit records you own (ask an admin or the owner's manager)." };
@@ -337,6 +338,6 @@ export async function insertContact(params: {
     .select('contact_id')
     .single();
 
-  if (error) return { contactId: null, error: error.message };
+  if (error) return { contactId: null, error: humanizeWriteError(error) };
   return { contactId: (data as { contact_id: number }).contact_id, error: null };
 }

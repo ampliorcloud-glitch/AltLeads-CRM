@@ -17,6 +17,7 @@
  */
 
 import { supabase } from '../lib/supabase';
+import { humanizeWriteError } from '../lib/writeError';
 
 /* ------------------------------------------------------------------ */
 /*  Types                                                              */
@@ -119,7 +120,7 @@ export async function saveView(
     .eq('user_id', userId)
     .eq('entity', entity)
     .eq('is_active', true);
-  if (deactErr) return { error: deactErr.message };
+  if (deactErr) return { error: humanizeWriteError(deactErr) };
 
   const { error: insErr } = await supabase.from('user_view_pref').insert({
     user_id: userId,
@@ -129,7 +130,7 @@ export async function saveView(
     is_active: true,
     created_date: new Date().toISOString(),
   });
-  if (insErr) return { error: insErr.message };
+  if (insErr) return { error: humanizeWriteError(insErr) };
   return { error: null };
 }
 
@@ -149,5 +150,5 @@ export async function resetView(
     .eq('user_id', userId)
     .eq('entity', entity)
     .eq('is_active', true);
-  return { error: error ? error.message : null };
+  return { error: error ? humanizeWriteError(error) : null };
 }

@@ -24,6 +24,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { useToast } from '../components/ui/Toast';
 import { useConfirm } from '../components/ui/ConfirmDialog';
 import { useUnsavedChanges } from '../components/ui/useUnsavedChanges';
+import { humanizeWriteError } from '../lib/writeError';
 
 const inputBase: React.CSSProperties = {
   fontSize: 13,
@@ -183,8 +184,9 @@ export function CompanyFormPage() {
     setSubmitting(false);
 
     if (result.kind === 'error') {
-      setErrors({ submit: result.message });
-      toast.error(result.message);
+      const msg = humanizeWriteError(result.message) ?? 'Something went wrong. Please try again.';
+      setErrors({ submit: msg });
+      toast.error(msg);
     } else if (result.kind === 'duplicate') {
       setDuplicate(result.match);
     } else {

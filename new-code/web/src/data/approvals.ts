@@ -18,6 +18,7 @@
 import { supabase } from '../lib/supabase';
 import { logSystemActivity } from './leadWorkspace';
 import { notify, resolveUserEmailAndName } from '../lib/notify';
+import { humanizeWriteError } from '../lib/writeError';
 
 /* ─────────────────────────── Types ─────────────────────────── */
 
@@ -373,7 +374,7 @@ export async function approveReport(
     .eq('report_approval', 'Pending') // optimistic guard: only act on still-pending rows
     .select('report_id');
 
-  if (error) return { error: error.message };
+  if (error) return { error: humanizeWriteError(error) ?? error.message };
   if (!updated || updated.length === 0) {
     return { error: 'This report has already been processed.' };
   }
@@ -465,7 +466,7 @@ export async function rejectReport(
     .eq('report_approval', 'Pending') // optimistic guard: only act on still-pending rows
     .select('report_id');
 
-  if (error) return { error: error.message };
+  if (error) return { error: humanizeWriteError(error) ?? error.message };
   if (!updated || updated.length === 0) {
     return { error: 'This report has already been processed.' };
   }

@@ -25,6 +25,7 @@ import { AppShell } from '../components/layout/AppShell';
 import { useAuth } from '../contexts/AuthContext';
 import { ReassignModal } from '../components/common/ReassignModal';
 import { reassignContact, fetchAssignableUsers, fetchUserLabel } from '../data/assignment';
+import { humanizeWriteError } from '../lib/writeError';
 import type { UserOption } from '../data/wishlist';
 import { CreateTaskModal, type TaskAssociation } from '../components/tasks/CreateTaskModal';
 import { LogCallModal, type CallAssociation } from '../components/calls/LogCallModal';
@@ -309,7 +310,7 @@ export function ContactDetailPage() {
       isReassign: projectStatus?.owner_user_id != null,
     });
     setReassignSaving(false);
-    if (res?.error) { setReassignError(res.error); return; }
+    if (res?.error) { setReassignError(humanizeWriteError(res.error)); return; }
     setShowReassign(false);
     const refreshed = await getContactStatus(contactId, projectId);
     setProjectStatus(refreshed);

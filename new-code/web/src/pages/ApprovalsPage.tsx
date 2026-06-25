@@ -23,6 +23,7 @@ import {
   type ReportDetail,
 } from '../data/approvals';
 import { fmtDate } from '../data/leadWorkspace';
+import { humanizeWriteError } from '../lib/writeError';
 
 /* ─────────────── Small primitives ───────────────────────────── */
 
@@ -302,7 +303,7 @@ function RejectModal({
       actor
     );
     setSaving(false);
-    if (res?.error) { setErr(res.error); return; }
+    if (res?.error) { setErr(humanizeWriteError(res.error) ?? 'Something went wrong. Please try again.'); return; }
     onRejected();
   };
 
@@ -474,7 +475,7 @@ export function ApprovalsPage() {
       actor
     );
     setApproving(null);
-    if (res?.error) { setErr(res.error); return; }
+    if (res?.error) { setErr(humanizeWriteError(res.error) ?? 'Something went wrong. Please try again.'); return; }
     setSuccess(`Report for "${row.lead_name}" approved — meeting scheduled.`);
     load();
   };

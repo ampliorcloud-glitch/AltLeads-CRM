@@ -15,6 +15,7 @@
  */
 import { supabase } from '../lib/supabase';
 import { notify, notifyInApp, resolveUserEmailAndName } from '../lib/notify';
+import { humanizeWriteError } from '../lib/writeError';
 import type { UserOption } from './wishlist';
 
 /* ── guards / helpers ────────────────────────────────────────────────────── */
@@ -31,7 +32,8 @@ function mapWriteError(error: { code?: string; message: string }): string {
   if (error.code === '42501') {
     return 'You can only reassign records you manage (ask an admin or a team lead).';
   }
-  return error.message;
+  // Missing-table / schema-cache (42P01 / PGRST205) and anything else → friendly.
+  return humanizeWriteError(error) ?? error.message;
 }
 
 function cap(s: string): string {

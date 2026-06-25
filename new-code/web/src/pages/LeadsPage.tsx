@@ -20,6 +20,7 @@ import { useRowSelection } from '../components/ui/useRowSelection';
 import { ExportButton } from '../components/ui/ExportButton';
 import { ReassignModal } from '../components/common/ReassignModal';
 import { reassignLeadsBulk, fetchAssignableUsers } from '../data/assignment';
+import { humanizeWriteError } from '../lib/writeError';
 import type { UserOption } from '../data/wishlist';
 import { useToast } from '../components/ui/Toast';
 import { MultiSelectFilter } from '../components/ui/MultiSelectFilter';
@@ -399,7 +400,7 @@ export function LeadsPage() {
     setReassignError(null);
     const res = await reassignLeadsBulk(ids, newUserId, profile?.user_id != null ? String(profile.user_id) : '');
     setReassignSaving(false);
-    if (res.ok === 0 && res.error) { setReassignError(res.error); return; }
+    if (res.ok === 0 && res.error) { setReassignError(humanizeWriteError(res.error)); return; }
     setShowReassign(false);
     sel.clear();
     setReloadKey((k) => k + 1);

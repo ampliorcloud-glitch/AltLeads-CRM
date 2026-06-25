@@ -6,6 +6,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { useToast } from '../components/ui/Toast';
 import { useConfirm } from '../components/ui/ConfirmDialog';
 import { useUnsavedChanges } from '../components/ui/useUnsavedChanges';
+import { humanizeWriteError } from '../lib/writeError';
 import {
   fetchCompanyOptions,
   fetchCityOptions,
@@ -213,8 +214,9 @@ export function ContactFormPage() {
     setSubmitting(false);
 
     if (error) {
-      setSubmitError(error);
-      toast.error(error);
+      const msg = humanizeWriteError(error) ?? 'Something went wrong. Please try again.';
+      setSubmitError(msg);
+      toast.error(msg);
       return;
     }
 

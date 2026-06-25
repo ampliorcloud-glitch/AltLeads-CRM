@@ -14,6 +14,7 @@ import {
   type WishlistDetail,
   type WishlistLookups,
 } from '../data/wishlist';
+import { humanizeWriteError } from '../lib/writeError';
 import { AssignModal } from '../components/wishlist/AssignModal';
 import { ConvertModal, type ConvertFormResult } from '../components/wishlist/ConvertModal';
 import { useToast } from '../components/ui/Toast';
@@ -215,7 +216,7 @@ export function WishlistDetailPage() {
     });
     setActionSaving(false);
     if (res?.error) {
-      setActionError(res.error);
+      setActionError(humanizeWriteError(res.error));
       return;
     }
     setAssignOpen(false);
@@ -236,7 +237,7 @@ export function WishlistDetailPage() {
       setToast('Status updated.');
       await refresh();
     } else {
-      setToast(res.error);
+      setToast(humanizeWriteError(res.error) ?? 'Something went wrong. Please try again.');
     }
   };
 
@@ -263,8 +264,9 @@ export function WishlistDetailPage() {
     });
     setActionSaving(false);
     if ('error' in res) {
-      setActionError(res.error);
-      appToast.error(res.error);
+      const msg = humanizeWriteError(res.error) ?? 'Something went wrong. Please try again.';
+      setActionError(msg);
+      appToast.error(msg);
       return;
     }
     setConvertOpen(false);
