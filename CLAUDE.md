@@ -3,6 +3,7 @@
 > This file auto-loads into every chat. It tells any new Claude how to pick up where the last one left off, and the standards to follow. **Owner: Mohit (non-technical).** Keep it current.
 
 ## 0. Resume protocol (do this at the start of every session)
+0. **START HERE → `product-os/README.md`** — the operating system (how we work as PM + the optimized resume order + the sub-agent team + guardrails). Then `product-os/OPERATING-MODEL.md`. Owner-facing decisions/reviews/risks live in **`docs/Amplior-Review-Hub.xlsx`** (regenerate: `node new-code/web/scripts/gen-review-tracker.cjs`). The steps below are the legacy detail.
 1. Read **`REBUILD_LOG.md`** (repo root) — the running state / source of truth. Newest entries are at the bottom of the Session Log.
 2. Skim **`docs/product/VISION.md`** (north-star) + **`docs/product/INTERNAL-LAUNCH-PLAN.md`** (where we are → launch) + **`docs/product/SALES-PORTAL.md`** (priority #2).
 3. Open the backlog: **`docs/AltLeads-Backlog-Tracker.xlsx`** (Jira-style; regenerate with `node new-code/web/scripts/gen-backlog-tracker.cjs`).
