@@ -4,6 +4,7 @@ This folder is the **operating system for the Amplior CRM product**. If you are 
 
 ## Read order (stop as soon as you can act)
 1. **[OPERATING-MODEL.md](OPERATING-MODEL.md)** — how we work: the resume protocol, the sub-agent team, the build loop, the guardrails. *Read the Resume Protocol section first.*
+1b. **[GOALS.md](GOALS.md)** — the single goal definition: north-star, the current **Internal Launch Readiness** milestone (measurable exit criteria), and the non-dependent backlog (what moves goals without owner approval).
 2. **[PRODUCT-BRIEF.md](PRODUCT-BRIEF.md)** — what the product is, who uses it, the constraints, the revenue lens.
 3. **`../docs/Amplior-Review-Hub.xlsx`** — the ONE place for everything waiting on the owner (Decisions Needed) and built-but-unreviewed work (Awaiting Review). Check this before building so you build *around* what's blocked.
 4. **`../docs/AltLeads-Backlog-Tracker.xlsx`** — full ticket state. Source of truth for "what exists."
