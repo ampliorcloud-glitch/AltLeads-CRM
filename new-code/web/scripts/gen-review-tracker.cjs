@@ -97,6 +97,8 @@ const REVIEW = [
     'The new "start here" + how Claude works as PM. Tell me if the way-of-working matches what you want.', 'n/a', 'You asked for this.'],
   ['DISC-1', 'Discovery synthesis (market + advisor reality-check)', 'product-os/DISCOVERY-2026-06-25.md',
     'The honest outside view: as a pure CRM we lose; the moat is the client ROI/feedback portal. Plus the advisor\'s brutal truths that redirected the build queue to foundation-readiness.', 'n/a', 'Read the "brutal truths" + "real-need verdict".'],
+  ['RLS-1', 'Launch-blocker fix — drafted + security-QC reviewed (DEC-03)', 'docs/LAUNCH-BLOCKER-RLS-PLAN.md',
+    'The canonical-assignee + RLS fix, DRAFTED (not applied) and adversarially reviewed (verdict: SOUND, would fix the blocker). Read the "Security-QC" section — 6 owner questions, esp. #1: do ALL provisioned logins have a profiles row? If not, the model silently denies them everything.', 'n/a', 'Ready for your review; apply ONLY after you answer + throwaway-login validation.'],
 ];
 
 /* ─── 3. RISKS (advisor / security flags to keep visible) ───────────────────
@@ -109,7 +111,9 @@ const RISKS = [
   ['RSK-05', 'Finished work sitting unpushed — deploy/merge risk grows over time', 'Medium', 'Delivery', 'No', 'DEC-08 (pick a push window)'],
   ['RSK-07', 'LIVE site reachable while RLS is off — active PII exposure right now', 'Critical', 'Security', 'Yes', 'DEC-09 (gate the live URL)'],
   ['RSK-08', 'CHECKED — advisor\'s "inline create writes placeholders" claim did NOT hold: createCompany writes nulls (not placeholders), validates the required name, and is the only company-insert path (admin-gated full form, no inline quick-create). No corruption vector here.', 'Info', 'Data', 'No', 'Closed — verified clean 2026-06-25'],
-  ['RSK-09', 'Assignment write-path (apply-assignment-rls.cjs) never applied — agents cannot safely edit their own records', 'Critical', 'Data / Product', 'Yes', 'Prep + throwaway-login validation now; apply on owner go'],
+  ['RSK-09', 'Assignment write-path (apply-assignment-rls.cjs) never applied — agents cannot safely edit their own records', 'Critical', 'Data / Product', 'Yes', 'Plan drafted (LAUNCH-BLOCKER-RLS-PLAN.md); apply on owner go after throwaway-login validation'],
+  ['RSK-10', 'Bulk-provisioned logins with NO profiles row would be SILENTLY denied ALL edits once assignee-RLS lands (current_user_id() resolves via the sparse profiles table -> NULL -> every write predicate false)', 'Critical', 'Security / Launch', 'Yes', 'Guarantee profiles-row coverage as part of bulk-login provisioning; assert before FORCE. Found by security-QC.'],
+  ['RSK-11', 'Staged apply-assignment-rls.cjs, if run as-is, OVER-GRANTS edit rights to the bulk-import actors (keeps the created_by term) — do not run it; use the canonical-assignee plan instead', 'High', 'Security', 'Yes', 'LAUNCH-BLOCKER-RLS-PLAN.md §2 (canonical assignee_user_id)'],
   ['RSK-06', 'Single 1.6MB JS bundle (no code-splitting) — slow first load as app grows', 'Low', 'Performance', 'No', 'Backlog: route-level code-split'],
 ];
 
