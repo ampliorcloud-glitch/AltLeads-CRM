@@ -7,6 +7,7 @@ import { ToastProvider } from './components/ui/Toast';
 import { ConfirmProvider } from './components/ui/ConfirmDialog';
 import { ErrorBoundary } from './components/ui/ErrorBoundary';
 import { CommandPalette } from './components/ui/CommandPalette';
+import { KeyboardHelp } from './components/ui/KeyboardHelp';
 // Auth/recovery pages stay EAGER — they render on first paint (the "/" landing is
 // the login page) so code-splitting them would only add a chunk fetch to the cold start.
 import { LoginPage } from './pages/LoginPage';
@@ -388,6 +389,43 @@ function AppRoutes() {
   );
 }
 
+/**
+ * Global keyboard-shortcuts overlay host. Owns the "?" (Shift+/) keydown that
+ * opens the KeyboardHelp modal — but only when the user ISN'T typing in a field
+ * (input/textarea/contenteditable/select), so "?" stays usable as text. Esc
+ * closes (handled inside KeyboardHelp).
+ */
+function KeyboardHelpHost() {
+  const [open, setOpen] = React.useState(false);
+
+  React.useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      // "?" is Shift+/ on most layouts; accept either the resolved key or the combo.
+      if (e.key !== '?' && !(e.key === '/' && e.shiftKey)) return;
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
+
+      // Don't hijack "?" while the user is typing into a field.
+      const t = e.target as HTMLElement | null;
+      const tag = t?.tagName;
+      if (
+        tag === 'INPUT' ||
+        tag === 'TEXTAREA' ||
+        tag === 'SELECT' ||
+        t?.isContentEditable
+      ) {
+        return;
+      }
+
+      e.preventDefault();
+      setOpen((o) => !o);
+    }
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, []);
+
+  return <KeyboardHelp open={open} onClose={() => setOpen(false)} />;
+}
+
 function App() {
   return (
     <AuthProvider>
@@ -405,6 +443,8 @@ function App() {
                 <AppRoutes />
                 {/* Global Cmd-K search (ALT-188); self-gates to logged-in internal users. */}
                 <CommandPalette />
+                {/* Global keyboard-shortcuts overlay — press "?" to open. */}
+                <KeyboardHelpHost />
               </ErrorBoundary>
             </BrowserRouter>
           </ConfirmProvider>

@@ -26,6 +26,7 @@ import { useToast } from '../components/ui/Toast';
 import { MultiSelectFilter } from '../components/ui/MultiSelectFilter';
 import { formatDate } from '../data/meetings';
 import { Skeleton } from '../components/ui/Skeleton';
+import { EmptyState } from '../components/ui/EmptyState';
 import {
   ColumnCustomizer,
   defaultColumnPrefs,
@@ -60,6 +61,7 @@ import {
   RefreshCw,
   AlertCircle,
   UserCheck,
+  Target,
 } from 'lucide-react';
 
 const columnHelper = createColumnHelper<RealLead>();
@@ -1163,24 +1165,27 @@ export function LeadsPage() {
                   </tr>
                 ) : table.getRowModel().rows.length === 0 ? (
                   <tr>
-                    <td
-                      colSpan={columns.length}
-                      className="px-4 py-10 text-center text-zinc-400"
-                      style={{ fontSize: 13 }}
-                    >
+                    <td colSpan={columns.length} className="px-4 py-6">
                       {hasActiveFilters ? (
-                        <span className="inline-flex items-center gap-2">
-                          No leads match the current filters.
-                          <button
-                            type="button"
-                            onClick={() => setFilters(defaultFilters)}
-                            style={{ color: 'var(--color-brand)', background: 'none', border: 'none', cursor: 'pointer', fontWeight: 500, fontSize: 13 }}
-                          >
-                            Clear filters
-                          </button>
-                        </span>
+                        <EmptyState
+                          icon={<Target size={22} />}
+                          title="No leads match these filters"
+                          message="Try widening or clearing the filters to see more leads."
+                          action={{
+                            label: 'Clear filters',
+                            onClick: () => {
+                              setFilters(defaultFilters);
+                              setPagination((p) => ({ ...p, pageIndex: 0 }));
+                              sel.clear();
+                            },
+                          }}
+                        />
                       ) : (
-                        'No leads yet.'
+                        <EmptyState
+                          icon={<Target size={22} />}
+                          title="No leads yet"
+                          message="Leads you’re assigned to will show up here."
+                        />
                       )}
                     </td>
                   </tr>

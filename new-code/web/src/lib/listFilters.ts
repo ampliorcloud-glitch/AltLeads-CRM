@@ -31,6 +31,25 @@ function filtersKey(entity: string): string {
   return `altleads:filters:${entity}`;
 }
 
+/**
+ * Free-text filter keys that must NOT be persisted (ALT-373). localStorage
+ * SURVIVES LOGOUT, and a user can type anything into a search box — including a
+ * phone number or email while looking someone up — so persisting it would leak
+ * PII to the next user on a shared device. The facet filters (cities, statuses,
+ * owners, date ranges, etc.) are non-sensitive view state and are still
+ * persisted. On load these keys are dropped, so search always starts empty.
+ */
+const NON_PERSISTED_KEYS = new Set(['search', 'q', 'query', 'searchTerm', 'keyword']);
+
+/** Return a shallow copy of `filters` without the free-text (PII-prone) keys. */
+function stripFreeText<T extends object>(filters: T): Partial<T> {
+  const out: Partial<T> = {};
+  for (const [k, v] of Object.entries(filters)) {
+    if (!NON_PERSISTED_KEYS.has(k)) (out as Record<string, unknown>)[k] = v;
+  }
+  return out;
+}
+
 /** Read the saved filters for an entity, merged over `fallback`. */
 export function loadPersistedFilters<T extends object>(entity: string, fallback: T): T {
   try {
@@ -38,7 +57,9 @@ export function loadPersistedFilters<T extends object>(entity: string, fallback:
     if (!raw) return fallback;
     const parsed = JSON.parse(raw);
     if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
-      return { ...fallback, ...(parsed as Partial<T>) };
+      // Drop any free-text keys an older blob may still hold, then merge over
+      // defaults so `search` (and friends) always restore to their default/empty.
+      return { ...fallback, ...stripFreeText(parsed as Partial<T>) };
     }
     return fallback;
   } catch {
@@ -53,9 +74,11 @@ export function useListFilters<T extends object>(
   const [filters, setFilters] = useState<T>(() => loadPersistedFilters(entity, defaultFilters));
 
   // Persist on every change (including "Clear filters", which sets defaults).
+  // Free-text keys (search/query/...) are stripped first so no typed PII (a
+  // phone/email looked up in the search box) is written to localStorage.
   useEffect(() => {
     try {
-      localStorage.setItem(filtersKey(entity), JSON.stringify(filters));
+      localStorage.setItem(filtersKey(entity), JSON.stringify(stripFreeText(filters)));
     } catch {
       /* ignore storage failures (private mode, quota, SSR) */
     }

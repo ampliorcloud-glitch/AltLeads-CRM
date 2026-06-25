@@ -1023,3 +1023,11 @@ First cycle after defining `product-os/GOALS.md` (north-star + Internal-Launch-R
 - **Route code-splitting** (ALT-372 / closes RSK-06): 23 route pages → React.lazy + one Suspense boundary; providers/guards/auth kept eager. **Initial JS 1672KB → 282KB (gzip 437 → 82KB)** — big first-load win for 111 users. Central `vite build` green.
 - **FE security audit** → 4 FE-fixable PII leaks captured as **ALT-373** (drafts/search-index/exports cache PII; ALT-369 filter-persistence includes the free-text search term). 2 dbGated (admin/approvals client-only authz) → Review Hub RSK-12 (same class as the RLS work).
 - QC PASS (endpoint read-only+guarded+no-PII; Suspense correct; no provider/guard wrongly lazy). Tracker → ALT-372/373; Review Hub → RSK-06 closed, RSK-12 added. NOTHING PUSHED.
+
+---
+## 2026-06-25 (cont.) — UX research swarm + Build Cycle 7 (PII + delight wave 1)
+Ankit asked to find MORE non-dependent UX/AI/convenience work (web research, since I can't *use* the running app). 3-agent swarm (web: Linear/Superhuman/Notion/Attio + Close/Apollo/Outreach; + code audit) → **`product-os/UX-DELIGHT-BACKLOG.md`** (tiered, all pure-FE unless marked GATED; ⭐ = 2+ agents agreed). Top wins: density toggle, actionable empty states, press-? help, optimistic+undo, "My Day" focus queue, saved views, keyboard-first nav, motion, dark mode. AI features (summarize/draft/next-action) flagged GATED → Review Hub **DEC-10** (needs an LLM key + cost OK).
+- **Cycle 7 (2 disjoint agents + QC PASS, tsc clean, vite green):**
+  - **ALT-373 PII-at-rest hardening:** useUnsavedChanges redacts PII keys before caching drafts; listFilters strips the free-text search term from persisted filters; globalSearch already clears on signOut (verified). Search-by-phone + contact exports intentionally intact (legit features, not leaks).
+  - **ALT-374 delight wave 1:** press "?" → focus-trapped overlay listing the REAL shortcuts (no invented bindings), mounted once at app root; new reusable EmptyState; LeadsPage empty state now offers "Clear filters"/friendly next action (reference — fan out next).
+- Tracker → ALT-373/374; Review Hub → DEC-10. NOTHING PUSHED.
