@@ -51,7 +51,9 @@ import {
   UserCheck,
   FolderPlus,
   Tag,
+  Building2,
 } from 'lucide-react';
+import { EmptyState } from '../components/ui/EmptyState';
 import { ReassignModal } from '../components/common/ReassignModal';
 import { reassignCompaniesBulk, fetchAssignableUsers } from '../data/assignment';
 import { fetchOptions, type DropdownOption } from '../data/dropdowns';
@@ -1363,18 +1365,25 @@ export function CompaniesPage() {
                   <tr>
                     <td colSpan={columns.length} className="px-4 py-10 text-center text-zinc-400" style={{ fontSize: 13 }}>
                       {hasActiveFilters ? (
-                        <span className="inline-flex items-center gap-2">
-                          No companies match the current filters.
-                          <button
-                            type="button"
-                            onClick={() => setFilters(defaultFilters)}
-                            style={{ color: 'var(--color-brand)', background: 'none', border: 'none', cursor: 'pointer', fontWeight: 500, fontSize: 13 }}
-                          >
-                            Clear filters
-                          </button>
-                        </span>
+                        <EmptyState
+                          icon={<Building2 size={22} />}
+                          title="No companies match these filters"
+                          message="Try widening or clearing the filters above."
+                          action={{
+                            label: 'Clear filters',
+                            onClick: () => {
+                              setFilters(defaultFilters);
+                              setPagination((p) => ({ ...p, pageIndex: 0 }));
+                              sel.clear();
+                            },
+                          }}
+                        />
                       ) : (
-                        'No companies yet.'
+                        <EmptyState
+                          icon={<Building2 size={22} />}
+                          title="No companies yet"
+                          message="Companies will appear here once they've been added."
+                        />
                       )}
                     </td>
                   </tr>

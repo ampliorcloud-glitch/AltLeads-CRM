@@ -33,6 +33,7 @@ import {
 import { ViewSwitcher, useViewMode } from '../components/ui/ViewSwitcher';
 import { CardShell } from '../components/ui/CardGrid';
 import { ListToolbar } from '../components/ui/ListToolbar';
+import { EmptyState } from '../components/ui/EmptyState';
 import { SelectAllMatchingBar } from '../components/ui/SelectAllMatchingBar';
 import { useListFilters } from '../lib/listFilters';
 import { EditableGrid, type EditableColumn } from '../components/ui/EditableGrid';
@@ -353,6 +354,10 @@ export function MeetingsPage() {
   const hasActiveFilters = Object.values(filters).some((v) =>
     Array.isArray(v) ? v.length > 0 : v !== '',
   );
+
+  // Shared clear-filters handler — used by the toolbar's "Clear filters" button
+  // and the empty-state's action so they stay in lockstep.
+  const clearFilters = () => { setFilters(defaultFilters); setPageIndex(0); sel.clear(); };
 
   const filteredData = useMemo(() => {
     return allMeetings.filter((m) => {
@@ -863,7 +868,7 @@ export function MeetingsPage() {
                   )}
                   {hasActiveFilters && (
                     <button
-                      onClick={() => { setFilters(defaultFilters); setPageIndex(0); sel.clear(); }}
+                      onClick={clearFilters}
                       className="ml-3 text-zinc-400 hover:text-zinc-700 transition-colors"
                       style={{ fontSize: 12 }}
                     >
@@ -1079,18 +1084,21 @@ export function MeetingsPage() {
                   </tr>
                 ) : rowsOnPage.length === 0 ? (
                   <tr>
-                    <td colSpan={columns.length} className="px-4 py-12 text-center">
-                      <div className="flex flex-col items-center justify-center gap-2 text-zinc-400">
-                        <div
-                          className="rounded-full bg-zinc-100 flex items-center justify-center"
-                          style={{ width: 40, height: 40 }}
-                        >
-                          <CalendarDays size={18} strokeWidth={1.5} className="text-zinc-400" />
-                        </div>
-                        <p style={{ fontSize: 13 }}>
-                          {hasActiveFilters ? 'No meetings match the current filters.' : 'No meetings found.'}
-                        </p>
-                      </div>
+                    <td colSpan={columns.length} className="px-4 py-6">
+                      {hasActiveFilters ? (
+                        <EmptyState
+                          icon={<CalendarDays size={22} strokeWidth={1.5} />}
+                          title="No meetings match these filters"
+                          message="Try widening or clearing the filters above to see more meetings."
+                          action={{ label: 'Clear filters', onClick: clearFilters }}
+                        />
+                      ) : (
+                        <EmptyState
+                          icon={<CalendarDays size={22} strokeWidth={1.5} />}
+                          title="No meetings yet"
+                          message="Meetings booked from leads will show up here."
+                        />
+                      )}
                     </td>
                   </tr>
                 ) : (

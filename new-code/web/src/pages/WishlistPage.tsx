@@ -32,6 +32,7 @@ import {
   type KanbanGroupDef,
 } from '../components/kanban/KanbanGroupBySelect';
 import { Skeleton } from '../components/ui/Skeleton';
+import { EmptyState } from '../components/ui/EmptyState';
 import { RecordPreviewPanel } from '../components/common/RecordPreviewPanel';
 import { WishlistPreview } from '../components/wishlist/WishlistPreview';
 import type { ColumnPref } from '../data/views';
@@ -278,6 +279,12 @@ export function WishlistPage() {
   const hasActiveFilters = Object.values(filters).some((v) =>
     Array.isArray(v) ? v.length > 0 : v !== '',
   );
+
+  const clearFilters = () => {
+    setFilters(defaultFilters);
+    setPagination((p) => ({ ...p, pageIndex: 0 }));
+    sel.clear();
+  };
 
   const filteredData = useMemo(() => {
     return allItems.filter((item) => {
@@ -757,7 +764,7 @@ export function WishlistPage() {
                   )}
                   {hasActiveFilters && (
                     <button
-                      onClick={() => { setFilters(defaultFilters); setPagination((p) => ({ ...p, pageIndex: 0 })); sel.clear(); }}
+                      onClick={clearFilters}
                       className="ml-3 text-zinc-400 hover:text-zinc-700 transition-colors"
                       style={{ fontSize: 12 }}
                     >
@@ -956,13 +963,21 @@ export function WishlistPage() {
                   </tr>
                 ) : table.getRowModel().rows.length === 0 ? (
                   <tr>
-                    <td colSpan={visibleKeys.length + 1} className="px-4 py-12 text-center" style={{ fontSize: 13 }}>
-                      <div className="flex flex-col items-center gap-2 text-zinc-400">
-                        <Building2 size={22} className="text-zinc-300" />
-                        {allItems.length === 0
-                          ? 'No companies in the wishlist yet.'
-                          : 'No companies match the current filters.'}
-                      </div>
+                    <td colSpan={visibleKeys.length + 1} className="px-4 py-6">
+                      {hasActiveFilters ? (
+                        <EmptyState
+                          icon={<Building2 size={22} />}
+                          title="No wishlist items match these filters"
+                          message="Try widening or clearing the filters above to see more companies."
+                          action={{ label: 'Clear filters', onClick: clearFilters }}
+                        />
+                      ) : (
+                        <EmptyState
+                          icon={<Building2 size={22} />}
+                          title="No wishlist items yet"
+                          message="Companies saved to the wishlist will show up here."
+                        />
+                      )}
                     </td>
                   </tr>
                 ) : (

@@ -47,7 +47,9 @@ import {
   UserCheck,
   FolderPlus,
   Tag,
+  Users,
 } from 'lucide-react';
+import { EmptyState } from '../components/ui/EmptyState';
 import { ReassignModal } from '../components/common/ReassignModal';
 import { reassignContactsBulk, fetchAssignableUsers } from '../data/assignment';
 import { supabase } from '../lib/supabase';
@@ -1393,20 +1395,23 @@ export function ContactsPage() {
                   </tr>
                 ) : pageRows.length === 0 ? (
                   <tr>
-                    <td colSpan={visibleColCount} className="px-4 py-10 text-center text-zinc-400" style={{ fontSize: 13 }}>
+                    <td colSpan={visibleColCount} className="px-4 py-6">
                       {hasActiveFilters ? (
-                        <span className="inline-flex items-center gap-2">
-                          No contacts match the current filters.
-                          <button
-                            type="button"
-                            onClick={() => setFilters(defaultFilters)}
-                            style={{ color: 'var(--color-brand)', background: 'none', border: 'none', cursor: 'pointer', fontWeight: 500, fontSize: 13 }}
-                          >
-                            Clear filters
-                          </button>
-                        </span>
+                        <EmptyState
+                          icon={<Users size={22} />}
+                          title="No contacts match these filters"
+                          message="Try widening or clearing the filters above to see more contacts."
+                          action={{
+                            label: 'Clear filters',
+                            onClick: () => { setFilters(defaultFilters); setPageIndex(0); sel.clear(); },
+                          }}
+                        />
                       ) : (
-                        'No contacts yet.'
+                        <EmptyState
+                          icon={<Users size={22} />}
+                          title="No contacts yet"
+                          message="Contacts you can work will appear here once they're added."
+                        />
                       )}
                     </td>
                   </tr>

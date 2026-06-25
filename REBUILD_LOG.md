@@ -1031,3 +1031,8 @@ Ankit asked to find MORE non-dependent UX/AI/convenience work (web research, sin
   - **ALT-373 PII-at-rest hardening:** useUnsavedChanges redacts PII keys before caching drafts; listFilters strips the free-text search term from persisted filters; globalSearch already clears on signOut (verified). Search-by-phone + contact exports intentionally intact (legit features, not leaks).
   - **ALT-374 delight wave 1:** press "?" → focus-trapped overlay listing the REAL shortcuts (no invented bindings), mounted once at app root; new reusable EmptyState; LeadsPage empty state now offers "Clear filters"/friendly next action (reference — fan out next).
 - Tracker → ALT-373/374; Review Hub → DEC-10. NOTHING PUSHED.
+
+---
+## 2026-06-25 (cont.) — Build Cycle 8: actionable empty states fanned out (4 disjoint agents + QC PASS)
+Reused Cycle 7's EmptyState across the remaining 4 list pages (Contacts/Companies/Meetings/Wishlist), 1 disjoint agent each. Each table empty branch now offers "Clear filters" (wired to that page's REAL clear handler, gated on its existing hasActiveFilters) when filtered, or a friendly message when truly empty — fitting icon per module (Users/Building2/CalendarDays). Grid/kanban empties left as-is (separate). QC PASS, tsc clean, vite green. Empty states are now consistent app-wide. NOTHING PUSHED.
+- **Note (judgment):** the top research item "My Day focus queue" was DEFERRED — it computes "my leads" from the broken ownership column (created_by≠assignee), so building it now would decorate the broken foundation. Revisit after DEC-03. Delight wave 2 (density toggle, optimistic+undo, active-filter badges) is presentation-only (no ownership dependency) → safe to continue.
