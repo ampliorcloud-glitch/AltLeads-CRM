@@ -78,27 +78,44 @@ async function findAuthUserByEmail(admin, email) {
  * Resolves profiles.role from the user's most-privileged (lowest role_id) role.
  * Best-effort: logs and continues on failure (never blocks the password action).
  */
+// Link an auth uid -> numeric user_id (+ role) in `profiles`. Returns a STATUS —
+// it never silently swallows a failure. Why this matters (RSK-10): assignee-RLS
+// resolves the caller via current_user_id() reading this profiles row; a provisioned
+// login whose profiles row is missing/has a NULL user_id -> current_user_id() = NULL
+// -> every write policy is false -> that user is SILENTLY denied ALL edits. So we
+// (a) ALWAYS write user_id (it's required for the link to be usable), and (b) report
+// ok/reason so callers can surface coverage instead of returning a false 200.
 async function ensureProfileLink(admin, { authUid, userId, email, fullName }) {
   try {
-    let roleName = null;
-    if (userId != null) {
-      const { data: roleRows } = await admin
-        .from('user_role').select('role_id').eq('user_id', userId).is('deleted_date', null);
-      if (roleRows && roleRows.length) {
-        const minRole = Math.min(...roleRows.map((r) => Number(r.role_id)));
-        const { data: rm } = await admin
-          .from('role_master').select('name').eq('role_id', minRole).single();
-        roleName = rm && rm.name ? rm.name : null;
-      }
+    if (userId == null) {
+      console.error('[users] ensureProfileLink: no user_id — profile would be unusable for RLS (RSK-10)');
+      return { ok: false, roleLinked: false, reason: 'missing user_id — RLS would deny this login' };
     }
-    const row = { id: authUid, email: String(email).trim().toLowerCase() };
-    if (userId != null) row.user_id = userId;
+    let roleName = null;
+    const { data: roleRows } = await admin
+      .from('user_role').select('role_id').eq('user_id', userId).is('deleted_date', null);
+    if (roleRows && roleRows.length) {
+      const minRole = Math.min(...roleRows.map((r) => Number(r.role_id)));
+      const { data: rm } = await admin
+        .from('role_master').select('name').eq('role_id', minRole).single();
+      roleName = rm && rm.name ? rm.name : null;
+    }
+    const row = { id: authUid, email: String(email).trim().toLowerCase(), user_id: userId };
     if (fullName) row.full_name = fullName;
     if (roleName) row.role = roleName;
     const { error } = await admin.from('profiles').upsert(row, { onConflict: 'id' });
-    if (error) console.error('[users] ensureProfileLink upsert failed:', error.message);
+    if (error) {
+      console.error('[users] ensureProfileLink upsert failed:', error.message);
+      return { ok: false, roleLinked: false, reason: error.message };
+    }
+    if (!roleName) {
+      console.warn(`[users] ensureProfileLink: profile written but NO role resolved for user ${userId} (role-based policies will not apply)`);
+      return { ok: true, roleLinked: false, reason: 'no role on user_role/role_master — role-based policies will not apply' };
+    }
+    return { ok: true, roleLinked: true };
   } catch (e) {
     console.error('[users] ensureProfileLink threw:', e.message);
+    return { ok: false, roleLinked: false, reason: e.message };
   }
 }
 
@@ -866,17 +883,25 @@ app.post('/api/users/create', requireAdmin, async (req, res) => {
   /* 10b. Explicitly link auth uid -> numeric user_id in profiles. Don't rely on
      the email-matching onboarding trigger — guarantee the link so reset-password,
      RLS (current_user_id/is_admin) and the created_by audit all work immediately. */
-  await ensureProfileLink(supabaseAdmin, {
+  const link = await ensureProfileLink(supabaseAdmin, {
     authUid: authData.user.id,
     userId: newUser.user_id,
     email: trimmedEmail,
     fullName: trimmedName,
   });
+  if (!link.ok) {
+    console.error(`[users/create] profile link FAILED for user ${newUser.user_id}: ${link.reason} — this login would be denied edits under RLS (RSK-10)`);
+  }
 
   console.log(`[users/create] Created user ${newUser.user_id} (${trimmedEmail}) with role ${roleIdInt}`);
 
-  /* 11. Return success */
-  return res.status(200).json({ ok: true, user_id: newUser.user_id, tempPassword });
+  /* 11. Return success — report profile-link coverage honestly (RSK-10) so a bulk
+     run can detect any login that would be silently denied edits under RLS. */
+  return res.status(200).json({
+    ok: true, user_id: newUser.user_id, tempPassword,
+    profileLinked: link.ok,
+    ...(link.reason ? { profileWarning: link.reason } : {}),
+  });
   } catch (e) {
     console.error('[users/create]', e);
     return res.status(500).json({ error: 'Failed to create user' });
@@ -970,12 +995,19 @@ app.post('/api/users/reset-password', requireAdmin, async (req, res) => {
   }
 
   /* 6. (Re)link the auth account to the numeric user_id so RLS + future resets work. */
-  await ensureProfileLink(supabaseAdmin, { authUid, userId: targetUserId, email: targetEmail, fullName });
+  const link = await ensureProfileLink(supabaseAdmin, { authUid, userId: targetUserId, email: targetEmail, fullName });
+  if (!link.ok) {
+    console.error(`[users/reset-password] profile link FAILED for user ${targetUserId}: ${link.reason} — this login would be denied edits under RLS (RSK-10)`);
+  }
 
   console.log(`[users/reset-password] ${created ? 'Created login + set' : 'Reset'} password for ${targetEmail} (user_id=${targetUserId}, auth uid=${authUid})`);
 
-  /* 7. Return success */
-  return res.status(200).json({ ok: true, tempPassword, created });
+  /* 7. Return success — report profile-link coverage honestly (RSK-10). */
+  return res.status(200).json({
+    ok: true, tempPassword, created,
+    profileLinked: link.ok,
+    ...(link.reason ? { profileWarning: link.reason } : {}),
+  });
   } catch (err) {
     console.error('[users/reset-password] unexpected error:', err);
     return res.status(500).json({ error: 'Failed to set password.' });
