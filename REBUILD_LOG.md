@@ -1036,3 +1036,7 @@ Ankit asked to find MORE non-dependent UX/AI/convenience work (web research, sin
 ## 2026-06-25 (cont.) — Build Cycle 8: actionable empty states fanned out (4 disjoint agents + QC PASS)
 Reused Cycle 7's EmptyState across the remaining 4 list pages (Contacts/Companies/Meetings/Wishlist), 1 disjoint agent each. Each table empty branch now offers "Clear filters" (wired to that page's REAL clear handler, gated on its existing hasActiveFilters) when filtered, or a friendly message when truly empty — fitting icon per module (Users/Building2/CalendarDays). Grid/kanban empties left as-is (separate). QC PASS, tsc clean, vite green. Empty states are now consistent app-wide. NOTHING PUSHED.
 - **Note (judgment):** the top research item "My Day focus queue" was DEFERRED — it computes "my leads" from the broken ownership column (created_by≠assignee), so building it now would decorate the broken foundation. Revisit after DEC-03. Delight wave 2 (density toggle, optimistic+undo, active-filter badges) is presentation-only (no ownership dependency) → safe to continue.
+
+---
+## 2026-06-25 (cont.) — Build Cycle 9: density / compact mode toggle (ALT-375)
+New `useDensity` hook (mirrors useViewMode — per-user+entity localStorage) + `DensityToggle` segmented control. Comfortable = 44px (pixel-identical to before — QC verified no regression), Compact = 32px (~40% more rows). Wired into the Leads table (reference) with a height transition; grid/kanban/data/sort/pagination untouched. QC PASS, vite green. Fan out to other list pages next. NOTHING PUSHED.

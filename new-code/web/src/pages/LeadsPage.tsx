@@ -33,6 +33,8 @@ import {
   reconcileColumns,
 } from '../components/ui/ColumnCustomizer';
 import { ViewSwitcher, useViewMode } from '../components/ui/ViewSwitcher';
+import { DensityToggle } from '../components/ui/DensityToggle';
+import { useDensity, getDensityMetrics } from '../components/ui/useDensity';
 import { CardShell } from '../components/ui/CardGrid';
 import { ListToolbar } from '../components/ui/ListToolbar';
 import { EditableGrid, type EditableColumn } from '../components/ui/EditableGrid';
@@ -368,6 +370,11 @@ export function LeadsPage() {
 
   // Table / Grid view (persisted per user + entity in localStorage).
   const [view, setView] = useViewMode('leads', userId);
+
+  // Row density (Comfortable / Compact) — persisted per user + entity. Applies to
+  // the TABLE view only; comfortable keeps today's 44px rows exactly (ALT density win).
+  const [density, setDensity] = useDensity('leads', userId);
+  const densityMetrics = getDensityMetrics(density);
 
   const [allLeads, setAllLeads] = useState<RealLead[]>([]);
   const [industries, setIndustries] = useState<string[]>([]);
@@ -952,7 +959,13 @@ export function LeadsPage() {
               </button>
             ) : null
           }
-          viewSwitcher={<ViewSwitcher value={view} onChange={setView} />}
+          viewSwitcher={
+            <div className="inline-flex items-center" style={{ gap: 6 }}>
+              {/* Density toggle only affects the Table view's row height. */}
+              {view === 'table' && <DensityToggle value={density} onChange={setDensity} />}
+              <ViewSwitcher value={view} onChange={setView} />
+            </div>
+          }
           columns={
             <ColumnCustomizer
               entity="leads"
@@ -1205,9 +1218,10 @@ export function LeadsPage() {
                       }}
                       style={{
                         borderBottom: '1px solid var(--color-gray-100)',
-                        height: 44,
+                        height: densityMetrics.rowHeight,
                         cursor: 'pointer',
-                        transition: 'background 0.1s',
+                        // Animate row height when toggling density (ALT density win).
+                        transition: 'background 0.1s, height 0.15s ease',
                         background: sel.isSelected(row.original.id) ? 'var(--color-brand-subtle, #EBF4FD)' : undefined,
                       }}
                       onMouseEnter={(e) => {
@@ -1225,7 +1239,10 @@ export function LeadsPage() {
                         <td
                           key={cell.id}
                           className="align-middle whitespace-nowrap"
-                          style={{ padding: cell.column.id === '__select' ? '0 12px' : '0 16px' }}
+                          style={{
+                            padding: `${densityMetrics.cellPaddingY}px ${cell.column.id === '__select' ? 12 : 16}px`,
+                            ...(densityMetrics.fontSize ? { fontSize: densityMetrics.fontSize } : null),
+                          }}
                         >
                           {flexRender(cell.column.columnDef.cell, cell.getContext())}
                         </td>
