@@ -22,9 +22,14 @@ const path = require('path');
 const OUT_PATH = path.resolve(__dirname, '../../../docs/Amplior-Review-Hub.xlsx');
 const UPDATED = '2026-06-25';
 
-/* ─── 1. DECISIONS NEEDED (waiting on Mohit/Ankit) ──────────────────────────
+/* ─── 1. DECISIONS NEEDED (waiting on Ankit, the PM; business-level escalates to Mohit, CEO) ─
    [id, item, plainQuestion, options, whyItMatters, status, priority]          */
 const DECISIONS = [
+  ['DEC-09', 'Gate the LIVE site until security lands — URGENT',
+    'crm.altleads.com is publicly reachable while the database security (RLS) is OFF and the anonymous key can read personal data. The advisor flags this as an active exposure right now. I cannot change the live deployment without your go.',
+    'A) Put the live site behind a hard login wall / take it offline until RLS lands (I prepare it, you approve the push) · B) Accept the risk and leave it open',
+    'A leaked/inspected key could expose every client\'s contact data (incl. HungerBox). For an outreach vendor whose product IS client data, one incident ends trust. Highest-urgency item on this list.',
+    'Awaiting you', 'P0'],
   ['DEC-01', 'ONE feedback model (D2)',
     'We have feedback in a few places. Do you want ONE unified way clients + sales give/See feedback? I owe you a plain-language explainer first.',
     'A) I write the 6th-grade explainer + recover your earlier client-portal feedback tweaks, then you decide · B) Keep as-is for now',
@@ -90,6 +95,8 @@ const REVIEW = [
     'The why/what/how/when of AI embeddings — capture from now (cheap) vs backfill (lossy).', 'n/a', ''],
   ['OS-1', 'product-os/ operating system', 'product-os/',
     'The new "start here" + how Claude works as PM. Tell me if the way-of-working matches what you want.', 'n/a', 'You asked for this.'],
+  ['DISC-1', 'Discovery synthesis (market + advisor reality-check)', 'product-os/DISCOVERY-2026-06-25.md',
+    'The honest outside view: as a pure CRM we lose; the moat is the client ROI/feedback portal. Plus the advisor\'s brutal truths that redirected the build queue to foundation-readiness.', 'n/a', 'Read the "brutal truths" + "real-need verdict".'],
 ];
 
 /* ─── 3. RISKS (advisor / security flags to keep visible) ───────────────────
@@ -100,6 +107,9 @@ const RISKS = [
   ['RSK-03', 'Statuses are free text and already corrupted — breaks reports + funnel', 'High', 'Data', 'Yes', 'DEC-05 / ALT-350/351'],
   ['RSK-04', 'No real masking of email/phone yet (must be DB-enforced)', 'High', 'Security / Privacy', 'Yes', 'DEC-06 / ALT-345'],
   ['RSK-05', 'Finished work sitting unpushed — deploy/merge risk grows over time', 'Medium', 'Delivery', 'No', 'DEC-08 (pick a push window)'],
+  ['RSK-07', 'LIVE site reachable while RLS is off — active PII exposure right now', 'Critical', 'Security', 'Yes', 'DEC-09 (gate the live URL)'],
+  ['RSK-08', 'Inline "create company" writes placeholder values into NOT-NULL columns — manufactures the exact data corruption we are trying to fix', 'High', 'Data', 'No', 'Hide/disable it (FE) — Build Cycle 1'],
+  ['RSK-09', 'Assignment write-path (apply-assignment-rls.cjs) never applied — agents cannot safely edit their own records', 'Critical', 'Data / Product', 'Yes', 'Prep + throwaway-login validation now; apply on owner go'],
   ['RSK-06', 'Single 1.6MB JS bundle (no code-splitting) — slow first load as app grows', 'Low', 'Performance', 'No', 'Backlog: route-level code-split'],
 ];
 

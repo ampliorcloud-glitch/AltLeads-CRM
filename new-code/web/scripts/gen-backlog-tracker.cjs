@@ -134,7 +134,7 @@ function uxAuditTickets() {
 //           Meetings | Wishlist | Admin | Security | AI | Docs | Data
 // Priority: P0 | P1 | P2 | P3
 // Status:   Done | In Progress | Planned | Blocked
-// Owner:    Claude | Mohit | Sub-agent
+// Owner:    Claude | Ankit (PM) | Mohit (CEO) | Sub-agent
 
 const TICKETS = [
 
@@ -146,7 +146,7 @@ const TICKETS = [
     type:'Task', module:'Deploy/Infra', wave:'Foundation',
     priority:'P0', status:'Done',
     created: d(2026,6,11), updated: d(2026,6,11), finished: d(2026,6,11),
-    owner:'Mohit',
+    owner:'Ankit',
     notes:'Owner-approved 2026-06-11. No Java, no MySQL, no droplet.'
   },
   {
@@ -170,7 +170,7 @@ const TICKETS = [
     type:'Task', module:'Deploy/Infra', wave:'Foundation',
     priority:'P0', status:'Done',
     created: d(2026,6,11), updated: d(2026,6,11), finished: d(2026,6,11),
-    owner:'Mohit',
+    owner:'Ankit',
     notes:'Tokens in .credentials/ (gitignored). DO API token verified.'
   },
 
@@ -258,7 +258,7 @@ const TICKETS = [
     type:'Task', module:'Security', wave:'Auth',
     priority:'P0', status:'Done',
     created: d(2026,6,12), updated: d(2026,6,12), finished: d(2026,6,12),
-    owner:'Mohit',
+    owner:'Ankit',
     notes:'At go-live each user gets a one-time set-your-password email.'
   },
   {
@@ -314,7 +314,7 @@ const TICKETS = [
     type:'Task', module:'Security', wave:'Security audit',
     priority:'P1', status:'Planned',
     created: d(2026,6,11), updated: d(2026,6,17), finished: null,
-    owner:'Mohit',
+    owner:'Ankit',
     notes:'Prune at cutover, not before — one may be owner office IP.'
   },
   {
@@ -514,7 +514,7 @@ const TICKETS = [
     type:'Feature', module:'Meetings', wave:'Web core',
     priority:'P1', status:'Planned',
     created: d(2026,6,12), updated: d(2026,6,17), finished: null,
-    owner:'Mohit',
+    owner:'Ankit',
     notes:'QC role interaction with meetings not yet specified. Needs owner decision.'
   },
 
@@ -610,7 +610,7 @@ const TICKETS = [
     type:'Task', module:'Notifications', wave:'Per-project status',
     priority:'P2', status:'Planned',
     created: d(2026,6,16), updated: d(2026,6,17), finished: null,
-    owner:'Mohit',
+    owner:'Ankit',
     notes:'Currently recipient = salesperson. Each action has a single TODO-commented spot in code.'
   },
   {
@@ -670,7 +670,7 @@ const TICKETS = [
     type:'Task', module:'Admin', wave:'Deploy',
     priority:'P0', status:'Planned',
     created: d(2026,6,16), updated: d(2026,6,17), finished: null,
-    owner:'Mohit',
+    owner:'Ankit',
     notes:'Hard gate: add-user and reset-password return 503 until this is done in production.'
   },
 
@@ -938,7 +938,7 @@ const TICKETS = [
     type:'Task', module:'Deploy/Infra', wave:'Deploy',
     priority:'P0', status:'Planned',
     created: d(2026,6,17), updated: d(2026,6,17), finished: null,
-    owner:'Mohit',
+    owner:'Ankit',
     notes:'1-2 weeks of owner-led testing. Very little AI work. Old system runs untouched.'
   },
   {
@@ -946,7 +946,7 @@ const TICKETS = [
     type:'Task', module:'Deploy/Infra', wave:'Deploy',
     priority:'P0', status:'Planned',
     created: d(2026,6,17), updated: d(2026,6,17), finished: null,
-    owner:'Mohit',
+    owner:'Ankit',
     notes:'After parallel run passes. Retire DO droplet + MySQL.'
   },
 
@@ -1006,7 +1006,7 @@ const TICKETS = [
     type:'Task', module:'Deploy/Infra', wave:'Design',
     priority:'P2', status:'Planned',
     created: d(2026,6,14), updated: d(2026,6,17), finished: null,
-    owner:'Mohit',
+    owner:'Ankit',
     notes:'Currently wordmark only. Owner to provide SVG or extract from Figma zip.'
   },
   {
@@ -1050,7 +1050,7 @@ const TICKETS = [
     type:'Task', module:'Deploy/Infra', wave:'Mobile',
     priority:'P1', status:'Planned',
     created: d(2026,6,11), updated: d(2026,6,17), finished: null,
-    owner:'Mohit',
+    owner:'Ankit',
     notes:'Release keystore not in repo. Fine for new listing. Existing Play listing needs vendor key or Google reset.'
   },
   {
@@ -1066,7 +1066,7 @@ const TICKETS = [
     type:'Task', module:'Deploy/Infra', wave:'Mobile',
     priority:'P1', status:'Planned',
     created: d(2026,6,11), updated: d(2026,6,17), finished: null,
-    owner:'Mohit',
+    owner:'Ankit',
     notes:'Vendor may ghost (unpaid invoice) — have Apple/Google support recovery route.'
   },
 
@@ -1170,7 +1170,7 @@ const TICKETS = [
     type:'Task', module:'Docs', wave:'Docs',
     priority:'P0', status:'Planned',
     created: d(2026,6,12), updated: d(2026,6,17), finished: null,
-    owner:'Mohit',
+    owner:'Ankit',
     notes:'20 ❓ questions in USER-STORIES-AND-FLOWS.md. Reconcile backlog after review.'
   },
   {
@@ -1314,7 +1314,7 @@ const TICKETS = [
     type:'Security', module:'Security', wave:'Security hardening',
     priority:'P1', status:'Planned',
     created: d(2026,6,17), updated: d(2026,6,17), finished: null,
-    owner:'Mohit',
+    owner:'Ankit',
     notes:'Rotate amplior.ankits@gmail.com app password used by notify-service SMTP. Owner-gated (requires Google account access).'
   },
   {
@@ -1322,7 +1322,7 @@ const TICKETS = [
     type:'Task', module:'Security', wave:'Security hardening',
     priority:'P2', status:'Planned',
     created: d(2026,6,17), updated: d(2026,6,17), finished: null,
-    owner:'Mohit',
+    owner:'Ankit',
     notes:'Access v2 dials are set; default for manager-edit needs owner decision before go-live.'
   },
   {
@@ -1346,7 +1346,7 @@ const TICKETS = [
     type:'Task', module:'Deploy/Infra', wave:'Deploy',
     priority:'P0', status:'Done',
     created: d(2026,6,17), updated: d(2026,6,17), finished: d(2026,6,17),
-    owner:'Mohit',
+    owner:'Ankit',
     notes:'Pushed commit 3c0c2ba on 2026-06-17 → Hostinger auto-deploy. Owner must add SUPABASE_URL + SUPABASE_SERVICE_ROLE_KEY env vars for email/add-user to work.'
   },
 
@@ -1458,7 +1458,7 @@ const TICKETS = [
     type:'Task', module:'Notifications', wave:'Internal launch',
     priority:'P0', status:'Planned',
     created: d(2026,6,18), updated: d(2026,6,18), finished: null,
-    owner:'Mohit',
+    owner:'Ankit',
     notes:'Owner approves wording; confirm recipient=user_master.email; rotate Gmail app password (env key GMAIL_APP_PASSWORD, not GMAIL_PASS); wire record deep-links. See ALT-137.'
   },
   {
@@ -1526,7 +1526,7 @@ const TICKETS = [
     type:'Feature', module:'Client Portal', wave:'Roadmap',
     priority:'P2', status:'Planned',
     created: d(2026,6,21), updated: d(2026,6,21), finished: null,
-    owner:'Mohit',
+    owner:'Ankit',
     notes:'PLANNED 2026-06-21 (CEO transcript + 2 owner interviews; see CLIENT-PORTAL.md v1-v3). ONE white-label product, TWO brands (Amplior + AltLeads), absolute brand isolation, 2 domains. Client roles = Company Admin > Sales Head > Sales Person (these were the vendor MOBILE app users = CLIENT, never Amplior staff). Replaces the mobile app; the /sales shell is the seed. APPROVED: same Supabase project + Pro ($25) + curated client-scoped read-only views + CLIENT role + adversarial multi-tenant RLS validation. PHASE-1 ORDER: (1) sales screens = view + assign/reassign meetings (port old-code/amplior-mobile-app-main); (2) ICP/docs/decks (edit by Company Admin+Sales Head w/ notify-on-save); (3) governance scheduling = review-meeting reminders + calendar view. Feedback available once meeting STARTED; recorded in CRM. DATA ISOLATION: client owns only MEETING records (not company/contact); sees company info as a SNAPSHOT captured up to their meeting; never another project/client meeting on the same shared company. Dashboard spec TBD. PHASE-1 PLAN NOW DETAILED in docs/product/CLIENT-PORTAL-PHASE1.md + child tickets ALT-222..ALT-245 (grounded in old-code mobile app + adversarial review). KEY DECISIONS from review: portal is a BRAND-NEW separate app (NOT a re-skin of the CRM — reuse would leak live shared data); isolation = a per-meeting denormalised SNAPSHOT table + SECURITY-INVOKER portal_* views + RLS, validated by throwaway-login test (ALT-229, HARD GATE); a one-time BACKFILL (ALT-225) seeds existing meetings so day-one is not empty; full email re-branding (ALT-232). OWNER DECISIONS PENDING: client-visible column whitelist (ALT-243) + snapshot-writer trigger mechanism (ALT-224). Build after those.'
   },
   {
@@ -1666,7 +1666,7 @@ const TICKETS = [
     type:'Security', module:'Security', wave:'Security hardening',
     priority:'P2', status:'Planned',
     created: d(2026,6,21), updated: d(2026,6,21), finished: null,
-    owner:'Mohit',
+    owner:'Ankit',
     notes:'SECURITY FINDING (security pass 2026-06-21). access-rls-v1.sql INSERT policies on lead_master/company_master/contact_master are WITH CHECK (is_admin() OR created_by = current_user_id()) — so ANY authenticated user can create records they own, contradicting ADR-21 "admin-only create". OWNER DECISION 2026-06-21: DO NOT harden the DB now — the internal team is trusted and the UI gate (canCreateData=isAdmin, hides New buttons) is sufficient for the internal launch. HOWEVER this MUST be enforced at the DB before the SALES PORTAL exposes companies/contacts: sales users (SALES_HEAD/SALES_PERSON) must NOT be able to create company/contact/lead. Action when that lands: tighten INSERT WITH CHECK to is_admin() (or is_admin() OR has_project_create_grant) AND ensure sales-role users fail the check; validate with throwaway sales logins before prod. Pairs with sales-portal RLS scoping (ALT-167) + update-path blocker ALT-152.'
   },
   {
@@ -1856,7 +1856,7 @@ const TICKETS = [
     type:'Feature', module:'Client Portal', wave:'Client portal P1',
     priority:'P2', status:'In Progress',
     created: d(2026,6,21), updated: d(2026,6,21), finished: null,
-    owner:'Mohit',
+    owner:'Ankit',
     notes:'Status cards + date-range from portal_dashboard_metrics; role-gated extras. Full chart spec DEFERRED until owner provides it. dependsOn ALT-233.'
   },
   {
@@ -1880,7 +1880,7 @@ const TICKETS = [
     type:'Task', module:'Client Portal', wave:'Client portal P1',
     priority:'P0', status:'Done',
     created: d(2026,6,21), updated: d(2026,6,21), finished: d(2026,6,21),
-    owner:'Mohit',
+    owner:'Ankit',
     notes:'RESOLVED 2026-06-21: client sees EVERYTHING the vendor MOBILE-app user could see (i.e. the full field set the old client app surfaced for meetings/leads/companies). Owner will refine the list later (eventual target = "all that any project CRM user can see"). Snapshot columns (ALT-223) = the mobile-app field set; unblocked.'
   },
   {
@@ -2006,7 +2006,7 @@ const TICKETS = [
     type:'Task', module:'Tasks', wave:'Task manager',
     priority:'P0', status:'Done',
     created: d(2026,6,21), updated: d(2026,6,21), finished: d(2026,6,21),
-    owner:'Mohit',
+    owner:'Ankit',
     notes:'RESOLVED 2026-06-21: PER-TASK reminder email WITH a safety cap (per-user per-window) to protect Gmail deliverability, PLUS an optional DAILY SUMMARY digest that is OPT-IN, default OFF. So the scanner sends one email per due task (capped) + a separate daily digest job gated by a per-user pref (default false). Unblocks ALT-256.'
   },
   {
@@ -2047,7 +2047,7 @@ const TICKETS = [
     type:'Bug', module:'Companies', wave:'Companies & Contacts',
     priority:'P1', status:'Done',
     created: d(2026,6,21), updated: d(2026,6,21), finished: d(2026,6,21),
-    owner:'Mohit',
+    owner:'Ankit',
     notes:'OWNER (#4) 2026-06-21: doing an activity inside a company\'s related contacts records NO activity — should log a project-scoped activity like a normal disposition (separate per project). Investigate the company->related-contacts write path (contact status/disposition inside CompanyDetailPage) and ensure it appends an interaction/activity scoped to the project, visible in that contact/company activity feed.'
   },
   {
@@ -2055,7 +2055,7 @@ const TICKETS = [
     type:'Feature', module:'Admin', wave:'Roadmap',
     priority:'P1', status:'Done',
     created: d(2026,6,21), updated: d(2026,6,21), finished: d(2026,6,21),
-    owner:'Mohit',
+    owner:'Ankit',
     notes:'OWNER (#5, "big one") 2026-06-21: for ADMIN, ALL activity in detail across ALL projects + chronological timeline. SHIPPED (commit ab92711): new "Activity" tab in AdminPage (already ADMIN-gated). data/activityTimeline.ts reads the interaction table (status changes + logged calls, with project_id/occurred_at/actor), newest-first, cap 200, with a project selector incl. "All projects". components/admin/ActivityTimelineTab.tsx groups events by IST day, links each to its record (contact/company/lead), resolves actor+project names. Read-only, no migration. FOLLOW-UPS (future): add date/user filters; aggregate meetings/tasks/call_log sources too (currently interaction only — the richest single source); pagination beyond 200.'
   },
   {
@@ -2063,7 +2063,7 @@ const TICKETS = [
     type:'Feature', module:'Calls', wave:'Roadmap',
     priority:'P1', status:'In Progress',
     created: d(2026,6,21), updated: d(2026,6,21), finished: null,
-    owner:'Mohit',
+    owner:'Ankit',
     notes:'OWNER (#6) 2026-06-21: a CALL module like the Task Manager but call-specific. BUILT (commit 57bcd92, migrations STAGED not applied): public.call_log ledger of calls that HAPPENED (direction OUT/IN, disposition [OWNER-DEFAULT B2B set: CONNECTED/INTERESTED/FOLLOW_UP/CALLBACK_REQUESTED/LEFT_VOICEMAIL/NO_ANSWER/BUSY/NOT_INTERESTED/WRONG_NUMBER], notes, duration_seconds, called_at, lead/company/contact/meeting assoc, owner_user_id, NULLABLE recording_url + transcript = future calling-tool SEAM) + RLS mirroring task (owner OR is_admin OR manages_user, fail-closed; anon revoked). data/calls.ts (logCall/listCallsForRecord/listMyCalls/callStatsToday); LogCallModal + CallHistoryCard; "Log call" on all 4 detail pages; "Calls Today" dashboard card (project-scoped). SCHEDULING reuses Task task_type=CALL (not duplicated). Review: no blocker/high. REMAINING: apply the 2 migrations in prod (gated); a My-Calls list page (so the dashboard card can drill down); wire the future telephony/transcription integration into the recording_url/transcript seam.'
   },
   {
@@ -2071,7 +2071,7 @@ const TICKETS = [
     type:'Feature', module:'Web core', wave:'UX audit',
     priority:'P1', status:'Planned',
     created: d(2026,6,21), updated: d(2026,6,21), finished: null,
-    owner:'Mohit',
+    owner:'Ankit',
     notes:'OWNER (#1) 2026-06-21: cannot see an advanced filter for EACH field with multi-select. Extends ALT-184: a per-column advanced filter (multi-select chips + contains/is-empty where relevant) on every list field, not just the few facets. Builds on the existing SearchSelect multi-select filters (Top#6) -> make it comprehensive per-field.'
   },
   {
@@ -2087,7 +2087,7 @@ const TICKETS = [
     type:'Feature', module:'Web core', wave:'UX audit',
     priority:'P1', status:'Done',
     created: d(2026,6,21), updated: d(2026,6,21), finished: d(2026,6,21),
-    owner:'Mohit',
+    owner:'Ankit',
     notes:'OWNER (#7) 2026-06-21: enhance the EXISTING Cmd-K global search into GROUPED results. SHIPPED (commit 9fc6315): added TASKS + MEETINGS to globalSearch.ts (meetings via fetchMeetings; tasks via a direct RLS-scoped task read so the caller only sees their own/managed/admin). CommandPalette now renders fixed Zoho/HubSpot-style sections — Leads, Companies, Contacts, Tasks, Meetings — each with a count header; keyboard ↑/↓ walks the grouped list in display order, Enter opens the highlighted row; tasks open their associated record (or My Tasks). Index limit 24→40. FOLLOW-UP (future): always-visible inline results dropdown from the TopBar bar (currently the Cmd-K modal) + per-group "see all".'
   },
   {
@@ -2095,7 +2095,7 @@ const TICKETS = [
     type:'Feature', module:'Web core', wave:'Roadmap',
     priority:'P1', status:'In Progress',
     created: d(2026,6,21), updated: d(2026,6,21), finished: null,
-    owner:'Mohit',
+    owner:'Ankit',
     notes:'OWNER (#8) 2026-06-21: a PROJECT selector next to the global search bar on every screen. The selected project becomes the default pre-filter across ALL modules + records (so multi-project users see only that project by default). Default project changeable in personal Settings; persists. SHIPPED (commit 7241294): global ProjectContext (selected project_id, persisted to localStorage; default-project pref seeds new sessions), TopBar ProjectSwitcher (from the user\'s accessible projects via admin.fetchMyProjects — admin=all enabled, others=their project_user rows; self-hides for <2 projects), "All projects" = null = no filter, Settings "Default project" card. SCOPED on NUMERIC project_id (not name — duplicate/blank names + query drift can\'t hide records): Leads (RealLead.projectId from lead_master.project_id) + Meetings (MeetingRow.projectId via lead). REMAINING: Tasks + Wishlist left UNFILTERED (no reliable project field — documented TODO; Tasks could derive via linked lead later); Companies/Contacts are shared across projects (per-project scoping TBD). Status → In Progress until those modules are scoped or explicitly de-scoped by owner.'
   },
   {
@@ -2103,7 +2103,7 @@ const TICKETS = [
     type:'Bug', module:'Web core', wave:'Roadmap',
     priority:'P1', status:'In Progress',
     created: d(2026,6,21), updated: d(2026,6,21), finished: null,
-    owner:'Mohit',
+    owner:'Ankit',
     notes:'Adversarial review of ALT-273 confirmed 21 defects. FIXED: portal-RLS BLOCKER (meeting_snapshot FORCE→ENABLE, commit e4c94a4). OPEN: HIGH Dashboard ignores selected project (shows all-project totals). MEDIUM: scope not cleared on logout (shared-device bleed) + not re-seeded on new login (key scope by user_id); fetchMyProjects swallows errors→[] can wipe saved selection; single-project user force-scoped w/ no "All projects" escape (switcher self-hides <2); Sales Portal silently inherits scope w/ no control; Contacts+Companies ignore global switcher while showing a competing local Project dropdown; daily-digest dedup in-memory only (restart re-sends); portal feedback writes to non-existent portal.meeting_feedback. LOW: NULL project_id rows silently hidden (no "N hidden" hint); reminder bell double-fire under overlapping ticks; CreateTaskModal stale prefill on reopen; MyTasks async setState/no in-flight guard. NIT: ProjectContext useMemo omits setter (latent stale closure); Tasks/Wishlist no-op need an on-screen "not project-scoped" hint.'
   },
   {
@@ -2111,7 +2111,7 @@ const TICKETS = [
     type:'Feature', module:'Sales/Client Portal', wave:'Wave 2',
     priority:'P1', status:'Planned',
     created: d(2026,6,21), updated: d(2026,6,21), finished: null,
-    owner:'Mohit',
+    owner:'Ankit',
     notes:'OWNER 2026-06-21: the client portal simply shows that client\'s MEETINGS (list + the mobile-ditto record view ALT-275). "As simple as that." Scoped by client_assoc_id via the portal snapshot/RLS already designed (apply-portal-*; blocker fixed e4c94a4, still STAGED pending validate + Supabase schema-expose). No internal CRM tabs/machinery exposed. See SALES-PORTAL.md "Owner decisions 2026-06-21" #1.'
   },
   {
@@ -2119,7 +2119,7 @@ const TICKETS = [
     type:'Feature', module:'Sales/Client Portal', wave:'Wave 2',
     priority:'P1', status:'Done',
     created: d(2026,6,21), updated: d(2026,6,21), finished: d(2026,6,21),
-    owner:'Mohit',
+    owner:'Ankit',
     notes:'OWNER 2026-06-21: sales + client-portal users must NOT see the internal CRM record screens. SHIPPED (commit 8bf9aff): MobileMeetingRecord.tsx (7 sections, mobile order, Confirmed→Scheduled/Cancelled→Dropped relabel) at /sales/meetings/:id (SalesMeetingDetailPage); MeetingsPage navigates to /sales/meetings/:id under the sales shell so sales users never hit the internal screen. fetchMeetingDetail extended with ~15 mobile-parity cols (lead alt_mobile/linkedin/role_and_resp/area_of_interest/title/value/description; lead_report sales_intelligence+created_by→scheduledBy; company size/web_url/linkedin + turnover_master + company_sector.sector [col verified]; address lines). Adversarial review PASSED (no blocker/high). Review fixes applied: Call Recording/Image gated to SALES_HEAD+internal (canSeeRecordings) so a Sales Person / client never sees recordings. Sparse records (~79% NULL company_id) render N/A like mobile. REMAINING: client-portal REUSE of this view = ALT-274 (needs portal DB).'
   },
   {
@@ -2127,7 +2127,7 @@ const TICKETS = [
     type:'Feature', module:'Sales/Client Portal', wave:'Wave 2',
     priority:'P2', status:'Done',
     created: d(2026,6,21), updated: d(2026,6,21), finished: d(2026,6,21),
-    owner:'Mohit',
+    owner:'Ankit',
     notes:'OWNER 2026-06-21: sales/portal users can ADD a wishlist by selecting Company name + Prospect(lead) + Location. Mirrors mobile src/screens/wishlist/Wishlist.jsx. Fields: Company (searchable autocomplete from company master, ≥2 chars, free-text ok), Lead name (+auto-fill designation from company leads), Mobile(10-digit), Designation, Branch picker (auto-fills addr/city/state/pin), Address1+2(req), State→City cascading(req), PIN(req), Country(India default), Description, optional geo image/GPS (web v1 = skip). Submit→ our wishlist table (data/wishlist.ts). Full payload spec in SALES-PORTAL.md #3.'
   },
   {
@@ -2135,7 +2135,7 @@ const TICKETS = [
     type:'Feature', module:'Companies/Market', wave:'Wave 2',
     priority:'P1', status:'Planned',
     created: d(2026,6,21), updated: d(2026,6,21), finished: null,
-    owner:'Mohit',
+    owner:'Ankit',
     notes:'OWNER 2026-06-21: agents waste time calling company SITES that aren\'t feasible for a given PROJECT (e.g. HungerBox non-feasible at many sites). Owner HAS primary market-researched data per company × site/city: feasible/non-feasible + employee size per site. Leverage the existing city-wise prospect grouping (COMPANIES-CONTACTS-BLUEPRINT.md) as the unit: show employee size per site/group + feasible/non-feasible badge for the active project; de-emphasise/filter non-feasible. Build: new per-(company,site/city,project) feasibility table + bulk import of owner\'s research sheet + surface in the grouped view (project-scoped via #8). Full spec: docs/product/SITE-FEASIBILITY.md. Sequencing: AFTER ALT-275/276, BEFORE live-data handoff to real calling agents. Design UX TBD with owner.'
   },
   {
@@ -2143,7 +2143,7 @@ const TICKETS = [
     type:'Task', module:'QA/Launch', wave:'Wave 2',
     priority:'P1', status:'Planned',
     created: d(2026,6,21), updated: d(2026,6,21), finished: null,
-    owner:'Mohit',
+    owner:'Ankit',
     notes:'OWNER 2026-06-21: before real calling agents get LIVE production data, walk the agent\'s actual path and enumerate every place they can stall (missing feasibility/employee-size, non-feasible sites unflagged, ambiguous lead ownership, masked contact info they actually need, broken write-path, etc.) → produce a go/no-go checklist. Depends on ALT-277 (feasibility data) landing. See SITE-FEASIBILITY.md.'
   },
 
@@ -2217,7 +2217,7 @@ const TICKETS = [
     type:'Security', module:'Security', wave:'Chrome extension',
     priority:'P1', status:'Planned',
     created: d(2026,6,22), updated: d(2026,6,22), finished: null,
-    owner:'Mohit',
+    owner:'Ankit',
     notes:'From 01-CURRENT-STATE-ANALYSIS.md: the old extensions ship a hardcoded Firebase apiKey (shared across all 3 apps) plus DO Gradient / Groq / Gemini / OpenRouter LLM API keys in client code — treat as COMPROMISED and rotate/disable. The rebuild drops all of them (no Firebase, no AI), but the existing keys are exposed in the shipped/old code and should be revoked.'
   },
   {
@@ -2655,7 +2655,8 @@ function buildLegendSheet() {
     [''],
     ['OWNER', 'Meaning'],
     ['Claude', 'Orchestrator / main session built this'],
-    ['Mohit', 'Business owner decision / action needed'],
+    ['Ankit', 'Product Manager — decision / action needed (primary)'],
+    ['Mohit', 'CEO — business-level escalation only'],
     ['Sub-agent', 'Delegated to a specialist sub-agent'],
   ];
 

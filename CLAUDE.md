@@ -1,6 +1,6 @@
 # AltLeads CRM — Operating Guide (read this first, every session)
 
-> This file auto-loads into every chat. It tells any new Claude how to pick up where the last one left off, and the standards to follow. **Owner: Mohit (non-technical).** Keep it current.
+> This file auto-loads into every chat. It tells any new Claude how to pick up where the last one left off, and the standards to follow. **Ankit = Product Manager** (primary collaborator — directs the product, makes product/eng calls; this is "you"). **Mohit = CEO** (business owner, non-technical — escalate only business-level decisions to him; he does NOT build the product). "The owner / sign-off" below means **Ankit (PM)** unless it's an explicit business-level call. Keep it current.
 
 ## 0. Resume protocol (do this at the start of every session)
 0. **START HERE → `product-os/README.md`** — the operating system (how we work as PM + the optimized resume order + the sub-agent team + guardrails). Then `product-os/OPERATING-MODEL.md`. Owner-facing decisions/reviews/risks live in **`docs/Amplior-Review-Hub.xlsx`** (regenerate: `node new-code/web/scripts/gen-review-tracker.cjs`). The steps below are the legacy detail.

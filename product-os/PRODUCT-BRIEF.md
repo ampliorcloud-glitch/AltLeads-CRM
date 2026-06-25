@@ -24,7 +24,7 @@ Built and live. Internal launch is gated on (a) owner decisions and (b) the **ow
 - **Manual deploy.** Commit locally; push to prod ONLY on the owner's explicit "push" (evenings 6pm+/weekends).
 - **No DB / RLS / prod-facing change** without owner sign-off + a throwaway-login validation.
 - **Never commit secrets** (gitignored `.credentials/`).
-- Owner **Mohit** is non-technical (plain language, no SQL/CLI). Day-to-day engineer is **Ankit**.
+- **Ankit = Product Manager** (your primary collaborator — directs the product, makes product/eng decisions). **Mohit = CEO** (business owner, non-technical, *not* building the product — escalate only genuine business-level calls to him). "The owner" in these docs = Ankit (PM) unless it's a business-level decision.
 - Capture every decision/requirement in docs immediately — chat is lost; docs + trackers are the durable memory.
 
 ## Revenue lens (why this matters)

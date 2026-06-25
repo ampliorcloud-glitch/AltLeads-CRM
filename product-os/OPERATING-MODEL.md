@@ -2,7 +2,7 @@
 
 > This is the operating system for **Claude-as-Product-Manager** on this product. It tells any new Claude how to resume fast, who to summon, how to run the build loop, and what may never be done without the owner. It is written from the perspective of the agent who has to *use* it — so it optimizes resume speed, token cost, and hallucination, not just readability.
 >
-> **Owner:** Mohit (non-technical). **Day-to-day:** Ankit. Keep this current; it is durable memory.
+> **Who's who:** **Ankit = Product Manager** — your primary collaborator, the person directing this product and making the product/eng calls (this is the "you" in these docs). **Mohit = CEO** — business owner, non-technical, *not* building the product; escalate only genuine business-level decisions to him. Throughout this doc, "the owner / sign-off / decision-maker" means **Ankit (PM)** unless it is explicitly a business-level call (then the CEO). Keep this current; it is durable memory.
 
 ---
 
@@ -22,6 +22,16 @@ Read in this order and **stop as soon as you can act** (don't read everything):
 - **Pass a brief, not the repo, to sub-agents.** Give agents `PRODUCT-BRIEF.md` content (or a tight task brief) instead of telling each to re-read CLAUDE.md/REBUILD_LOG — that multiplies token cost by the number of agents.
 - **Prefer compact structured output** (`schema`) from workflow agents over prose — cheaper to read back and no parsing.
 - **Lean fan-out.** Use the smallest agent count that covers the work (3 good reviewers beat 12 redundant ones). Token budget should last the whole campaign, not one hour.
+- **Workflow authoring (lived bug):** the `args` global has come through `undefined` inside the script — do NOT rely on it. **Inline the brief/context directly into each agent's prompt string** (or have the agent read one named file). Always sanity-check a run's `promptPreview` for `undefined` before trusting the outputs.
+- **A `schema` agent can return placeholder junk** (`"test"/"a"/"b"`) when it has nothing real to work with (e.g. its context was empty). Eyeball each structured result; re-run or self-fill rather than acting on garbage.
+
+## 0a. Focus principle for the CURRENT phase (set by the advisor reality-check, 2026-06-25)
+The product is live-but-not-launchable: RLS off, PII reachable, and the assigned-agent **write path was never applied** — so the team can view but cannot safely do their actual job (update records). **Net-new UX polish on top of that is avoidance.** Therefore, while the foundation is broken, **non-dependent work must attack foundation-readiness, honesty, and decision-unblocking — not vanity surface.** Rank non-dependent work in this order:
+1. **Make the tool honest** — every write that will fail (RLS) must fail loudly and clearly; never a silent/false success.
+2. **Make the owner's gated decisions easy** — turn abstract schema/security tickets into plain-number screens/reports he can decide on in two minutes.
+3. **Make launch a one-button day** — build + validate (against throwaway roles, never prod) the assignment-RLS write path and bulk-login provisioning, so the moment the owner says "go" it's minutes, not a project.
+4. **Stop manufacturing corruption** — hide/disable create surfaces that contradict the outreach-only model and write placeholder junk.
+5. Only then, genuine UX correctness (empty/loading/error states, confirms on destructive actions). Pure vanity (more view modes, parity features) is **parked** until the core is launchable.
 
 ### Anti-hallucination rules
 - **Verify before you claim.** `Grep` that a file/function/flag exists before recommending or "fixing" it. Recalled memories reflect a past moment — re-check.
@@ -81,7 +91,7 @@ REPEAT
 ---
 
 ## 4. Decision queue (how the owner's pending items are handled)
-Anything that needs Mohit/Ankit — a product decision, a DB/RLS migration, a deploy, or touching prod data — goes to **`docs/Amplior-Review-Hub.xlsx` → "Decisions Needed"** with a plain-language question and the options. **It never blocks the build loop**; I keep shipping non-dependent work and the owner clears decisions asynchronously. Built work that needs his eyes goes to **"Awaiting Review."**
+Anything that needs **Ankit (PM)** — a product decision, a DB/RLS migration, a deploy, or touching prod data (business-level calls escalate to **Mohit, CEO**) — goes to **`docs/Amplior-Review-Hub.xlsx` → "Decisions Needed"** with a plain-language question and the options. **It never blocks the build loop**; I keep shipping non-dependent work and Ankit clears decisions asynchronously. Built work that needs review goes to **"Awaiting Review."**
 
 ---
 
