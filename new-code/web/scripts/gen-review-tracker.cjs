@@ -113,6 +113,20 @@ const RISKS = [
   ['RSK-06', 'Single 1.6MB JS bundle (no code-splitting) — slow first load as app grows', 'Low', 'Performance', 'No', 'Backlog: route-level code-split'],
 ];
 
+/* ─── 4. DATA HEALTH (plain-number scorecard for the owner; source: docs/SCHEMA-AUDIT.md live introspection) ─
+   [area, liveNumber, plainMeaning, severity, unblocks]                        */
+const DATA_HEALTH = [
+  ['Who owns a lead', '600+ migrated leads', 'The "owner" field points at whoever IMPORTED the data ("7"×130, "60"×99, "59"×86…), not the assigned caller — so an agent is blocked from editing their own leads. 597 of 598 leads have exactly one report, so the fix is a near 1-to-1 backfill (low risk).', 'Critical', 'DEC-03 (launch blocker)'],
+  ['Database security', '11 hot tables, RLS not forced', 'The DB lets the table-owner and broad anonymous access bypass row security — on data holding phone numbers + emails for 111 users and 600+ leads.', 'Critical', 'DEC-04 + DEC-09'],
+  ['"Area of interest" tidiness', '24+ spellings of ~4 things', '"Security ", "Security", "security", "Security services"… + 34 rows that are just a blank space. Segmentation and the HungerBox fit-scoring can\'t trust this column.', 'High', 'DEC-05'],
+  ['Meeting status gaps', '10 blank + 8 empty', 'Some meetings carry no status at all, split between "NULL" and "" — so the funnel under-counts. (Live: Missed 331, Completed 204, Scheduled 39, Confirmed 22.)', 'High', 'DEC-05'],
+  ['Yes/No stored as text', '"0" on 128 rows', 'active_status is a true/false flag smuggled into a text column as the string "0".', 'Medium', 'DEC-05'],
+  ['One timeline per lead', 'clean table has 18 rows', '"What happened with this lead" is scattered across 4 different tables; the clean one (interaction) is nearly empty. No single history — blocks clean reporting AND the AI plan.', 'High', 'ALT-352 (AI prereq)'],
+  ['Duplicate contacts', '20 duplicate-email groups', 'The same person exists twice = split call history, double-dialling, and the Chrome extension\'s look-up-by-email/LinkedIn breaks. No unique constraint stops new dupes.', 'High', 'merge + unique index (S3)'],
+  ['Lead↔contact link', 'contact_id 0 of 607 filled', 'Leads aren\'t linked to their contact record even though the data exists — joins silently fail. A backfill fixes it.', 'Medium', 'backfill (F4)'],
+  ['Audit-table growth', '~85k rows vs 610 live', 'Shadow audit tables grow unbounded with no retention policy — doubling write cost over time.', 'Low', 'retention (S4)'],
+];
+
 /* ─── SHEET BUILDER ─────────────────────────────────────────────────────────*/
 function buildSheet(headers, widths, rows) {
   const ws = {};
@@ -150,11 +164,15 @@ XLSX.utils.book_append_sheet(wb, buildSheet(
   [9, 64, 11, 20, 13, 26], RISKS), 'Risks');
 
 XLSX.utils.book_append_sheet(wb, buildSheet(
+  ['Area', 'Live number', 'What it means (plain words)', 'Severity', 'Unblocks'],
+  [22, 22, 78, 11, 22], DATA_HEALTH), 'Data Health');
+
+XLSX.utils.book_append_sheet(wb, buildSheet(
   ['How to use this Review Hub'],
   [100],
   [
     [`Updated ${UPDATED}. Regenerate: cd new-code/web && node scripts/gen-review-tracker.cjs`],
-    ['Three tabs: (1) Decisions Needed = your calls; (2) Awaiting Review = built + green, not pushed; (3) Risks = what to know.'],
+    ['Tabs: (1) Decisions Needed = your calls; (2) Awaiting Review = built + green, not pushed; (3) Risks = what to know; (4) Data Health = the live data problems in plain numbers (source: docs/SCHEMA-AUDIT.md) — these are what DEC-03/04/05 decide.'],
     ['Claude keeps this current and NEVER pushes / never touches the production database without your explicit go-ahead.'],
     ['Backlog of all tickets lives in AltLeads-Backlog-Tracker.xlsx. The way-of-working lives in product-os/.'],
   ]), 'Legend');

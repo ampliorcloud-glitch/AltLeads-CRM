@@ -994,3 +994,7 @@ First foundation-attacking cycle from the redirected queue. **Make every write h
 - **Fixed the flagged silent failure:** `LeadDetailPage.handleStageChange` now surfaces a humanized `toast.error` on failure instead of silently snapping the dropdown back (completes ALT-370's intent).
 - **Verified the advisor's "inline create writes placeholder junk" claim — it did NOT hold.** `createCompany` writes `null` for missing optionals (not placeholders), validates the required name, and is the ONLY company-insert path (admin-gated full form; no inline quick-create). No corruption vector. Corrected Review Hub RSK-08 to "verified clean" rather than fabricate a fix. (Operating-model discipline: verify before claiming — the advisor, like any agent, can be imprecise.)
 - Build green. NOTHING PUSHED.
+
+---
+## 2026-06-25 (cont.) — Build Cycle 3: Data Health scorecard for the owner
+The advisor's highest-leverage non-dependent unlock: turn the abstract schema/security tickets into plain numbers the owner can decide on. Rather than re-hit the DB, repackaged SCHEMA-AUDIT.md's existing LIVE introspection into a new **"Data Health" tab in `docs/Amplior-Review-Hub.xlsx`** (`gen-review-tracker.cjs`): ownership split (600+ leads, near-1:1 backfill), no FORCE RLS (11 tables), area_of_interest 24+ spellings, meeting-status blanks (10 NULL/8 empty), active_status "0"×128, 4 scattered activity tables, 20 dup-email groups, contact_id 0/607, audit-table bloat (~85k). Each row: live number → plain meaning → severity → which decision (DEC-03/04/05) it unblocks. NOTHING PUSHED.
