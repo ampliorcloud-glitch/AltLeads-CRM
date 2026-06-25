@@ -988,3 +988,9 @@ First foundation-attacking cycle from the redirected queue. **Make every write h
 - **QC gate FAILED v1 (working as designed):** harsh QC ran `tsc --noEmit` (clean — no regressions, success paths intact) but FAILED on INTENT — the admin-settings write class (`admin.ts` user/project/reference-data/pre-sales writes + `accessSettings.ts` upsert) was skipped and still leaked raw 42501/42P01/PGRST205 to admin users. → PM closed the gap: `admin.ts` 17 raw returns → `humanizeWriteError`; `accessSettings.ts` upsert humanized. Central `npm run build` green.
 - Agent flagged a separate pre-existing silent-failure: `LeadDetailPage.handleStageChange` swallows write errors with no message → logged for a follow-up cycle.
 - Tracker → ALT-370. NOTHING PUSHED.
+
+---
+## 2026-06-25 (cont.) — Build Cycle 2: finish honest-writes + verify advisor claims
+- **Fixed the flagged silent failure:** `LeadDetailPage.handleStageChange` now surfaces a humanized `toast.error` on failure instead of silently snapping the dropdown back (completes ALT-370's intent).
+- **Verified the advisor's "inline create writes placeholder junk" claim — it did NOT hold.** `createCompany` writes `null` for missing optionals (not placeholders), validates the required name, and is the ONLY company-insert path (admin-gated full form; no inline quick-create). No corruption vector. Corrected Review Hub RSK-08 to "verified clean" rather than fabricate a fix. (Operating-model discipline: verify before claiming — the advisor, like any agent, can be imprecise.)
+- Build green. NOTHING PUSHED.

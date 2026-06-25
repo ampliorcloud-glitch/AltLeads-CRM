@@ -370,6 +370,10 @@ export function LeadDetailPage() {
     if (!res?.error) {
       const found = stages.find((s) => s.id === stageId);
       setLead((prev) => (prev ? { ...prev, stage_id: stageId, stage_name: found?.label ?? prev.stage_name } : prev));
+    } else {
+      // Don't swallow the failure — the dropdown would silently snap back with no
+      // explanation (the trust-killer this whole pass is about). Surface it.
+      toast.error(humanizeWriteError(res.error) || 'Could not update the stage. Please try again.');
     }
   };
 

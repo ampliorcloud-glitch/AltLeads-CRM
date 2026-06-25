@@ -108,7 +108,7 @@ const RISKS = [
   ['RSK-04', 'No real masking of email/phone yet (must be DB-enforced)', 'High', 'Security / Privacy', 'Yes', 'DEC-06 / ALT-345'],
   ['RSK-05', 'Finished work sitting unpushed — deploy/merge risk grows over time', 'Medium', 'Delivery', 'No', 'DEC-08 (pick a push window)'],
   ['RSK-07', 'LIVE site reachable while RLS is off — active PII exposure right now', 'Critical', 'Security', 'Yes', 'DEC-09 (gate the live URL)'],
-  ['RSK-08', 'Inline "create company" writes placeholder values into NOT-NULL columns — manufactures the exact data corruption we are trying to fix', 'High', 'Data', 'No', 'Hide/disable it (FE) — Build Cycle 1'],
+  ['RSK-08', 'CHECKED — advisor\'s "inline create writes placeholders" claim did NOT hold: createCompany writes nulls (not placeholders), validates the required name, and is the only company-insert path (admin-gated full form, no inline quick-create). No corruption vector here.', 'Info', 'Data', 'No', 'Closed — verified clean 2026-06-25'],
   ['RSK-09', 'Assignment write-path (apply-assignment-rls.cjs) never applied — agents cannot safely edit their own records', 'Critical', 'Data / Product', 'Yes', 'Prep + throwaway-login validation now; apply on owner go'],
   ['RSK-06', 'Single 1.6MB JS bundle (no code-splitting) — slow first load as app grows', 'Low', 'Performance', 'No', 'Backlog: route-level code-split'],
 ];
