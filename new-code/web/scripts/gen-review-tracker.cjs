@@ -116,7 +116,8 @@ const RISKS = [
   ['RSK-09', 'Assignment write-path (apply-assignment-rls.cjs) never applied — agents cannot safely edit their own records', 'Critical', 'Data / Product', 'Yes', 'Plan drafted (LAUNCH-BLOCKER-RLS-PLAN.md); apply on owner go after throwaway-login validation'],
   ['RSK-10', 'Bulk-provisioned logins with NO profiles row would be SILENTLY denied ALL edits once assignee-RLS lands (current_user_id() resolves via the sparse profiles table -> NULL -> every write predicate false)', 'High', 'Security / Launch', 'Partly', 'PARTLY CLOSED (ALT-371): provisioning now writes user_id strictly + reports coverage instead of a false 200, so failures are no longer SILENT. Still need: bulk-provision flow + assert full coverage BEFORE the RLS swap.'],
   ['RSK-11', 'Staged apply-assignment-rls.cjs, if run as-is, OVER-GRANTS edit rights to the bulk-import actors (keeps the created_by term) — do not run it; use the canonical-assignee plan instead', 'High', 'Security', 'Yes', 'LAUNCH-BLOCKER-RLS-PLAN.md §2 (canonical assignee_user_id)'],
-  ['RSK-06', 'Single 1.6MB JS bundle (no code-splitting) — slow first load as app grows', 'Low', 'Performance', 'No', 'Backlog: route-level code-split'],
+  ['RSK-06', 'Single 1.6MB JS bundle — slow first load', 'Low', 'Performance', 'No', 'CLOSED (ALT-372): code-split, main bundle 1672->282KB'],
+  ['RSK-12', 'Admin + Approvals write endpoints rely on a CLIENT-side role check; without server-side RLS a crafted request could call them directly', 'High', 'Security', 'Yes', 'Same class as RSK-02 (FORCE RLS); covered by the RLS plan / DEC-04'],
 ];
 
 /* ─── 4. DATA HEALTH (plain-number scorecard for the owner; source: docs/SCHEMA-AUDIT.md live introspection) ─

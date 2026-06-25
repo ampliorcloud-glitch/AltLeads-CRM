@@ -1014,6 +1014,187 @@ app.post('/api/users/reset-password', requireAdmin, async (req, res) => {
   }
 });
 
+/* ── GET /api/admin/login-coverage ──────────────────────────────── */
+/**
+ * READ-ONLY coverage report to detect RSK-10 exposure: provisioned logins that
+ * would resolve current_user_id() = NULL under assignee-RLS and therefore be
+ * SILENTLY denied ALL edits. (See ensureProfileLink above for the mechanism:
+ * RLS resolves the caller via the profiles row keyed by auth uid; a login whose
+ * profiles row is MISSING or has a NULL user_id -> current_user_id() = NULL ->
+ * every write policy is false.)
+ *
+ * This endpoint performs NO writes, sends NO email, and provisions NOTHING — it
+ * only counts. Auth: requireAdmin (same guard as /api/users/* — a valid Supabase
+ * JWT whose profiles.role === 'ADMIN').
+ *
+ * Returns:
+ *   activeUsers          — user_master rows that are not soft-deleted and have an email
+ *   profiles             — total profiles rows
+ *   profilesNullUserId   — profiles with NULL user_id (RSK-10 exposed)
+ *   profilesNullRole     — profiles with NULL/empty role (role-based policies won't apply)
+ *   usersWithoutLogin    — auth users with NO matching profiles row (RSK-10 exposed)
+ *   exposureCount        — size of the RSK-10 exposure set (logins resolving to NULL user_id)
+ *   sampleExposedUserIds — up to 20 numeric user_ids only (NO emails / PII)
+ *
+ * Response 200: { ...counts }   503: { error } (missing env)   500: { error }
+ */
+app.get('/api/admin/login-coverage', requireAdmin, async (req, res) => {
+  const supabaseAdmin = getSupabaseAdmin();
+  if (!supabaseAdmin) {
+    return res.status(503).json({ error: 'Supabase env vars not set (SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)' });
+  }
+
+  try {
+    /* 1. Active users in user_master: not soft-deleted (deleted_date IS NULL) and
+          has a non-empty email. Count-only (head:true) — no rows pulled. */
+    const { count: activeUsers, error: auErr } = await supabaseAdmin
+      .from('user_master')
+      .select('user_id', { count: 'exact', head: true })
+      .is('deleted_date', null)
+      .not('email', 'is', null)
+      .neq('email', '');
+    if (auErr) {
+      console.error('[login-coverage] user_master count failed:', auErr.message);
+      return res.status(500).json({ error: 'Failed to count users.' });
+    }
+
+    /* 2. profiles total + NULL user_id + NULL/empty role (count-only). */
+    const { count: profiles, error: pErr } = await supabaseAdmin
+      .from('profiles')
+      .select('id', { count: 'exact', head: true });
+    if (pErr) {
+      console.error('[login-coverage] profiles count failed:', pErr.message);
+      return res.status(500).json({ error: 'Failed to count profiles.' });
+    }
+    const { count: profilesNullUserId, error: pnuErr } = await supabaseAdmin
+      .from('profiles')
+      .select('id', { count: 'exact', head: true })
+      .is('user_id', null);
+    if (pnuErr) {
+      console.error('[login-coverage] profiles NULL user_id count failed:', pnuErr.message);
+      return res.status(500).json({ error: 'Failed to count profiles.' });
+    }
+    // role is text — NULL/empty both mean role-based policies won't apply.
+    const { count: profilesNullRole, error: pnrErr } = await supabaseAdmin
+      .from('profiles')
+      .select('id', { count: 'exact', head: true })
+      .or('role.is.null,role.eq.');
+    if (pnrErr) {
+      console.error('[login-coverage] profiles NULL role count failed:', pnrErr.message);
+      return res.status(500).json({ error: 'Failed to count profiles.' });
+    }
+
+    /* 3. Build the set of auth uids that DO have a profiles row, plus the sample
+          of exposed numeric user_ids (profiles with a user_id but NULL —> caught
+          above; here we collect ids for the report sample without pulling PII).
+          We page profiles fully (id + user_id only, no email) so we can compare
+          against the auth-user list. */
+    const profileAuthIds = new Set();
+    const exposedSample = [];   // up to 20 numeric user_ids (profiles with NULL user_id have none to show)
+    {
+      const PAGE = 1000;
+      for (let from = 0; from < 200000; from += PAGE) {
+        const { data: rows, error: rErr } = await supabaseAdmin
+          .from('profiles')
+          .select('id, user_id')
+          .range(from, from + PAGE - 1);
+        if (rErr) {
+          console.error('[login-coverage] profiles page read failed:', rErr.message);
+          return res.status(500).json({ error: 'Failed to read profiles.' });
+        }
+        if (!rows || rows.length === 0) break;
+        for (const r of rows) {
+          if (r.id) profileAuthIds.add(r.id);
+        }
+        if (rows.length < PAGE) break;
+      }
+    }
+
+    /* 4. Page through Supabase Auth users (same listUsers pattern as
+          findAuthUserByEmail) and count those WITHOUT a matching profiles row.
+          These are provisioned logins that resolve current_user_id() = NULL. */
+    let usersWithoutLogin = 0; // auth users that have NO profiles row
+    let authListAvailable = true;
+    try {
+      for (let page = 1; page <= 50; page++) {
+        const { data, error } = await supabaseAdmin.auth.admin.listUsers({ page, perPage: 1000 });
+        if (error || !data) { authListAvailable = false; break; }
+        const users = data.users || [];
+        for (const u of users) {
+          if (!profileAuthIds.has(u.id)) usersWithoutLogin++;
+        }
+        if (users.length < 1000) break; // last page
+      }
+    } catch (e) {
+      console.error('[login-coverage] auth.admin.listUsers failed:', e.message);
+      authListAvailable = false;
+    }
+
+    /* 5. Sample exposed user_ids — provisioned user_master rows that are active but
+          whose profiles link is unusable (no profiles row, or profiles.user_id NULL)
+          would be denied edits. We surface a small sample of NUMERIC user_ids only
+          (NO emails/PII): user_master active users that have a user_id but no
+          profiles row carrying that user_id. We collect via a single capped read. */
+    const linkedUserIds = new Set();
+    {
+      const PAGE = 1000;
+      for (let from = 0; from < 200000; from += PAGE) {
+        const { data: rows, error: rErr } = await supabaseAdmin
+          .from('profiles')
+          .select('user_id')
+          .not('user_id', 'is', null)
+          .range(from, from + PAGE - 1);
+        if (rErr) break; // best-effort sample; counts above are authoritative
+        if (!rows || rows.length === 0) break;
+        for (const r of rows) if (r.user_id != null) linkedUserIds.add(Number(r.user_id));
+        if (rows.length < PAGE) break;
+      }
+    }
+    {
+      const PAGE = 1000;
+      for (let from = 0; from < 200000 && exposedSample.length < 20; from += PAGE) {
+        const { data: rows, error: rErr } = await supabaseAdmin
+          .from('user_master')
+          .select('user_id')
+          .is('deleted_date', null)
+          .not('email', 'is', null)
+          .neq('email', '')
+          .range(from, from + PAGE - 1);
+        if (rErr) break;
+        if (!rows || rows.length === 0) break;
+        for (const r of rows) {
+          if (exposedSample.length >= 20) break;
+          if (r.user_id != null && !linkedUserIds.has(Number(r.user_id))) {
+            exposedSample.push(Number(r.user_id));
+          }
+        }
+        if (rows.length < PAGE) break;
+      }
+    }
+
+    /* 6. RSK-10 exposure set = provisioned logins that resolve current_user_id()
+          = NULL. Two disjoint sources: (a) auth users with no profiles row, and
+          (b) profiles rows with a NULL user_id. Both fail current_user_id(). */
+    const exposureCount = (Number(usersWithoutLogin) || 0) + (Number(profilesNullUserId) || 0);
+
+    return res.status(200).json({
+      activeUsers: activeUsers ?? 0,
+      profiles: profiles ?? 0,
+      profilesNullUserId: profilesNullUserId ?? 0,
+      profilesNullRole: profilesNullRole ?? 0,
+      usersWithoutLogin,
+      exposureCount,
+      sampleExposedUserIds: exposedSample,
+      // Limitation flag: if the Supabase Auth admin list wasn't available, the
+      // usersWithoutLogin/exposureCount auth-side numbers are best-effort.
+      ...(authListAvailable ? {} : { authListUnavailable: true }),
+    });
+  } catch (e) {
+    console.error('[login-coverage]', e);
+    return res.status(500).json({ error: 'Failed to compute login coverage.' });
+  }
+});
+
 /* ── Serve React web app (static + SPA fallback) ─────────────────── */
 // Serve built assets. Must come AFTER all API routes so /health and /notify
 // are handled by the Express routes above, not treated as static file requests.

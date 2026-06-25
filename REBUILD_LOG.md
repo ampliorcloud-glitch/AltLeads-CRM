@@ -1015,3 +1015,11 @@ The RLS security-QC's #1 catch (RSK-10) turned into a **buildable, non-dependent
 - **Built the G-A/G-B fix (deploy-gated, not pushed):** `notify-service/server.js` `ensureProfileLink` now ALWAYS writes `user_id`, never swallows, returns `{ok, roleLinked, reason}`; `/api/users/create` + `/reset-password` surface `profileLinked` + `profileWarning` so a bulk run can detect any login that would be silently denied edits under RLS. `node --check` OK. Auth user still created (no orphan) — the failure is now *reported*, not silent.
 - **G-C (bulk flow + coverage assertion before the RLS swap)** is the remaining build → ALT-371. RSK-10 downgraded Critical→High (no longer *silent*).
 - Tracker → ALT-371; Review Hub → ONRAMP-1 + RSK-10 refined. NOTHING PUSHED.
+
+---
+## 2026-06-25 (cont.) — Build Cycle 6: non-dependent batch (3 disjoint tracks + QC PASS)
+First cycle after defining `product-os/GOALS.md` (north-star + Internal-Launch-Readiness milestone + the non-dependent backlog). 3 disjoint agents + a QC gate (verdict PASS).
+- **Login-coverage dry-run** (ALT-372): READ-ONLY `GET /api/admin/login-coverage` (requireAdmin) in notify-service — reports RSK-10 exposure (usersWithoutLogin, profilesNullUserId/Role, exposureCount, sample numeric ids only, no PII). Lets the owner SEE who'd be denied before the RLS swap.
+- **Route code-splitting** (ALT-372 / closes RSK-06): 23 route pages → React.lazy + one Suspense boundary; providers/guards/auth kept eager. **Initial JS 1672KB → 282KB (gzip 437 → 82KB)** — big first-load win for 111 users. Central `vite build` green.
+- **FE security audit** → 4 FE-fixable PII leaks captured as **ALT-373** (drafts/search-index/exports cache PII; ALT-369 filter-persistence includes the free-text search term). 2 dbGated (admin/approvals client-only authz) → Review Hub RSK-12 (same class as the RLS work).
+- QC PASS (endpoint read-only+guarded+no-PII; Suspense correct; no provider/guard wrongly lazy). Tracker → ALT-372/373; Review Hub → RSK-06 closed, RSK-12 added. NOTHING PUSHED.

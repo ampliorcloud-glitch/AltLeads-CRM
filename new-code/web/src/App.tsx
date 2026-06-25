@@ -1,4 +1,4 @@
-﻿import React from 'react';
+﻿import React, { Suspense, lazy } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { ProjectProvider } from './contexts/ProjectContext';
@@ -7,34 +7,43 @@ import { ToastProvider } from './components/ui/Toast';
 import { ConfirmProvider } from './components/ui/ConfirmDialog';
 import { ErrorBoundary } from './components/ui/ErrorBoundary';
 import { CommandPalette } from './components/ui/CommandPalette';
+// Auth/recovery pages stay EAGER — they render on first paint (the "/" landing is
+// the login page) so code-splitting them would only add a chunk fetch to the cold start.
 import { LoginPage } from './pages/LoginPage';
 import { ForgotPasswordPage } from './pages/ForgotPasswordPage';
 import { ResetPasswordPage } from './pages/ResetPasswordPage';
-import { SalesLoginPage } from './pages/sales/SalesLoginPage';
-import { SalesPlaceholderPage } from './pages/sales/SalesPlaceholderPage';
-import { SalesMeetingDetailPage } from './pages/sales/SalesMeetingDetailPage';
-import { SalesWishlistPage } from './pages/sales/SalesWishlistPage';
-import { DashboardPage } from './pages/DashboardPage';
-import { LeadsPage } from './pages/LeadsPage';
-import { LeadsKanbanPage } from './pages/LeadsKanbanPage';
-import { LeadDetailPage } from './pages/LeadDetailPage';
-import { LeadFormPage } from './pages/LeadFormPage';
-import { MeetingsPage } from './pages/MeetingsPage';
-import { MeetingDetailPage } from './pages/MeetingDetailPage';
-import { MyTasksPage } from './pages/MyTasksPage';
-import { WishlistPage } from './pages/WishlistPage';
-import { WishlistDetailPage } from './pages/WishlistDetailPage';
-import AdminPage from './pages/AdminPage';
-import { NotificationsPage } from './pages/NotificationsPage';
-import { SettingsPage } from './pages/SettingsPage';
-import { ApprovalsPage } from './pages/ApprovalsPage';
-import { ContactsPage } from './pages/ContactsPage';
-import { ContactDetailPage } from './pages/ContactDetailPage';
-import { ContactFormPage } from './pages/ContactFormPage';
-import { CompaniesPage } from './pages/CompaniesPage';
-import { CompanyDetailPage } from './pages/CompanyDetailPage';
-import { CompanyFormPage } from './pages/CompanyFormPage';
-import { PortalRoutes } from './portal/PortalRoutes';
+
+/* ────────────────────────── Lazily-loaded route pages ──────────────────────────
+   Every routed PAGE below is split into its own chunk so the initial bundle only
+   carries the providers, guards, shell, and the login screen. Chunks load on demand
+   when their route is first visited (gated by the single <Suspense> in AppRoutes).
+   Pages with a NAMED export are unwrapped to a default for React.lazy; AdminPage
+   already ships a default export. */
+const SalesLoginPage = lazy(() => import('./pages/sales/SalesLoginPage').then(m => ({ default: m.SalesLoginPage })));
+const SalesPlaceholderPage = lazy(() => import('./pages/sales/SalesPlaceholderPage').then(m => ({ default: m.SalesPlaceholderPage })));
+const SalesMeetingDetailPage = lazy(() => import('./pages/sales/SalesMeetingDetailPage').then(m => ({ default: m.SalesMeetingDetailPage })));
+const SalesWishlistPage = lazy(() => import('./pages/sales/SalesWishlistPage').then(m => ({ default: m.SalesWishlistPage })));
+const DashboardPage = lazy(() => import('./pages/DashboardPage').then(m => ({ default: m.DashboardPage })));
+const LeadsPage = lazy(() => import('./pages/LeadsPage').then(m => ({ default: m.LeadsPage })));
+const LeadsKanbanPage = lazy(() => import('./pages/LeadsKanbanPage').then(m => ({ default: m.LeadsKanbanPage })));
+const LeadDetailPage = lazy(() => import('./pages/LeadDetailPage').then(m => ({ default: m.LeadDetailPage })));
+const LeadFormPage = lazy(() => import('./pages/LeadFormPage').then(m => ({ default: m.LeadFormPage })));
+const MeetingsPage = lazy(() => import('./pages/MeetingsPage').then(m => ({ default: m.MeetingsPage })));
+const MeetingDetailPage = lazy(() => import('./pages/MeetingDetailPage').then(m => ({ default: m.MeetingDetailPage })));
+const MyTasksPage = lazy(() => import('./pages/MyTasksPage').then(m => ({ default: m.MyTasksPage })));
+const WishlistPage = lazy(() => import('./pages/WishlistPage').then(m => ({ default: m.WishlistPage })));
+const WishlistDetailPage = lazy(() => import('./pages/WishlistDetailPage').then(m => ({ default: m.WishlistDetailPage })));
+const AdminPage = lazy(() => import('./pages/AdminPage'));
+const NotificationsPage = lazy(() => import('./pages/NotificationsPage').then(m => ({ default: m.NotificationsPage })));
+const SettingsPage = lazy(() => import('./pages/SettingsPage').then(m => ({ default: m.SettingsPage })));
+const ApprovalsPage = lazy(() => import('./pages/ApprovalsPage').then(m => ({ default: m.ApprovalsPage })));
+const ContactsPage = lazy(() => import('./pages/ContactsPage').then(m => ({ default: m.ContactsPage })));
+const ContactDetailPage = lazy(() => import('./pages/ContactDetailPage').then(m => ({ default: m.ContactDetailPage })));
+const ContactFormPage = lazy(() => import('./pages/ContactFormPage').then(m => ({ default: m.ContactFormPage })));
+const CompaniesPage = lazy(() => import('./pages/CompaniesPage').then(m => ({ default: m.CompaniesPage })));
+const CompanyDetailPage = lazy(() => import('./pages/CompanyDetailPage').then(m => ({ default: m.CompanyDetailPage })));
+const CompanyFormPage = lazy(() => import('./pages/CompanyFormPage').then(m => ({ default: m.CompanyFormPage })));
+const PortalRoutes = lazy(() => import('./portal/PortalRoutes').then(m => ({ default: m.PortalRoutes })));
 
 /** Shared full-screen loading spinner used while auth/roles hydrate. */
 function RouteLoader() {
@@ -115,6 +124,9 @@ function AppRoutes() {
   }
 
   return (
+    // Single Suspense boundary for ALL lazily-loaded route pages: while a route's
+    // chunk is in flight, show the shared spinner instead of a blank screen.
+    <Suspense fallback={<RouteLoader />}>
     <Routes>
       <Route
         path="/"
@@ -372,6 +384,7 @@ function AppRoutes() {
       <Route path="/portal/*" element={<PortalRoutes />} />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
+    </Suspense>
   );
 }
 
