@@ -19,6 +19,7 @@ import { humanizeWriteError } from '../lib/writeError';
 import { useRowSelection } from '../components/ui/useRowSelection';
 import { useListKeyboardNav } from '../components/ui/useListKeyboardNav';
 import { ExportButton } from '../components/ui/ExportButton';
+import { DuplicatesButton } from '../components/ui/DuplicatesButton';
 import { MultiSelectFilter } from '../components/ui/MultiSelectFilter';
 import { ColumnCustomizer, defaultColumnPrefs, reconcileColumns } from '../components/ui/ColumnCustomizer';
 import { ViewSwitcher, useViewMode } from '../components/ui/ViewSwitcher';
@@ -1176,15 +1177,30 @@ export function CompaniesPage() {
             />
           }
           exportButton={
-            <ExportButton
-              rows={exportRows as unknown as Record<string, unknown>[]}
-              columns={activeExportColumns as unknown as ExportColumn<Record<string, unknown>>[]}
-              filename="amplior-crm-companies"
-              selectedIds={sel.selectedIds}
-              idKey="id"
-              idHeader="Company ID"
-              disabled={loading || filteredData.length === 0}
-            />
+            <>
+              <DuplicatesButton
+                rows={filteredData}
+                signals={[
+                  { key: 'name', label: 'Same name', get: (r) => r.name },
+                  { key: 'email', label: 'Same email', get: (r) => r.email },
+                  { key: 'website', label: 'Same website', get: (r) => r.domainClean || r.webUrl },
+                ]}
+                getId={(r) => r.id}
+                getTitle={(r) => r.name}
+                getSubtitle={(r) => [r.city, r.industry].filter(Boolean).join(' · ')}
+                getHref={(r) => `/companies/${r.id}`}
+                entityLabel="companies"
+              />
+              <ExportButton
+                rows={exportRows as unknown as Record<string, unknown>[]}
+                columns={activeExportColumns as unknown as ExportColumn<Record<string, unknown>>[]}
+                filename="amplior-crm-companies"
+                selectedIds={sel.selectedIds}
+                idKey="id"
+                idHeader="Company ID"
+                disabled={loading || filteredData.length === 0}
+              />
+            </>
           }
           create={
             /* Create is admin-only by default (ADR-21); hidden from outreach roles. */

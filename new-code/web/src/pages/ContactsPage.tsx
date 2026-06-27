@@ -14,6 +14,8 @@ import { ProjectSelect } from '../components/ui/ProjectSelect';
 import { useRowSelection } from '../components/ui/useRowSelection';
 import { useListKeyboardNav } from '../components/ui/useListKeyboardNav';
 import { ExportButton } from '../components/ui/ExportButton';
+import { DuplicatesButton } from '../components/ui/DuplicatesButton';
+import { normPhone } from '../lib/findDuplicates';
 import { ColumnCustomizer, defaultColumnPrefs } from '../components/ui/ColumnCustomizer';
 import { ViewSwitcher, useViewMode } from '../components/ui/ViewSwitcher';
 import { DensityToggle } from '../components/ui/DensityToggle';
@@ -1207,15 +1209,30 @@ export function ContactsPage() {
             />
           }
           exportButton={
-            <ExportButton<ContactRow>
-              rows={filteredData}
-              columns={exportColumns}
-              filename="amplior-contacts"
-              selectedIds={sel.selectedIds}
-              idKey="contact_id"
-              idHeader="Contact ID"
-              disabled={loading || filteredData.length === 0}
-            />
+            <>
+              <DuplicatesButton
+                rows={filteredData}
+                signals={[
+                  { key: 'email', label: 'Same email', get: (r) => r.email },
+                  { key: 'phone', label: 'Same mobile', get: (r) => r.mobile_no, normalize: normPhone },
+                  { key: 'name', label: 'Same name', get: (r) => r.full_name },
+                ]}
+                getId={(r) => r.contact_id}
+                getTitle={(r) => r.full_name}
+                getSubtitle={(r) => [r.company_name, r.email].filter(Boolean).join(' · ')}
+                getHref={(r) => `/contacts/${r.contact_id}`}
+                entityLabel="contacts"
+              />
+              <ExportButton<ContactRow>
+                rows={filteredData}
+                columns={exportColumns}
+                filename="amplior-contacts"
+                selectedIds={sel.selectedIds}
+                idKey="contact_id"
+                idHeader="Contact ID"
+                disabled={loading || filteredData.length === 0}
+              />
+            </>
           }
           create={
             /* Create is admin-only by default (ADR-21); hidden from outreach roles. */
