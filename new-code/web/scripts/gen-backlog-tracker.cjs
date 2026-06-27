@@ -2703,6 +2703,34 @@ function buildBacklogSheet(tickets) {
   return ws;
 }
 
+function buildRoadmapSheet() {
+  // Discovery/roadmap backlog (the 135 tickets from the platform-discovery + data-ops
+  // audit workflows) — kept in the tracker per Ankit's "all backlogs in the tracker, not MD".
+  // Source list regenerated from the workflow outputs into scripts/discovery-backlog.json.
+  const fs = require('fs');
+  const path = require('path');
+  let rows = [];
+  try {
+    rows = JSON.parse(fs.readFileSync(path.join(__dirname, 'discovery-backlog.json'), 'utf8'));
+  } catch (e) {
+    console.warn('  (Roadmap sheet: discovery-backlog.json not found — skipping rows)');
+  }
+  const header = ['Ref', 'Title', 'Domain / Persona', 'Severity', 'Phase', 'North-star', 'Depends on', 'Source'];
+  const aoa = [
+    ['ROADMAP / DISCOVERY BACKLOG — from the 36-agent platform discovery + 43-agent data-ops audit (2026-06-27). Full detail + architecture in docs/product/PLATFORM-DISCOVERY.md + DATA-OPS-AUDIT.md. Phases: foundation -> daily-launch -> platform -> intelligence.'],
+    [''],
+    header,
+    ...rows.map((r) => [r.ref, r.title, r.domain, r.severity, r.phase, r.northStar, r.dependsOn, r.source]),
+  ];
+  const ws = XLSX.utils.aoa_to_sheet(aoa);
+  ws['!cols'] = [{ wch: 8 }, { wch: 66 }, { wch: 16 }, { wch: 10 }, { wch: 20 }, { wch: 12 }, { wch: 14 }, { wch: 18 }];
+  ws['!sheetViews'] = [{ state: 'frozen', ySplit: 3, xSplit: 0, topLeftCell: 'A4', activeCell: 'A4', sqref: 'A4' }];
+  if (rows.length) {
+    ws['!autofilter'] = { ref: XLSX.utils.encode_range({ s: { r: 2, c: 0 }, e: { r: 2 + rows.length, c: header.length - 1 } }) };
+  }
+  return ws;
+}
+
 function buildLegendSheet() {
   const rows = [
     ['HOW TO USE'],
@@ -2847,6 +2875,7 @@ function main() {
   XLSX.utils.book_append_sheet(wb, buildBacklogSheet(finalTickets), 'Backlog');
   XLSX.utils.book_append_sheet(wb, buildLegendSheet(), 'Legend');
   XLSX.utils.book_append_sheet(wb, buildSummarySheet(finalTickets), 'Summary');
+  XLSX.utils.book_append_sheet(wb, buildRoadmapSheet(), 'Roadmap');
 
   // Write file (cellDates:true ensures Date objects write as real date cells, not serial numbers)
   XLSX.writeFile(wb, OUT_PATH, { cellDates: true });
