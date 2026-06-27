@@ -55,6 +55,19 @@ function pickRows<Row extends Record<string, unknown>>(
   return rows.filter((r) => selectedIds.has((r as Record<string, unknown>)[idKey] as SelectableId));
 }
 
+/**
+ * Neutralise CSV / Excel formula injection. A cell whose text starts with a
+ * formula trigger (= + - @, or a leading tab / carriage-return) can be executed
+ * by Excel / Google Sheets when the file is opened — a real exfiltration / RCE
+ * vector for data a CRM exports. We prefix such cells with a single quote so the
+ * spreadsheet shows them as literal text. Applies to BOTH the CSV and XLSX paths
+ * (numbers/booleans are never at risk, so only strings are touched).
+ */
+const FORMULA_LEAD = /^[=+\-@\t\r]/;
+function sanitizeCell(v: string | number | boolean): string | number | boolean {
+  return typeof v === 'string' && FORMULA_LEAD.test(v) ? `'${v}` : v;
+}
+
 function toMatrix<Row extends Record<string, unknown>>(
   rows: Row[],
   columns: ExportColumn<Row>[],
@@ -63,10 +76,11 @@ function toMatrix<Row extends Record<string, unknown>>(
   const body = rows.map((row) =>
     columns.map((c) => {
       const v = cellValue(row, c);
-      return (typeof v === 'number' || typeof v === 'boolean' ? v : String(v)) as
+      const cell = (typeof v === 'number' || typeof v === 'boolean' ? v : String(v)) as
         | string
         | number
         | boolean;
+      return sanitizeCell(cell);
     }),
   );
   return [header, ...body];
