@@ -21,11 +21,13 @@ Record-ID export · keyboard-first nav · density fan-out · /health build-stamp
 - `docs/product/CRM-PARITY-HUBSPOT-ZOHO.md`, `docs/product/BULK-OPS-AUDIT.md`.
 - Backlog tracker has a new **Roadmap sheet** = all 135 discovery tickets (regen: `node new-code/web/scripts/gen-backlog-tracker.cjs`). Review Hub: DEC-09..14.
 
+## DONE since the 2026-06-27 push (committed locally, UNPUSHED)
+- ✅ **ALT-414 Sticky table headers** (commit a80a103) — all 5 list pages; height-bounded scroll container so headers stay visible.
+- ✅ **ALT-401 Bulk progress bar + cancel** (commit 3d266c7) — additive `BulkProgress {onProgress, signal}` through `bulkActions.ts`/`assignment.ts` (abort only BETWEEN records) + shared `BulkProgressBar` wired into the 3 bulk modals across Leads/Meetings/Companies/Contacts.
+
 ## NEXT (on "keep going") — non-dependent quick-wins queue
-1. **Grid-view keyboard nav** — wire `useListKeyboardNav` inside `EditableGrid.tsx` (1 shared file → all pages' grid view).
-2. **Sticky table headers** on the 5 list tables.
-3. **Bulk progress bar + cancel** — thread `onProgress`/`AbortSignal` through `bulkActions.ts`/`assignment.ts`.
-4. Then the DATA-OPS "safe to build now" shortlist: recycle-bin read+restore · named saved segments · report/pivot builder · data-quality command center · PII export gating · field-history render.
+1. **Grid-view keyboard nav** — wire `useListKeyboardNav` into `EditableGrid.tsx`. ⚠️ NOTE: the page-level nav hook is mounted even in grid view → a 2nd listener would double-fire j/k. Coordinate (disable the page hook when grid view is active, or have the page pass its existing `focusedId` down) — NOT a blind 1-file drop-in.
+2. Then the DATA-OPS "safe to build now" shortlist: recycle-bin read+restore (ALT-400) · named saved segments (ALT-404) · report/pivot builder (ALT-405) · data-quality command center (ALT-408) · PII export gating (ALT-403) · field-history render (ALT-407).
 
 ## THEN — engineered foundation (per FOUNDATION-BUILD-PLAN.md, in order)
 anti-fragility rails FIRST (canonical `feature_flag` + `outbox` + zod contracts + generated Supabase types) → **DEC-03** (ownership/RLS, validate on throwaway logins) → event spine → capture-path (call_log + consent) → metadata registry → identity resolution → one automation → versioned API.

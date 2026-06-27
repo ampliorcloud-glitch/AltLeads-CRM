@@ -9,7 +9,7 @@
 ## The Mission
 
 Rebuild the Amplior/Altleads CRM (built badly by an outsourced vendor) into a clean,
-self-manageable system. Owner (Mohit, mohit@amplior.com) is non-technical — Claude
+self-manageable system. Owner (Ankit, ankit.s@amplior.com) is Product Manager — Claude
 orchestrates everything, delegates heavy work to sub-agents on cheap models (Sonnet/Haiku).
 
 **Deadline pressure:** Fable 5 model available only until 2026-06-22. All hard work
@@ -1105,6 +1105,13 @@ Ankit: "high-impact + low-effort independent — do all of them, don't wait." Sh
 
 ### Session tally (2026-06-27, all LOCAL, nothing pushed beyond the morning deploy)
 6 autonomous non-dependent cycles + the audits: **d744bc6** (Record-ID export + bulk-ops audit + HubSpot/Zoho parity docs + 15 tickets + 3 decisions) · **708748e** (keyboard-first nav) · **c34278f** (density fan-out) · **d6daed1** (/health build-stamp) · **4774186** (Cmd-K command bar) · duplicate detector (this). Big decision-gated levers still waiting on Ankit: DEC-09 (gate URL), DEC-03 (ownership/RLS), DEC-01 (feedback), DEC-11 (Deals/Pipeline).
+
+---
+## 2026-06-28 — Resumed: two more non-dependent quick-wins (ALT-414, ALT-401)
+Ankit: "are there more low-effort high-impact items that don't need me? continue — it's just simple code." Shipped two, both LOCAL/UNPUSHED, build green, via scoped agents + diff review:
+- **ALT-414 Sticky table headers** (commit **a80a103**) — header cells were already styled sticky but never stuck (no height-bounded scroll container). Gave all 5 list pages an inner scroll wrapper (`maxHeight: calc(100vh - 320px)` + `overflowY:auto`, horizontal scroll preserved) + header `zIndex:2`. Header row now stays visible while scrolling. No logic/data/sort/selection change.
+- **ALT-401 Bulk progress bar + cancel** (commit **3d266c7**) — additive `BulkProgress {onProgress, signal}` threaded through every bulk loop in `bulkActions.ts` + `assignment.ts`; **abort checked only BETWEEN records** so a write is never interrupted mid-flight (partial counts return cleanly). New shared `BulkProgressBar` (determinate "N of M") + optional `progress`/`onCancel` props on the 3 bulk modals (Reassign/BulkProject/BulkStatus), wired into Leads/Meetings/Companies/Contacts handlers (AbortController per op, cleared in `finally`). Identical behaviour when opts omitted.
+- Trackers updated (ALT-401→Done, ALT-414 added→Done) + RESUME.md queue refreshed. **Next queue:** grid-view keyboard nav (⚠️ needs page-hook coordination, not a blind drop-in) → DATA-OPS safe shortlist (recycle-bin/saved-segments/report-builder/data-quality/PII-gating/field-history).
 
 ---
 ## 2026-06-26 — Amp Intranet planned to share the CRM/Client-Portal stack (new doc)
