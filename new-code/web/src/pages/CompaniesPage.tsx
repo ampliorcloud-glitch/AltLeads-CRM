@@ -1149,6 +1149,7 @@ export function CompaniesPage() {
               filename="amplior-crm-companies"
               selectedIds={sel.selectedIds}
               idKey="id"
+              idHeader="Company ID"
               disabled={loading || filteredData.length === 0}
             />
           }

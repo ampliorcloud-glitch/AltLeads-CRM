@@ -793,6 +793,7 @@ export function WishlistPage() {
               filename="amplior-crm-wishlist"
               selectedIds={sel.selectedIds}
               idKey="id"
+              idHeader="Wishlist ID"
               disabled={loading || rowCount === 0}
             />
           }

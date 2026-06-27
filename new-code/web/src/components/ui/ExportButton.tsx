@@ -27,6 +27,14 @@ interface Props<Row extends Record<string, unknown>> {
   filename: string;
   selectedIds?: Set<SelectableId>;
   idKey?: string;
+  /**
+   * Header for the always-prepended Record-ID column (e.g. "Company ID").
+   * The exported sheet leads with the stable record id so it can be edited
+   * and later re-imported using that id as the match key — exactly how
+   * HubSpot ("Record ID") and Zoho ("<Module> Id") make the export double as
+   * the import template. Defaults to "Record ID".
+   */
+  idHeader?: string;
   disabled?: boolean;
 }
 
@@ -81,11 +89,20 @@ export function ExportButton<Row extends Record<string, unknown>>({
   filename,
   selectedIds,
   idKey = 'id',
+  idHeader = 'Record ID',
   disabled = false,
 }: Props<Row>) {
   const [open, setOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
   const toast = useToast();
+
+  // Always lead the export with the stable record id so the sheet round-trips
+  // (export → edit → re-import keyed on this id). Skip only if the caller's
+  // own columns already surface that id key, so we never duplicate it.
+  const exportColumns = React.useMemo<ExportColumn<Row>[]>(() => {
+    if (columns.some((c) => c.key === idKey)) return columns;
+    return [{ key: idKey, header: idHeader }, ...columns];
+  }, [columns, idKey, idHeader]);
 
   useEffect(() => {
     function handler(e: MouseEvent) {
@@ -100,7 +117,7 @@ export function ExportButton<Row extends Record<string, unknown>>({
   function exportExcel() {
     try {
       const data = pickRows(rows, selectedIds, idKey);
-      const matrix = toMatrix(data, columns);
+      const matrix = toMatrix(data, exportColumns);
       const ws = XLSX.utils.aoa_to_sheet(matrix);
       const wb = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(wb, ws, 'Export');
@@ -116,7 +133,7 @@ export function ExportButton<Row extends Record<string, unknown>>({
   function exportCsv() {
     try {
       const data = pickRows(rows, selectedIds, idKey);
-      const matrix = toMatrix(data, columns);
+      const matrix = toMatrix(data, exportColumns);
       const csv = matrix
         .map((line) =>
           line

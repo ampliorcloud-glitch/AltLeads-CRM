@@ -984,6 +984,7 @@ export function LeadsPage() {
               filename="amplior-crm-leads"
               selectedIds={sel.selectedIds}
               idKey="id"
+              idHeader="Lead ID"
               disabled={loading || filteredData.length === 0}
             />
           }

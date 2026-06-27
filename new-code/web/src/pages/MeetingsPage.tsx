@@ -909,6 +909,7 @@ export function MeetingsPage() {
               filename="amplior-crm-meetings"
               selectedIds={sel.selectedIds}
               idKey="id"
+              idHeader="Meeting ID"
               disabled={loading || filteredData.length === 0}
             />
           }

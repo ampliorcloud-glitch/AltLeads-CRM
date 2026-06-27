@@ -1186,6 +1186,7 @@ export function ContactsPage() {
               filename="amplior-contacts"
               selectedIds={sel.selectedIds}
               idKey="contact_id"
+              idHeader="Contact ID"
               disabled={loading || filteredData.length === 0}
             />
           }
