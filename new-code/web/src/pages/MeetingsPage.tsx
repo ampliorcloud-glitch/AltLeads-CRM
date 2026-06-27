@@ -34,6 +34,8 @@ import {
 import { ViewSwitcher, useViewMode } from '../components/ui/ViewSwitcher';
 import { CardShell } from '../components/ui/CardGrid';
 import { ListToolbar } from '../components/ui/ListToolbar';
+import { DensityToggle } from '../components/ui/DensityToggle';
+import { useDensity, getDensityMetrics } from '../components/ui/useDensity';
 import { EmptyState } from '../components/ui/EmptyState';
 import { SelectAllMatchingBar } from '../components/ui/SelectAllMatchingBar';
 import { useListFilters } from '../lib/listFilters';
@@ -276,6 +278,10 @@ export function MeetingsPage() {
 
   // Table / Grid view (persisted per user + entity in localStorage).
   const [view, setView] = useViewMode('meetings', userId);
+
+  // Row density (comfortable/compact) — persisted per user + entity (ALT-375).
+  const [density, setDensity] = useDensity('meetings', userId);
+  const densityMetrics = getDensityMetrics(density);
 
   const [allMeetings, setAllMeetings] = useState<MeetingRow[]>([]);
   const [agents, setAgents] = useState<string[]>([]);
@@ -907,7 +913,12 @@ export function MeetingsPage() {
               Reassign ({sel.count})
             </button>
           ) : null}
-          viewSwitcher={<ViewSwitcher value={view} onChange={setView} />}
+          viewSwitcher={
+            <>
+              <ViewSwitcher value={view} onChange={setView} />
+              {view === 'table' && <DensityToggle value={density} onChange={setDensity} />}
+            </>
+          }
           columns={
             <ColumnCustomizer
               entity="meetings"
@@ -1136,15 +1147,23 @@ export function MeetingsPage() {
                             setPreviewId(Number(row.original.id));
                           }
                         }}
-                        className="border-b border-zinc-100 hover:bg-zinc-50 transition-colors last:border-0 cursor-pointer"
+                        className="border-b border-zinc-100 hover:bg-zinc-50 last:border-0 cursor-pointer"
                         style={{
-                          height: 40,
+                          height: densityMetrics.rowHeight,
+                          transition: 'background 0.1s, height 0.15s ease',
                           background: isSelected ? '#EBF4FD' : undefined,
                           boxShadow: keyNav.focusedId === row.original.id ? 'inset 3px 0 0 0 var(--color-brand, #1A7EE8)' : undefined,
                         }}
                       >
                         {row.getVisibleCells().map((cell) => (
-                          <td key={cell.id} className="px-4 align-middle whitespace-nowrap">
+                          <td
+                            key={cell.id}
+                            className="align-middle whitespace-nowrap"
+                            style={{
+                              padding: `${densityMetrics.cellPaddingY}px 16px`,
+                              ...(densityMetrics.fontSize ? { fontSize: densityMetrics.fontSize } : null),
+                            }}
+                          >
                             {flexRender(cell.column.columnDef.cell, cell.getContext())}
                           </td>
                         ))}

@@ -22,6 +22,8 @@ import { ExportButton } from '../components/ui/ExportButton';
 import { MultiSelectFilter } from '../components/ui/MultiSelectFilter';
 import { ColumnCustomizer, defaultColumnPrefs, reconcileColumns } from '../components/ui/ColumnCustomizer';
 import { ViewSwitcher, useViewMode } from '../components/ui/ViewSwitcher';
+import { DensityToggle } from '../components/ui/DensityToggle';
+import { useDensity, getDensityMetrics } from '../components/ui/useDensity';
 import { CardShell } from '../components/ui/CardGrid';
 import { ListToolbar } from '../components/ui/ListToolbar';
 import { SelectAllMatchingBar } from '../components/ui/SelectAllMatchingBar';
@@ -439,6 +441,10 @@ export function CompaniesPage() {
 
   // Table / Grid view (persisted per user + entity in localStorage).
   const [view, setView] = useViewMode('companies', userId);
+  // Row density (Comfortable / Compact) — persisted per user + entity. Applies to
+  // the TABLE view only; comfortable keeps today's 44px rows exactly (ALT density win).
+  const [density, setDensity] = useDensity('companies', userId);
+  const densityMetrics = getDensityMetrics(density);
   // Kanban "Group by" field (ALT-338) — default = account status (the original fixed field).
   const [kanbanGroupBy, setKanbanGroupBy] = useState<string>('account_status');
 
@@ -1153,7 +1159,13 @@ export function CompaniesPage() {
               )}
             </>
           ) : undefined}
-          viewSwitcher={<ViewSwitcher value={view} onChange={setView} />}
+          viewSwitcher={
+            <div className="inline-flex items-center" style={{ gap: 6 }}>
+              {/* Density toggle only affects the Table view's row height. */}
+              {view === 'table' && <DensityToggle value={density} onChange={setDensity} />}
+              <ViewSwitcher value={view} onChange={setView} />
+            </div>
+          }
           columns={
             <ColumnCustomizer
               entity="companies"
@@ -1428,9 +1440,10 @@ export function CompaniesPage() {
                         }}
                         style={{
                           borderBottom: '1px solid var(--color-gray-100)',
-                          height: 44,
+                          height: densityMetrics.rowHeight,
                           cursor: 'pointer',
-                          transition: 'background 0.1s',
+                          // Animate row height when toggling density (ALT density win).
+                          transition: 'background 0.1s, height 0.15s ease',
                           background: isSelected ? 'var(--color-brand-50, #EBF4FD)' : undefined,
                           boxShadow:
                             keyNav.focusedId === row.original.id
@@ -1449,7 +1462,10 @@ export function CompaniesPage() {
                             key={cell.id}
                             className="align-middle whitespace-nowrap"
                             style={{
-                              padding: cell.column.id === '__select' ? '0 8px 0 16px' : '0 16px',
+                              padding: cell.column.id === '__select'
+                                ? `${densityMetrics.cellPaddingY}px 8px ${densityMetrics.cellPaddingY}px 16px`
+                                : `${densityMetrics.cellPaddingY}px 16px`,
+                              ...(densityMetrics.fontSize ? { fontSize: densityMetrics.fontSize } : null),
                             }}
                           >
                             {flexRender(cell.column.columnDef.cell, cell.getContext())}

@@ -16,6 +16,8 @@ import { useListKeyboardNav } from '../components/ui/useListKeyboardNav';
 import { ExportButton } from '../components/ui/ExportButton';
 import { ColumnCustomizer, defaultColumnPrefs } from '../components/ui/ColumnCustomizer';
 import { ViewSwitcher, useViewMode } from '../components/ui/ViewSwitcher';
+import { DensityToggle } from '../components/ui/DensityToggle';
+import { useDensity, getDensityMetrics } from '../components/ui/useDensity';
 import { CardShell } from '../components/ui/CardGrid';
 import { ListToolbar } from '../components/ui/ListToolbar';
 import { SelectAllMatchingBar } from '../components/ui/SelectAllMatchingBar';
@@ -429,6 +431,9 @@ export function ContactsPage() {
 
   // Table / Grid view (persisted per user + entity in localStorage).
   const [view, setView] = useViewMode('contacts', userId);
+  // Row density (comfortable/compact), persisted per user + entity (ALT-375).
+  const [density, setDensity] = useDensity('contacts', userId);
+  const densityMetrics = getDensityMetrics(density);
   // Kanban "Group by" field (ALT-338) — default = status (the original fixed field).
   const [kanbanGroupBy, setKanbanGroupBy] = useState<string>('contact_status');
 
@@ -1001,8 +1006,9 @@ export function ContactsPage() {
   };
 
   const tdStyle: React.CSSProperties = {
-    padding: '0 14px',
-    fontSize: 13,
+    // Vertical padding is density-driven (ALT-375); horizontal stays 14px.
+    padding: `${densityMetrics.cellPaddingY}px 14px`,
+    fontSize: densityMetrics.fontSize ?? 13,
     color: 'var(--color-gray-700)',
     verticalAlign: 'middle',
     maxWidth: 200,
@@ -1185,7 +1191,12 @@ export function ContactsPage() {
               </>
             ) : undefined
           }
-          viewSwitcher={<ViewSwitcher value={view} onChange={setView} />}
+          viewSwitcher={
+            <>
+              <ViewSwitcher value={view} onChange={setView} />
+              {view === 'table' && <DensityToggle value={density} onChange={setDensity} />}
+            </>
+          }
           columns={
             <ColumnCustomizer
               entity="contacts"
@@ -1451,9 +1462,9 @@ export function ContactsPage() {
                         }}
                         style={{
                           borderBottom: '1px solid var(--color-gray-100)',
-                          height: 48,
+                          height: densityMetrics.rowHeight,
                           cursor: 'pointer',
-                          transition: 'background 0.1s',
+                          transition: 'background 0.1s, height 0.15s ease',
                           background: isSelected ? '#EBF4FD' : undefined,
                           boxShadow: keyNav.focusedId === row.contact_id ? 'inset 3px 0 0 0 var(--color-brand, #1A7EE8)' : undefined,
                         }}
@@ -1466,7 +1477,7 @@ export function ContactsPage() {
                       >
                         {/* Checkbox */}
                         <td
-                          style={{ padding: '0 8px 0 14px', verticalAlign: 'middle', width: 36 }}
+                          style={{ padding: `${densityMetrics.cellPaddingY}px 8px ${densityMetrics.cellPaddingY}px 14px`, verticalAlign: 'middle', width: 36 }}
                           onClick={(e) => { e.stopPropagation(); sel.toggle(row.contact_id); }}
                         >
                           <input

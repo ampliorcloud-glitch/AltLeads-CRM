@@ -1063,6 +1063,10 @@ Ankit: "keep finding things which can be a big leap & don't need me — proceed 
 - "?" help overlay updated to document j/k/x/Enter//. Build **green across all 5 pages** (`npm run build`). Self-QC on the global-listener conflict surface (the only real risk) — guards verified. Pure FE, zero RLS/decision coupling. **Not pushed.**
 
 ---
+## 2026-06-27 (cont.) — Autonomous build: density toggle fanned out to all list pages (ALT-375 complete)
+Finished the half-shipped density feature: the comfortable/compact toggle (ALT-375, was Leads-only) now lives on **all 5 list pages**. Done via 4 disjoint parallel agents (Contacts/Companies/Meetings/Wishlist), central build only. Each replaced its fixed row height with `densityMetrics.rowHeight` + the height transition, gated the `<DensityToggle>` to table view next to the ViewSwitcher, and applied `cellPaddingY`/`fontSize` to body cells. Side-benefit: **comfortable now standardizes every list to 44px** (Contacts was 48, Meetings/Wishlist 40 → uniform). Meetings/Wishlist had Tailwind `px-4`/`transition-colors` moved inline to avoid class-vs-style conflicts. Build **green**. Pure FE. **Not pushed.**
+
+---
 ## 2026-06-26 — Amp Intranet planned to share the CRM/Client-Portal stack (new doc)
 Ankit opened `Amp-Intranet/Amp PRD.md` (v1.0 "Amp — Amplior Employee Portal" — mobile-first staff portal: Home/Craft/Culture/Me/Tools+Knowledge) and asked to plan it so it **shares the same DB as the Client Portal**, with **CRM + Client Portal + Intranet all hosted the same way**. Wrote **`docs/product/AMP-INTRANET.md`** — the architecture/integration plan (the PRD stays the product spec).
 - **Key insight:** Amp's hero data (weekly meetings/connects/connect-rate, Win Wall, leaderboard, badges) is ALREADY in the CRM → Amp is the **internal companion to the CRM**, reading the same DB through a per-USER lens (vs the Client Portal's per-TENANT lens). Same-project logic that was locked for the Client Portal extends cleanly to Amp.

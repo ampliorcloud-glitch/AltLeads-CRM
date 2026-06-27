@@ -21,6 +21,8 @@ import { ExportButton } from '../components/ui/ExportButton';
 import { MultiSelectFilter } from '../components/ui/MultiSelectFilter';
 import { ColumnCustomizer, defaultColumnPrefs, reconcileColumns } from '../components/ui/ColumnCustomizer';
 import { ViewSwitcher, useViewMode } from '../components/ui/ViewSwitcher';
+import { DensityToggle } from '../components/ui/DensityToggle';
+import { useDensity, getDensityMetrics } from '../components/ui/useDensity';
 import { ListToolbar } from '../components/ui/ListToolbar';
 import { SelectAllMatchingBar } from '../components/ui/SelectAllMatchingBar';
 import { useListFilters } from '../lib/listFilters';
@@ -247,6 +249,10 @@ export function WishlistPage() {
 
   // Table / Grid / Kanban view (persisted per user + entity in localStorage).
   const [view, setView] = useViewMode('wishlist', userId);
+  // Row density (Comfortable / Compact) — persisted per user + entity. Applies to
+  // the TABLE view only; comfortable keeps today's 40px rows close (ALT density win).
+  const [density, setDensity] = useDensity('wishlist', userId);
+  const densityMetrics = getDensityMetrics(density);
   // Kanban "Group by" field (ALT-338) — default = status (the original fixed field).
   const [kanbanGroupBy, setKanbanGroupBy] = useState<string>('status');
 
@@ -800,7 +806,13 @@ export function WishlistPage() {
             </p>
           }
           bulkActions={null /* Wishlist has no bulk actions today */}
-          viewSwitcher={<ViewSwitcher value={view} onChange={setView} />}
+          viewSwitcher={
+            <>
+              <ViewSwitcher value={view} onChange={setView} />
+              {/* Density toggle only affects the Table view's row height. */}
+              {view === 'table' && <DensityToggle value={density} onChange={setDensity} />}
+            </>
+          }
           columns={
             <ColumnCustomizer
               entity="wishlist"
@@ -1022,15 +1034,24 @@ export function WishlistPage() {
                             setPreviewId(row.original.wishlistId);
                           }
                         }}
-                        className="border-b border-zinc-100 hover:bg-zinc-50 transition-colors last:border-0 cursor-pointer"
+                        className="border-b border-zinc-100 hover:bg-zinc-50 last:border-0 cursor-pointer"
                         style={{
-                          height: 40,
+                          height: densityMetrics.rowHeight,
+                          // Animate row height when toggling density (ALT density win).
+                          transition: 'background 0.1s, height 0.15s ease',
                           background: isSelected ? '#EFF6FF' : undefined,
                           boxShadow: keyNav.focusedId === row.original.id ? 'inset 3px 0 0 0 var(--color-brand, #1A7EE8)' : undefined,
                         }}
                       >
                         {row.getVisibleCells().map((cell) => (
-                          <td key={cell.id} className="px-4 align-middle whitespace-nowrap">
+                          <td
+                            key={cell.id}
+                            className="align-middle whitespace-nowrap"
+                            style={{
+                              padding: `${densityMetrics.cellPaddingY}px 16px`,
+                              ...(densityMetrics.fontSize ? { fontSize: densityMetrics.fontSize } : null),
+                            }}
+                          >
                             {flexRender(cell.column.columnDef.cell, cell.getContext())}
                           </td>
                         ))}
