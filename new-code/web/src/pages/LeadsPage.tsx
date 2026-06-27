@@ -400,6 +400,10 @@ export function LeadsPage() {
   const [reassignError, setReassignError] = useState<string | null>(null);
   const [reassignOwners, setReassignOwners] = useState<UserOption[]>([]);
 
+  // Shared bulk progress + cancel (ALT-413) — live "N of M" bar in the reassign modal.
+  const [bulkProgress, setBulkProgress] = useState<{ done: number; total: number } | null>(null);
+  const bulkAbort = useRef<AbortController | null>(null);
+
   const openBulkReassign = async () => {
     setReassignError(null);
     setReassignOwners([]);
@@ -410,8 +414,20 @@ export function LeadsPage() {
     const ids = [...sel.selectedIds].map(Number).filter((n) => !isNaN(n));
     setReassignSaving(true);
     setReassignError(null);
-    const res = await reassignLeadsBulk(ids, newUserId, profile?.user_id != null ? String(profile.user_id) : '');
-    setReassignSaving(false);
+    const ac = new AbortController();
+    bulkAbort.current = ac;
+    setBulkProgress({ done: 0, total: ids.length });
+    let res;
+    try {
+      res = await reassignLeadsBulk(ids, newUserId, profile?.user_id != null ? String(profile.user_id) : '', {
+        signal: ac.signal,
+        onProgress: (done, total) => setBulkProgress({ done, total }),
+      });
+    } finally {
+      setReassignSaving(false);
+      setBulkProgress(null);
+      bulkAbort.current = null;
+    }
     if (res.ok === 0 && res.error) { setReassignError(humanizeWriteError(res.error)); return; }
     setShowReassign(false);
     sel.clear();
@@ -1491,6 +1507,8 @@ export function LeadsPage() {
           owners={reassignOwners}
           saving={reassignSaving}
           error={reassignError}
+          progress={bulkProgress}
+          onCancel={() => bulkAbort.current?.abort()}
           onConfirm={handleBulkReassign}
           onClose={() => setShowReassign(false)}
         />

@@ -7,6 +7,7 @@
 import { useState } from 'react';
 import { Loader2, FolderPlus } from 'lucide-react';
 import { ModalShell } from '../wishlist/AssignModal';
+import { BulkProgressBar } from './BulkProgressBar';
 import type { ScopedProject } from '../../contexts/ProjectContext';
 
 const selectCls =
@@ -19,6 +20,8 @@ export function BulkProjectModal({
   projects,
   saving,
   error,
+  progress,
+  onCancel,
   onConfirm,
   onClose,
 }: {
@@ -27,6 +30,10 @@ export function BulkProjectModal({
   projects: ScopedProject[];
   saving: boolean;
   error: string | null;
+  /** Live bulk progress (done of total). When set + saving, shows a bar + Cancel. */
+  progress?: { done: number; total: number } | null;
+  /** Abort the in-flight bulk job (stops cleanly between records). */
+  onCancel?: () => void;
   onConfirm: (projectId: number) => void;
   onClose: () => void;
 }) {
@@ -78,7 +85,20 @@ export function BulkProjectModal({
         )}
       </div>
 
+      {progress && saving && (
+        <BulkProgressBar done={progress.done} total={progress.total} />
+      )}
+
       <div className="flex items-center justify-end gap-2 mt-5 pt-4 border-t border-zinc-100">
+        {progress && saving && onCancel ? (
+          <button
+            onClick={onCancel}
+            className="border border-zinc-300 hover:border-zinc-400 bg-white text-zinc-700 font-medium rounded-md transition-colors"
+            style={{ fontSize: 13, padding: '7px 14px', height: 34 }}
+          >
+            Cancel
+          </button>
+        ) : (
         <button
           onClick={onClose}
           disabled={saving}
@@ -87,6 +107,7 @@ export function BulkProjectModal({
         >
           Cancel
         </button>
+        )}
         <button
           onClick={() => projectId != null && onConfirm(projectId)}
           disabled={saving || projectId == null}

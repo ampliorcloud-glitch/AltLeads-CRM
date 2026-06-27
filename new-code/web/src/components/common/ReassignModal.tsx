@@ -15,6 +15,7 @@ import { useState } from 'react';
 import { Loader2, UserCheck } from 'lucide-react';
 import type { UserOption } from '../../data/wishlist';
 import { ModalShell } from '../wishlist/AssignModal';
+import { BulkProgressBar } from './BulkProgressBar';
 
 const selectCls =
   'w-full border border-zinc-300 rounded-md px-3 text-zinc-800 bg-white ' +
@@ -35,6 +36,8 @@ export function ReassignModal({
   owners,
   saving,
   error,
+  progress,
+  onCancel,
   onConfirm,
   onClose,
 }: {
@@ -45,6 +48,10 @@ export function ReassignModal({
   owners: UserOption[];
   saving: boolean;
   error: string | null;
+  /** Live bulk progress (done of total). When set + saving, shows a bar + Cancel. */
+  progress?: { done: number; total: number } | null;
+  /** Abort the in-flight bulk job (stops cleanly between records). */
+  onCancel?: () => void;
   /**
    * Confirm callback. `reason` is the optional, free-text note typed by the
    * actor (empty string when left blank) — callers that don't care may ignore it.
@@ -130,7 +137,20 @@ export function ReassignModal({
         )}
       </div>
 
+      {progress && saving && (
+        <BulkProgressBar done={progress.done} total={progress.total} />
+      )}
+
       <div className="flex items-center justify-end gap-2 mt-5 pt-4 border-t border-zinc-100">
+        {progress && saving && onCancel ? (
+          <button
+            onClick={onCancel}
+            className="border border-zinc-300 hover:border-zinc-400 bg-white text-zinc-700 font-medium rounded-md transition-colors"
+            style={{ fontSize: 13, padding: '7px 14px', height: 34 }}
+          >
+            Cancel
+          </button>
+        ) : (
         <button
           onClick={onClose}
           disabled={saving}
@@ -139,6 +159,7 @@ export function ReassignModal({
         >
           Cancel
         </button>
+        )}
         <button
           onClick={() => ownerId != null && onConfirm(ownerId, reason.trim() || undefined)}
           disabled={saving || ownerId == null || (!isBulk && ownerId === currentOwnerId)}

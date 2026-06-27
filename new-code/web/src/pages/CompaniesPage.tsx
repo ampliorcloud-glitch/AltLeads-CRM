@@ -344,6 +344,10 @@ export function CompaniesPage() {
   const [setStatusSaving, setSetStatusSaving] = useState(false);
   const [setStatusError, setSetStatusError] = useState<string | null>(null);
 
+  // Shared bulk progress + cancel (ALT-413) — live "N of M" bar across the bulk modals.
+  const [bulkProgress, setBulkProgress] = useState<{ done: number; total: number } | null>(null);
+  const bulkAbort = useRef<AbortController | null>(null);
+
   const openBulkReassign = async () => {
     setReassignError(null);
     setReassignOwners([]);
@@ -355,8 +359,20 @@ export function CompaniesPage() {
     const ids = [...sel.selectedIds].map(Number).filter((n) => !isNaN(n));
     setReassignSaving(true);
     setReassignError(null);
-    const res = await reassignCompaniesBulk(ids, projectId, newUserId, profile?.user_id != null ? String(profile.user_id) : '');
-    setReassignSaving(false);
+    const ac = new AbortController();
+    bulkAbort.current = ac;
+    setBulkProgress({ done: 0, total: ids.length });
+    let res;
+    try {
+      res = await reassignCompaniesBulk(ids, projectId, newUserId, profile?.user_id != null ? String(profile.user_id) : '', {
+        signal: ac.signal,
+        onProgress: (done, total) => setBulkProgress({ done, total }),
+      });
+    } finally {
+      setReassignSaving(false);
+      setBulkProgress(null);
+      bulkAbort.current = null;
+    }
     if (res.ok === 0 && res.error) { setReassignError(humanizeWriteError(res.error)); return; }
     setShowReassign(false);
     sel.clear();
@@ -374,8 +390,20 @@ export function CompaniesPage() {
     const ids = [...sel.selectedIds].map(Number).filter((n) => !isNaN(n));
     setAddProjectSaving(true);
     setAddProjectError(null);
-    const res = await addCompaniesToProject(ids, targetProjectId, profile?.user_id != null ? String(profile.user_id) : '');
-    setAddProjectSaving(false);
+    const ac = new AbortController();
+    bulkAbort.current = ac;
+    setBulkProgress({ done: 0, total: ids.length });
+    let res;
+    try {
+      res = await addCompaniesToProject(ids, targetProjectId, profile?.user_id != null ? String(profile.user_id) : '', {
+        signal: ac.signal,
+        onProgress: (done, total) => setBulkProgress({ done, total }),
+      });
+    } finally {
+      setAddProjectSaving(false);
+      setBulkProgress(null);
+      bulkAbort.current = null;
+    }
     if (res.ok === 0 && res.error) { setAddProjectError(humanizeWriteError(res.error)); return; }
     setShowAddProject(false);
     sel.clear();
@@ -390,8 +418,20 @@ export function CompaniesPage() {
     const ids = [...sel.selectedIds].map(Number).filter((n) => !isNaN(n));
     setSetStatusSaving(true);
     setSetStatusError(null);
-    const res = await setCompaniesStatus(ids, projectId, status, actorId ?? '');
-    setSetStatusSaving(false);
+    const ac = new AbortController();
+    bulkAbort.current = ac;
+    setBulkProgress({ done: 0, total: ids.length });
+    let res;
+    try {
+      res = await setCompaniesStatus(ids, projectId, status, actorId ?? '', {
+        signal: ac.signal,
+        onProgress: (done, total) => setBulkProgress({ done, total }),
+      });
+    } finally {
+      setSetStatusSaving(false);
+      setBulkProgress(null);
+      bulkAbort.current = null;
+    }
     if (res.ok === 0 && res.error) { setSetStatusError(humanizeWriteError(res.error)); return; }
     setShowSetStatus(false);
     sel.clear();
@@ -1689,6 +1729,8 @@ export function CompaniesPage() {
           owners={reassignOwners}
           saving={reassignSaving}
           error={reassignError}
+          progress={bulkProgress}
+          onCancel={() => bulkAbort.current?.abort()}
           onConfirm={handleBulkReassign}
           onClose={() => setShowReassign(false)}
         />
@@ -1701,6 +1743,8 @@ export function CompaniesPage() {
           projects={projects}
           saving={addProjectSaving}
           error={addProjectError}
+          progress={bulkProgress}
+          onCancel={() => bulkAbort.current?.abort()}
           onConfirm={handleAddToProject}
           onClose={() => setShowAddProject(false)}
         />
@@ -1713,6 +1757,8 @@ export function CompaniesPage() {
           options={statusOptions.map((o) => ({ value: o.value, label: o.label }))}
           saving={setStatusSaving}
           error={setStatusError}
+          progress={bulkProgress}
+          onCancel={() => bulkAbort.current?.abort()}
           onConfirm={handleSetStatus}
           onClose={() => setShowSetStatus(false)}
         />

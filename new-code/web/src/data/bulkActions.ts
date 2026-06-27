@@ -16,16 +16,26 @@ export interface BulkResult {
   error: string | null;
 }
 
+export interface BulkProgress {
+  /** Called after each record is processed, with how many are done and the total. */
+  onProgress?: (done: number, total: number) => void;
+  /** When aborted, the loop stops cleanly BETWEEN records and returns partial counts. */
+  signal?: AbortSignal;
+}
+
 async function addToProjectLoop(
   ids: number[],
   projectId: number,
   actor: string | null,
   kind: 'company' | 'contact',
+  opts?: BulkProgress,
 ): Promise<BulkResult> {
   let ok = 0;
   let failed = 0;
   let firstErr: string | null = null;
+  const total = ids.length;
   for (const id of ids) {
+    if (opts?.signal?.aborted) break;
     const res =
       kind === 'company'
         ? await upsertCompanyStatus(id, projectId, {}, actor)
@@ -36,6 +46,7 @@ async function addToProjectLoop(
     } else {
       ok += 1;
     }
+    opts?.onProgress?.(ok + failed, total);
   }
   return {
     ok,
@@ -45,13 +56,13 @@ async function addToProjectLoop(
 }
 
 /** Enroll selected companies into a project (creates their company_project_status row). */
-export function addCompaniesToProject(ids: number[], projectId: number, actor: string | null): Promise<BulkResult> {
-  return addToProjectLoop(ids, projectId, actor, 'company');
+export function addCompaniesToProject(ids: number[], projectId: number, actor: string | null, opts?: BulkProgress): Promise<BulkResult> {
+  return addToProjectLoop(ids, projectId, actor, 'company', opts);
 }
 
 /** Enroll selected contacts into a project (creates their contact_project_status row). */
-export function addContactsToProject(ids: number[], projectId: number, actor: string | null): Promise<BulkResult> {
-  return addToProjectLoop(ids, projectId, actor, 'contact');
+export function addContactsToProject(ids: number[], projectId: number, actor: string | null, opts?: BulkProgress): Promise<BulkResult> {
+  return addToProjectLoop(ids, projectId, actor, 'contact', opts);
 }
 
 /**
@@ -67,11 +78,14 @@ async function setStatusLoop(
   status: string,
   actor: string | null,
   kind: 'company' | 'contact',
+  opts?: BulkProgress,
 ): Promise<BulkResult> {
   let ok = 0;
   let failed = 0;
   let firstErr: string | null = null;
+  const total = ids.length;
   for (const id of ids) {
+    if (opts?.signal?.aborted) break;
     const res =
       kind === 'company'
         ? await upsertCompanyStatus(id, projectId, { account_status: status }, actor)
@@ -82,6 +96,7 @@ async function setStatusLoop(
     } else {
       ok += 1;
     }
+    opts?.onProgress?.(ok + failed, total);
   }
   return {
     ok,
@@ -96,8 +111,9 @@ export function setCompaniesStatus(
   projectId: number,
   status: string,
   actor: string | null,
+  opts?: BulkProgress,
 ): Promise<BulkResult> {
-  return setStatusLoop(ids, projectId, status, actor, 'company');
+  return setStatusLoop(ids, projectId, status, actor, 'company', opts);
 }
 
 /** Set contact_status on the selected contacts (per-project). */
@@ -106,6 +122,7 @@ export function setContactsStatus(
   projectId: number,
   status: string,
   actor: string | null,
+  opts?: BulkProgress,
 ): Promise<BulkResult> {
-  return setStatusLoop(ids, projectId, status, actor, 'contact');
+  return setStatusLoop(ids, projectId, status, actor, 'contact', opts);
 }

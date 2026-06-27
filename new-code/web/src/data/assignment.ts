@@ -17,6 +17,7 @@ import { supabase } from '../lib/supabase';
 import { notify, notifyInApp, resolveUserEmailAndName } from '../lib/notify';
 import { humanizeWriteError } from '../lib/writeError';
 import type { UserOption } from './wishlist';
+import type { BulkProgress } from './bulkActions';
 
 /* ── guards / helpers ────────────────────────────────────────────────────── */
 
@@ -271,6 +272,7 @@ export async function reassignLeadsBulk(
   leadIds: number[],
   newUserId: number,
   actor: string,
+  opts?: BulkProgress,
 ): Promise<{ ok: number; failed: number; error: string | null }> {
   const actorErr = assertNumericActor(actor);
   if (actorErr) return { ok: 0, failed: leadIds.length, error: actorErr.error };
@@ -278,7 +280,9 @@ export async function reassignLeadsBulk(
   let ok = 0;
   let failed = 0;
   let firstErr: string | null = null;
+  const total = leadIds.length;
   for (const id of leadIds) {
+    if (opts?.signal?.aborted) break;
     const res = await writeLeadOwner(id, newUserId, actor);
     if (res.error || res.affected === 0) {
       failed += 1;
@@ -286,6 +290,7 @@ export async function reassignLeadsBulk(
     } else {
       ok += 1;
     }
+    opts?.onProgress?.(ok + failed, total);
   }
 
   if (ok > 0) {
@@ -493,17 +498,21 @@ export async function reassignMeetingsBulk(
   meetingIds: number[],
   newUserId: number,
   actor: string,
+  opts?: BulkProgress,
 ): Promise<BulkResult> {
   const actorErr = assertNumericActor(actor);
   if (actorErr) return { ok: 0, failed: meetingIds.length, error: actorErr.error };
   let ok = 0, failed = 0;
   let firstErr: string | null = null;
+  const total = meetingIds.length;
   for (const mId of meetingIds) {
+    if (opts?.signal?.aborted) break;
     const leadId = await fetchMeetingLeadId(mId);
-    if (leadId == null) { failed += 1; if (!firstErr) firstErr = 'Some meetings have no linked lead.'; continue; }
+    if (leadId == null) { failed += 1; if (!firstErr) firstErr = 'Some meetings have no linked lead.'; opts?.onProgress?.(ok + failed, total); continue; }
     const res = await writeLeadOwner(leadId, newUserId, actor);
     if (res.error || res.affected === 0) { failed += 1; if (!firstErr) firstErr = res.error ?? null; }
     else ok += 1;
+    opts?.onProgress?.(ok + failed, total);
   }
   if (ok > 0) {
     fireOwnerNotify({
@@ -519,15 +528,19 @@ export async function reassignCompaniesBulk(
   projectId: number,
   newUserId: number,
   actor: string,
+  opts?: BulkProgress,
 ): Promise<BulkResult> {
   const actorErr = assertNumericActor(actor);
   if (actorErr) return { ok: 0, failed: companyIds.length, error: actorErr.error };
   let ok = 0, failed = 0;
   let firstErr: string | null = null;
+  const total = companyIds.length;
   for (const cId of companyIds) {
+    if (opts?.signal?.aborted) break;
     const res = await upsertOwner('company_project_status', 'company_id', cId, projectId, newUserId, actor);
     if (res.error) { failed += 1; if (!firstErr) firstErr = res.error; }
     else { ok += 1; await cascadeCompanyContacts(cId, projectId, newUserId, actor); }
+    opts?.onProgress?.(ok + failed, total);
   }
   if (ok > 0) {
     fireOwnerNotify({
@@ -543,15 +556,19 @@ export async function reassignContactsBulk(
   projectId: number,
   newUserId: number,
   actor: string,
+  opts?: BulkProgress,
 ): Promise<BulkResult> {
   const actorErr = assertNumericActor(actor);
   if (actorErr) return { ok: 0, failed: contactIds.length, error: actorErr.error };
   let ok = 0, failed = 0;
   let firstErr: string | null = null;
+  const total = contactIds.length;
   for (const cId of contactIds) {
+    if (opts?.signal?.aborted) break;
     const res = await upsertOwner('contact_project_status', 'contact_id', cId, projectId, newUserId, actor);
     if (res.error) { failed += 1; if (!firstErr) firstErr = res.error; }
     else ok += 1;
+    opts?.onProgress?.(ok + failed, total);
   }
   if (ok > 0) {
     fireOwnerNotify({
