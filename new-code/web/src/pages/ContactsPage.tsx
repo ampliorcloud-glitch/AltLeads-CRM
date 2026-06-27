@@ -1051,7 +1051,7 @@ export function ContactsPage() {
     // rows can't show through under the sticky header while the body scrolls.
     position: 'sticky',
     top: 0,
-    zIndex: 1,
+    zIndex: 2,
     background: 'var(--color-surface)',
   };
 
@@ -1407,7 +1407,7 @@ export function ContactsPage() {
         {/* Table */}
         {(view === 'table' || loading || loadError) && (
         <div className="rounded-lg overflow-hidden" style={{ background: 'var(--color-surface)', border: '1px solid var(--border-color)' }}>
-          <div className="overflow-x-auto">
+          <div className="overflow-x-auto" style={{ maxHeight: 'calc(100vh - 320px)', overflowY: 'auto' }}>
             <table className="w-full" style={{ borderCollapse: 'collapse' }}>
               <thead>
                 <tr style={{ borderBottom: '2px solid #1A7EE8', background: 'var(--color-surface)' }}>

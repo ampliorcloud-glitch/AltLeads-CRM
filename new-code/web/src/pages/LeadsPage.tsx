@@ -1156,7 +1156,7 @@ export function LeadsPage() {
         {/* Table */}
         {(view === 'table' || loading || loadError) && (
         <div className="rounded-lg overflow-hidden" style={{ background: 'var(--color-surface)', border: '1px solid var(--border-color)' }}>
-          <div className="overflow-x-auto">
+          <div className="overflow-x-auto" style={{ maxHeight: 'calc(100vh - 320px)', overflowY: 'auto' }}>
             <table className="w-full">
               <thead>
                 {table.getHeaderGroups().map((headerGroup) => (
@@ -1187,7 +1187,7 @@ export function LeadsPage() {
                           // rows can't show through under the sticky header.
                           position: 'sticky',
                           top: 0,
-                          zIndex: 1,
+                          zIndex: 2,
                           background: 'var(--color-surface)',
                           borderBottom: '1px solid var(--border-color)',
                         }}

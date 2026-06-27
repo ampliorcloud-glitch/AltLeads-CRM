@@ -939,7 +939,7 @@ export function WishlistPage() {
         {/* Table */}
         {(view === 'table' || loading || loadError) && (
         <div className="bg-white border border-zinc-200 rounded-lg overflow-hidden">
-          <div className="overflow-x-auto">
+          <div className="overflow-x-auto" style={{ maxHeight: 'calc(100vh - 320px)', overflowY: 'auto' }}>
             <table className="w-full">
               <thead>
                 {table.getHeaderGroups().map((headerGroup) => (
@@ -967,7 +967,7 @@ export function WishlistPage() {
                           // rows can't show through under the sticky header.
                           position: 'sticky',
                           top: 0,
-                          zIndex: 1,
+                          zIndex: 2,
                           background: '#FFFFFF',
                         }}
                         onClick={canSort ? header.column.getToggleSortingHandler() : undefined}
