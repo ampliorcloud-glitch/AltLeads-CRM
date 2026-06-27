@@ -22,6 +22,7 @@ import { DensityToggle } from '../components/ui/DensityToggle';
 import { useDensity, getDensityMetrics } from '../components/ui/useDensity';
 import { CardShell } from '../components/ui/CardGrid';
 import { ListToolbar } from '../components/ui/ListToolbar';
+import { ActiveFilters, type FilterChip } from '../components/ui/ActiveFilters';
 import { SelectAllMatchingBar } from '../components/ui/SelectAllMatchingBar';
 import { useListFilters } from '../lib/listFilters';
 import { humanizeWriteError } from '../lib/writeError';
@@ -755,6 +756,53 @@ export function ContactsPage() {
   const hasActiveFilters = filters.search !== '' || filters.company.length > 0 ||
     filters.city.length > 0 || filters.hasLinkedin !== '' || filters.showDemo !== 'real';
 
+  // Removable-chip bar showing exactly what's filtering the list (free-text
+  // search is excluded — it has its own clear "×"). Multi-select facets emit one
+  // chip per value; single-value filters emit one chip when set to a non-default.
+  const filterChips = useMemo<FilterChip[]>(() => {
+    const chips: FilterChip[] = [];
+
+    // Company (multi-select facet) — one chip per selected value.
+    for (const value of filters.company) {
+      chips.push({
+        key: `company:${value}`,
+        label: `Company: ${value}`,
+        onRemove: () => setFilter('company', filters.company.filter((x) => x !== value)),
+      });
+    }
+
+    // City (multi-select facet) — one chip per selected value.
+    for (const value of filters.city) {
+      chips.push({
+        key: `city:${value}`,
+        label: `City: ${value}`,
+        onRemove: () => setFilter('city', filters.city.filter((x) => x !== value)),
+      });
+    }
+
+    // LinkedIn (single-value) — chip when set; label mirrors the panel options.
+    if (filters.hasLinkedin !== '') {
+      chips.push({
+        key: `hasLinkedin:${filters.hasLinkedin}`,
+        label: `LinkedIn: ${filters.hasLinkedin === 'yes' ? 'Has LinkedIn' : 'No LinkedIn'}`,
+        onRemove: () => setFilter('hasLinkedin', ''),
+      });
+    }
+
+    // Data type (single-value) — default is 'real', so chip only off-default;
+    // clearing resets to the 'real' default (mirrors hasActiveFilters baseline).
+    if (filters.showDemo !== 'real') {
+      chips.push({
+        key: `showDemo:${filters.showDemo}`,
+        label: `Data type: ${filters.showDemo === 'demo' ? 'Demo only' : 'All'}`,
+        onRemove: () => setFilter('showDemo', 'real'),
+      });
+    }
+
+    return chips;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filters]);
+
   // Visible page contact ids (for select-all on current page)
   const pageIds = pageRows.map((r) => r.contact_id);
 
@@ -1260,6 +1308,14 @@ export function ContactsPage() {
               </button>
             ) : undefined
           }
+        />
+
+        {/* Active-filter chips (ALT) — removable chips for every applied filter
+            (free-text search excluded). "Clear all" reuses the same reset the
+            toolbar's "Clear filters" button uses. */}
+        <ActiveFilters
+          chips={filterChips}
+          onClearAll={() => { setFilters(defaultFilters); setPageIndex(0); sel.clear(); }}
         />
 
         {/* "Select all N matching" — appears when the page selection doesn't yet

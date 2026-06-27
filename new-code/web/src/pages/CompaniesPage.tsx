@@ -27,6 +27,7 @@ import { DensityToggle } from '../components/ui/DensityToggle';
 import { useDensity, getDensityMetrics } from '../components/ui/useDensity';
 import { CardShell } from '../components/ui/CardGrid';
 import { ListToolbar } from '../components/ui/ListToolbar';
+import { ActiveFilters, type FilterChip } from '../components/ui/ActiveFilters';
 import { SelectAllMatchingBar } from '../components/ui/SelectAllMatchingBar';
 import { useListFilters } from '../lib/listFilters';
 import { EditableGrid, type EditableColumn } from '../components/ui/EditableGrid';
@@ -484,6 +485,30 @@ export function CompaniesPage() {
   const hasActiveFilters = Object.values(filters).some((v) =>
     Array.isArray(v) ? v.length > 0 : v !== '',
   );
+
+  /* ---- active-filter chips (ALT delight) ----
+     One chip per selected value for each multi-select facet (Industry, City);
+     free-text search is excluded (it has its own clear button). Removing a chip
+     drops just that value; "Clear all" resets all filters. */
+  const filterChips = useMemo<FilterChip[]>(() => {
+    const chips: FilterChip[] = [];
+    for (const value of filters.industry) {
+      chips.push({
+        key: `industry:${value}`,
+        label: `Industry: ${value}`,
+        onRemove: () => setFilter('industry', filters.industry.filter((x) => x !== value)),
+      });
+    }
+    for (const value of filters.city) {
+      chips.push({
+        key: `city:${value}`,
+        label: `City: ${value}`,
+        onRemove: () => setFilter('city', filters.city.filter((x) => x !== value)),
+      });
+    }
+    return chips;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filters]);
 
   const filteredData = useMemo(() => {
     return allCompanies.filter((c) => {
@@ -1228,6 +1253,16 @@ export function CompaniesPage() {
               </button>
             ) : undefined
           }
+        />
+
+        {/* Active-filter chips — removable, with one-click Clear all (ALT). */}
+        <ActiveFilters
+          chips={filterChips}
+          onClearAll={() => {
+            setFilters(defaultFilters);
+            setPagination((p) => ({ ...p, pageIndex: 0 }));
+            sel.clear();
+          }}
         />
 
         {/* "Select all N matching" bar — appears once the whole visible page is

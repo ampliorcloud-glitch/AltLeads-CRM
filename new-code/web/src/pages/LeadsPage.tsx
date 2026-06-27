@@ -38,6 +38,7 @@ import { DensityToggle } from '../components/ui/DensityToggle';
 import { useDensity, getDensityMetrics } from '../components/ui/useDensity';
 import { CardShell } from '../components/ui/CardGrid';
 import { ListToolbar } from '../components/ui/ListToolbar';
+import { ActiveFilters, type FilterChip } from '../components/ui/ActiveFilters';
 import { EditableGrid, type EditableColumn } from '../components/ui/EditableGrid';
 import { SelectAllMatchingBar } from '../components/ui/SelectAllMatchingBar';
 import { useListFilters } from '../lib/listFilters';
@@ -454,6 +455,57 @@ export function LeadsPage() {
   const hasActiveFilters = Object.values(filters).some((v) =>
     Array.isArray(v) ? v.length > 0 : v !== '',
   );
+
+  // Active-filter chip bar (ALT). One chip per selected facet value + one chip
+  // per date range; free-text search is excluded (it has its own clear box).
+  const filterChips = useMemo<FilterChip[]>(() => {
+    const chips: FilterChip[] = [];
+    const facets: { field: keyof Filters; label: string }[] = [
+      { field: 'agentName', label: 'Agent' },
+      { field: 'salesperson', label: 'Salesperson' },
+      { field: 'industry', label: 'Industry' },
+      { field: 'city', label: 'City' },
+      { field: 'project', label: 'Project' },
+      { field: 'source', label: 'Source' },
+      { field: 'stage', label: 'Stage' },
+    ];
+    for (const { field, label } of facets) {
+      const values = filters[field] as string[];
+      for (const value of values) {
+        chips.push({
+          key: `${field}:${value}`,
+          label: `${label}: ${value}`,
+          onRemove: () =>
+            setFilter(
+              field,
+              (filters[field] as string[]).filter((x) => x !== value),
+            ),
+        });
+      }
+    }
+    if (filters.leadDateFrom || filters.leadDateTo) {
+      chips.push({
+        key: 'leadDate',
+        label: `Lead date: ${filters.leadDateFrom || '…'} – ${filters.leadDateTo || '…'}`,
+        onRemove: () => {
+          setFilter('leadDateFrom', '');
+          setFilter('leadDateTo', '');
+        },
+      });
+    }
+    if (filters.meetingDateFrom || filters.meetingDateTo) {
+      chips.push({
+        key: 'meetingDate',
+        label: `Meeting date: ${filters.meetingDateFrom || '…'} – ${filters.meetingDateTo || '…'}`,
+        onRemove: () => {
+          setFilter('meetingDateFrom', '');
+          setFilter('meetingDateTo', '');
+        },
+      });
+    }
+    return chips;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filters]);
 
   const filteredData = useMemo(() => {
     return allLeads.filter((lead) => {
@@ -1028,6 +1080,12 @@ export function LeadsPage() {
               </button>
             ) : null
           }
+        />
+
+        {/* Active-filter chips — shown in every view (table/grid/kanban). */}
+        <ActiveFilters
+          chips={filterChips}
+          onClearAll={() => { setFilters(defaultFilters); setPagination((p) => ({ ...p, pageIndex: 0 })); sel.clear(); }}
         />
 
         {/* Select-all-matching bar — only when the whole page is selected and

@@ -24,6 +24,7 @@ import { ViewSwitcher, useViewMode } from '../components/ui/ViewSwitcher';
 import { DensityToggle } from '../components/ui/DensityToggle';
 import { useDensity, getDensityMetrics } from '../components/ui/useDensity';
 import { ListToolbar } from '../components/ui/ListToolbar';
+import { ActiveFilters, type FilterChip } from '../components/ui/ActiveFilters';
 import { SelectAllMatchingBar } from '../components/ui/SelectAllMatchingBar';
 import { useListFilters } from '../lib/listFilters';
 import { EditableGrid, type EditableColumn } from '../components/ui/EditableGrid';
@@ -293,6 +294,30 @@ export function WishlistPage() {
     setPagination((p) => ({ ...p, pageIndex: 0 }));
     sel.clear();
   };
+
+  // Removable chips for active facets (ALT active-filter bar). One chip per
+  // selected value across each multi-select facet; the free-text search is
+  // excluded (it has its own inline clear). Removing a chip drops just that
+  // value via setFilter (which also resets the page + clears selection).
+  const filterChips = useMemo<FilterChip[]>(() => {
+    const facets: { field: keyof Filters; label: string }[] = [
+      { field: 'status', label: 'Status' },
+      { field: 'agent', label: 'Agent' },
+      { field: 'teamLead', label: 'Team Lead' },
+      { field: 'industry', label: 'Industry' },
+      { field: 'city', label: 'City' },
+    ];
+    return facets.flatMap(({ field, label }) =>
+      (filters[field] as string[]).map((value) => ({
+        key: `${field}:${value}`,
+        label: `${label}: ${value}`,
+        onRemove: () =>
+          setFilter(field, (filters[field] as string[]).filter((x) => x !== value)),
+      })),
+    );
+    // setFilter is stable enough for this list; filters drives the chips.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filters]);
 
   const filteredData = useMemo(() => {
     return allItems.filter((item) => {
@@ -835,6 +860,11 @@ export function WishlistPage() {
           }
           create={null}
         />
+
+        {/* Active-filter chip bar — one removable chip per selected facet value,
+            with a one-click "Clear all" (reuses the page's clearFilters). Renders
+            nothing when no facets are active. */}
+        <ActiveFilters chips={filterChips} onClearAll={clearFilters} />
 
         {/* "Select all N matching" affordance — appears when the current page is
             fully selected but more filtered rows exist off-page (ALT-331). */}
