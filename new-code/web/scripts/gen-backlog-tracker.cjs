@@ -2563,6 +2563,9 @@ const TICKETS = [
         'Parity gap. HubSpot/Zoho "active lists" auto-update as records match criteria; we have personal saved filter views only. Post-launch retention feature.'),
       V('ALT-390','Workflow / automation engine (assign, email, task, stage-change triggers)','Feature','P2','Backlog',
         'Parity gap. No automation today (all manual). Triggered workflows (on create/stage-change -> assign owner, send email, create task) are core to HubSpot/Zoho stickiness. Post-launch.'),
+      // ---- Autonomous UX leap (non-dependent, pure FE) ----
+      V('ALT-391','Keyboard-first list navigation (j/k/Enter/x/ /Esc) — universal','Feature','P2','In Progress',
+        'The "feels fast" power-user leap every modern CRM has (Gmail/Linear/HubSpot). New reusable useListKeyboardNav hook + wired into all 5 list pages: j/k move a row cursor (with scroll-into-view + a blue left-bar focus accent), Enter opens the focused row, x toggles selection, / jumps to search, Esc clears the cursor. ONE document keydown listener per mounted list; bails on any editable target / Cmd-Ctrl-Alt combos / open preview, so Cmd-K palette + "?" help + cell-edit + typing all keep working. "?" help overlay updated to list the new keys. Build green across all 5 pages. Pure FE, zero RLS/decision coupling. Not pushed.'),
     ];
   })()),
 

@@ -1,4 +1,4 @@
-﻿import React, { useEffect, useMemo, useState } from 'react';
+﻿import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   useReactTable,
@@ -16,6 +16,7 @@ import { fetchWishlist, fmtLongDate, type WishlistItem } from '../data/wishlist'
 import { useAuth } from '../contexts/AuthContext';
 import { useProjectScope } from '../contexts/ProjectContext';
 import { useRowSelection } from '../components/ui/useRowSelection';
+import { useListKeyboardNav } from '../components/ui/useListKeyboardNav';
 import { ExportButton } from '../components/ui/ExportButton';
 import { MultiSelectFilter } from '../components/ui/MultiSelectFilter';
 import { ColumnCustomizer, defaultColumnPrefs, reconcileColumns } from '../components/ui/ColumnCustomizer';
@@ -242,6 +243,7 @@ export function WishlistPage() {
 
   // Row selection
   const sel = useRowSelection<string>();
+  const searchRef = useRef<HTMLInputElement>(null);
 
   // Table / Grid / Kanban view (persisted per user + entity in localStorage).
   const [view, setView] = useViewMode('wishlist', userId);
@@ -510,6 +512,27 @@ export function WishlistPage() {
   // Update ref with current page rows after each render
   table_data_ref.current = table.getRowModel().rows.map((r) => r.original);
 
+  // The wishlist items visible on the current page (drives keyboard nav).
+  const navRows = useMemo(
+    () => table.getRowModel().rows.map((r) => r.original),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [table, filteredData, pagination, sorting],
+  );
+
+  // Keyboard-first row navigation (j/k move · Enter open · x select · / search · Esc clear).
+  // Paused while a preview is open so j/k don't move the list under the panel.
+  // NOTE (adaptation vs LeadsPage): row identity for nav/selection is `id` (the
+  // string used by useRowSelection<string>), but the preview opens by `wishlistId`
+  // (the number `setPreviewId` expects) — so onOpen mirrors the row's onClick.
+  const keyNav = useListKeyboardNav({
+    rows: navRows,
+    getId: (r) => r.id,
+    onOpen: (r) => setPreviewId(r.wishlistId),
+    onToggleSelect: (r) => sel.toggle(r.id),
+    searchInputRef: searchRef,
+    enabled: previewId == null,
+  });
+
   const pageCount = table.getPageCount();
   const pageIndex = table.getState().pagination.pageIndex;
   const rowCount = filteredData.length;
@@ -672,6 +695,7 @@ export function WishlistPage() {
               <div className="relative flex items-center">
                 <Search size={13} className="absolute text-zinc-400 pointer-events-none" style={{ left: 8 }} />
                 <input
+                  ref={searchRef}
                   type="text"
                   value={filters.search}
                   onChange={(e) => setFilter('search', e.target.value)}
@@ -989,6 +1013,7 @@ export function WishlistPage() {
                         key={row.id}
                         role="button"
                         tabIndex={0}
+                        data-rowid={row.original.id}
                         aria-label={`Preview ${row.original.company || row.original.contactName || 'company'}`}
                         onClick={() => setPreviewId(row.original.wishlistId)}
                         onKeyDown={(e) => {
@@ -1001,6 +1026,7 @@ export function WishlistPage() {
                         style={{
                           height: 40,
                           background: isSelected ? '#EFF6FF' : undefined,
+                          boxShadow: keyNav.focusedId === row.original.id ? 'inset 3px 0 0 0 var(--color-brand, #1A7EE8)' : undefined,
                         }}
                       >
                         {row.getVisibleCells().map((cell) => (

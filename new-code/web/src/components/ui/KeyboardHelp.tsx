@@ -35,9 +35,13 @@ interface Shortcut {
 const SHORTCUTS: Shortcut[] = [
   { keys: ['Ctrl', 'K'], label: 'Open search (also ⌘K on Mac)' },
   { keys: ['↑', '↓'], label: 'Move between search results' },
+  { keys: ['J'], label: 'Move the row cursor down (in a list)' },
+  { keys: ['K'], label: 'Move the row cursor up (in a list)' },
   { keys: ['Enter'], label: 'Open the highlighted result or focused row' },
+  { keys: ['X'], label: 'Select / unselect the focused row' },
+  { keys: ['/'], label: 'Jump to the search box' },
   { keys: ['Space'], label: 'Open the focused list row' },
-  { keys: ['Esc'], label: 'Close any dialog, drawer, or search' },
+  { keys: ['Esc'], label: 'Clear the row cursor / close any dialog or search' },
   { keys: ['?'], label: 'Show this shortcuts list' },
 ];
 

@@ -12,6 +12,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { useProjectScope } from '../contexts/ProjectContext';
 import { ProjectSelect } from '../components/ui/ProjectSelect';
 import { useRowSelection } from '../components/ui/useRowSelection';
+import { useListKeyboardNav } from '../components/ui/useListKeyboardNav';
 import { ExportButton } from '../components/ui/ExportButton';
 import { ColumnCustomizer, defaultColumnPrefs } from '../components/ui/ColumnCustomizer';
 import { ViewSwitcher, useViewMode } from '../components/ui/ViewSwitcher';
@@ -433,6 +434,7 @@ export function ContactsPage() {
 
   // Row selection
   const sel = useRowSelection<number>();
+  const searchRef = useRef<HTMLInputElement>(null);
 
   // Row-click preview slide-over (ALT-327/328). Opening the panel replaces the
   // old navigate-away behaviour; the full detail page stays reachable via the
@@ -730,6 +732,19 @@ export function ContactsPage() {
   const firstRow = totalRows === 0 ? 0 : safePage * pageSize + 1;
   const lastRow = Math.min((safePage + 1) * pageSize, totalRows);
 
+  // Keyboard-first row navigation (j/k move · Enter open · x select · / search · Esc clear).
+  // Paused while a preview is open so j/k don't move the list under the panel.
+  // Mirrors LeadsPage; ContactsPage has no TanStack table, so the visible rows are
+  // the hand-rolled `pageRows` slice and rows are plain ContactRow (no row.original).
+  const keyNav = useListKeyboardNav({
+    rows: pageRows,
+    getId: (r) => r.contact_id,
+    onOpen: (r) => setPreviewId(r.contact_id),
+    onToggleSelect: (r) => sel.toggle(r.contact_id),
+    searchInputRef: searchRef,
+    enabled: previewId == null,
+  });
+
   const hasActiveFilters = filters.search !== '' || filters.company.length > 0 ||
     filters.city.length > 0 || filters.hasLinkedin !== '' || filters.showDemo !== 'real';
 
@@ -1012,6 +1027,7 @@ export function ContactsPage() {
               <div className="relative flex items-center">
                 <Search size={13} className="absolute text-zinc-400 pointer-events-none" style={{ left: 8 }} />
                 <input
+                  ref={searchRef}
                   type="text"
                   value={filters.search}
                   onChange={(e) => setFilter('search', e.target.value)}
@@ -1424,6 +1440,7 @@ export function ContactsPage() {
                         key={row.contact_id}
                         role="button"
                         tabIndex={0}
+                        data-rowid={row.contact_id}
                         aria-label={`Preview ${row.full_name || row.company_name || 'contact'}`}
                         onClick={() => setPreviewId(row.contact_id)}
                         onKeyDown={(e) => {
@@ -1438,6 +1455,7 @@ export function ContactsPage() {
                           cursor: 'pointer',
                           transition: 'background 0.1s',
                           background: isSelected ? '#EBF4FD' : undefined,
+                          boxShadow: keyNav.focusedId === row.contact_id ? 'inset 3px 0 0 0 var(--color-brand, #1A7EE8)' : undefined,
                         }}
                         onMouseEnter={(e) => {
                           if (!isSelected) (e.currentTarget as HTMLElement).style.background = 'var(--color-gray-50)';

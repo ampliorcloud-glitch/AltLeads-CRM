@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   useReactTable,
@@ -17,6 +17,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { useIsSalesShell } from '../contexts/SalesShellContext';
 import { useProjectScope } from '../contexts/ProjectContext';
 import { useRowSelection } from '../components/ui/useRowSelection';
+import { useListKeyboardNav } from '../components/ui/useListKeyboardNav';
 import { ExportButton } from '../components/ui/ExportButton';
 import { ReassignModal } from '../components/common/ReassignModal';
 import { reassignLeadsBulk, fetchAssignableUsers } from '../data/assignment';
@@ -362,6 +363,7 @@ export function LeadsPage() {
 
   // Row multi-selection
   const sel = useRowSelection<string>();
+  const searchRef = useRef<HTMLInputElement>(null);
 
   // Row-click preview slide-over (ALT-327/328). Opening the panel replaces the
   // old navigate-away behaviour; the full detail page stays reachable via the
@@ -779,6 +781,17 @@ export function LeadsPage() {
     () => table.getRowModel().rows.map((r) => r.original),
     [table, filteredData, pagination, sorting],
   );
+
+  // Keyboard-first row navigation (j/k move · Enter open · x select · / search · Esc clear).
+  // Paused while a preview is open so j/k don't move the list under the panel.
+  const keyNav = useListKeyboardNav({
+    rows: gridRows,
+    getId: (r) => r.id,
+    onOpen: (r) => setPreviewId(r.id),
+    onToggleSelect: (r) => sel.toggle(r.id),
+    searchInputRef: searchRef,
+    enabled: previewId == null,
+  });
   const gridSelectAllState: 'all' | 'some' | 'none' = useMemo(() => {
     if (gridRows.length === 0) return 'none';
     const selectedOnPage = gridRows.filter((r) => sel.isSelected(r.id)).length;
@@ -815,6 +828,7 @@ export function LeadsPage() {
                   style={{ left: 8 }}
                 />
                 <input
+                  ref={searchRef}
                   type="text"
                   value={filters.search}
                   onChange={(e) => setFilter('search', e.target.value)}
@@ -1209,6 +1223,7 @@ export function LeadsPage() {
                       key={row.id}
                       role="button"
                       tabIndex={0}
+                      data-rowid={row.original.id}
                       aria-label={`Preview ${row.original.company || row.original.contactName || 'lead'}`}
                       onClick={() => setPreviewId(row.original.id)}
                       onKeyDown={(e) => {
@@ -1224,6 +1239,10 @@ export function LeadsPage() {
                         // Animate row height when toggling density (ALT density win).
                         transition: 'background 0.1s, height 0.15s ease',
                         background: sel.isSelected(row.original.id) ? 'var(--color-brand-subtle, #EBF4FD)' : undefined,
+                        boxShadow:
+                          keyNav.focusedId === row.original.id
+                            ? 'inset 3px 0 0 0 var(--color-brand, #1A7EE8)'
+                            : undefined,
                       }}
                       onMouseEnter={(e) => {
                         if (!sel.isSelected(row.original.id)) {

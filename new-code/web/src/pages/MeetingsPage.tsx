@@ -1,4 +1,4 @@
-﻿import React, { useEffect, useMemo, useState } from 'react';
+﻿import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   useReactTable,
@@ -21,6 +21,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { useIsSalesShell } from '../contexts/SalesShellContext';
 import { useProjectScope } from '../contexts/ProjectContext';
 import { useRowSelection } from '../components/ui/useRowSelection';
+import { useListKeyboardNav } from '../components/ui/useListKeyboardNav';
 import { ExportButton } from '../components/ui/ExportButton';
 import { MultiSelectFilter } from '../components/ui/MultiSelectFilter';
 import { humanizeWriteError } from '../lib/writeError';
@@ -271,6 +272,7 @@ export function MeetingsPage() {
   const [colPrefs, setColPrefs] = useState<ColumnPref[]>(() => defaultColumnPrefs(ALL_COLUMNS));
 
   const sel = useRowSelection<string>();
+  const searchRef = useRef<HTMLInputElement>(null);
 
   // Table / Grid view (persisted per user + entity in localStorage).
   const [view, setView] = useViewMode('meetings', userId);
@@ -639,6 +641,20 @@ export function MeetingsPage() {
     [pageRowIds, sel],
   );
 
+  // The meetings visible on the current page (drives keyboard-first row navigation).
+  const navRows = useMemo(() => table.getRowModel().rows.map((r) => r.original), [table]);
+
+  // Keyboard-first row navigation (j/k move · Enter open · x select · / search · Esc clear).
+  // Paused while a preview is open so j/k don't move the list under the panel.
+  const keyNav = useListKeyboardNav({
+    rows: navRows,
+    getId: (r) => r.id,
+    onOpen: (r) => setPreviewId(Number(r.id)),
+    onToggleSelect: (r) => sel.toggle(r.id),
+    searchInputRef: searchRef,
+    enabled: previewId == null,
+  });
+
   /* ---- EditableGrid columns (real "Grid" view, ALT-331) ----
      Mirrors the Table columns. SAFE EDITABLE SET: ALL COLUMNS READ-ONLY. Meeting
      status is workflow-driven (it changes through the meeting record's flow, not a
@@ -772,6 +788,7 @@ export function MeetingsPage() {
               <div className="relative flex items-center">
                 <Search size={13} className="absolute text-zinc-400 pointer-events-none" style={{ left: 8 }} />
                 <input
+                  ref={searchRef}
                   type="text"
                   value={filters.search}
                   onChange={(e) => setFilter('search', e.target.value)}
@@ -1110,6 +1127,7 @@ export function MeetingsPage() {
                         key={row.id}
                         role="link"
                         tabIndex={0}
+                        data-rowid={row.original.id}
                         aria-label={`Open meeting for ${row.original.company || row.original.leadName || row.original.name || 'meeting'}`}
                         onClick={() => setPreviewId(Number(row.original.id))}
                         onKeyDown={(e) => {
@@ -1119,7 +1137,11 @@ export function MeetingsPage() {
                           }
                         }}
                         className="border-b border-zinc-100 hover:bg-zinc-50 transition-colors last:border-0 cursor-pointer"
-                        style={{ height: 40, background: isSelected ? '#EBF4FD' : undefined }}
+                        style={{
+                          height: 40,
+                          background: isSelected ? '#EBF4FD' : undefined,
+                          boxShadow: keyNav.focusedId === row.original.id ? 'inset 3px 0 0 0 var(--color-brand, #1A7EE8)' : undefined,
+                        }}
                       >
                         {row.getVisibleCells().map((cell) => (
                           <td key={cell.id} className="px-4 align-middle whitespace-nowrap">

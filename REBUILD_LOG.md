@@ -1056,6 +1056,13 @@ Ankit asked, from the persona of the bulk-upload/bulk-edit admin: how does he ed
 - **New Review-Hub decisions for Ankit:** DEC-11 (adopt Deals/Pipeline object — anchors Sales Portal, independent of blocker), DEC-12 (no-code custom fields), DEC-13 (gate PII on export). Trackers regenerated (Decisions 13 · Risks 12). NOTHING PUSHED beyond the morning's deploy.
 
 ---
+## 2026-06-27 (cont.) — Autonomous build: keyboard-first list navigation (ALT-391)
+Ankit: "keep finding things which can be a big leap & don't need me — proceed building & don't stop." Shipped the marquee non-dependent UX leap: **keyboard-first navigation** across all 5 list pages.
+- New **useListKeyboardNav** hook (`components/ui/useListKeyboardNav.ts`): one document keydown listener; **j/k** move a row cursor (scroll-into-view + a blue inset left-bar focus accent), **Enter** opens the focused row, **x** toggles select, **/** jumps to search, **Esc** clears the cursor. Hard guards: bails on any editable target (input/textarea/select/contentEditable), on Cmd/Ctrl/Alt combos, and when `enabled:false` (a preview/modal is open) — so the existing **Cmd-K palette, "?" help overlay, EditableGrid cell-edit, and all typing** keep working untouched. Enter/x/Esc only fire when a row is actually focused.
+- Wired LeadsPage as the reference (myself), then fanned out to Contacts/Companies/Meetings/Wishlist via **4 disjoint parallel agents** (one file each, no collision; central build only). Each adapted to its page (Contacts has no react-table → reused `pageRows`+`contact_id`; others added a component-scope `navRows` memo; Companies/Meetings/Wishlist coerce `setPreviewId(Number(id))` where preview state is numeric).
+- "?" help overlay updated to document j/k/x/Enter//. Build **green across all 5 pages** (`npm run build`). Self-QC on the global-listener conflict surface (the only real risk) — guards verified. Pure FE, zero RLS/decision coupling. **Not pushed.**
+
+---
 ## 2026-06-26 — Amp Intranet planned to share the CRM/Client-Portal stack (new doc)
 Ankit opened `Amp-Intranet/Amp PRD.md` (v1.0 "Amp — Amplior Employee Portal" — mobile-first staff portal: Home/Craft/Culture/Me/Tools+Knowledge) and asked to plan it so it **shares the same DB as the Client Portal**, with **CRM + Client Portal + Intranet all hosted the same way**. Wrote **`docs/product/AMP-INTRANET.md`** — the architecture/integration plan (the PRD stays the product spec).
 - **Key insight:** Amp's hero data (weekly meetings/connects/connect-rate, Win Wall, leaderboard, badges) is ALREADY in the CRM → Amp is the **internal companion to the CRM**, reading the same DB through a per-USER lens (vs the Client Portal's per-TENANT lens). Same-project logic that was locked for the Client Portal extends cleanly to Amp.
