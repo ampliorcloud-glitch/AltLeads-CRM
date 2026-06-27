@@ -11,6 +11,9 @@ Thumbs.db
 Desktop.ini
 .DS_Store
 
+# Generated build stamp (written at build time by gen-build-info.cjs)
+new-code/notify-service/build-info.json
+
 # Java / Backend
 **/target/
 **/bin/

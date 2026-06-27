@@ -21,6 +21,18 @@ const WEB_DIST       = path.join(__dirname, '..', 'web', 'dist');
 const GMAIL_USER     = process.env.GMAIL_USER;
 const GMAIL_PASS     = process.env.GMAIL_APP_PASSWORD;
 
+/* ── Build stamp ─────────────────────────────────────────────────── */
+// Written by gen-build-info.cjs as the first step of the root `build` script,
+// so /health can report exactly which commit + build time is LIVE (the
+// permanent answer to "is prod loaded with my push?"). Absent in dev → 'dev'.
+const BUILD_INFO = (() => {
+  try {
+    return require('./build-info.json');
+  } catch {
+    return { commit: 'dev', commitFull: null, branch: null, builtAt: null, node: process.version };
+  }
+})();
+
 /* ── Supabase service-role admin client (lazy, created once) ─────── */
 /**
  * Returns a singleton service-role admin client, or null if the env vars are
@@ -682,6 +694,7 @@ app.get('/health', (_req, res) => {
     ok: true,
     service: 'amplior-notify',
     ts: new Date().toISOString(),
+    build: BUILD_INFO,
     scanner: {
       last_scan_at: last,
       last_scan_age_seconds: ageSec,
