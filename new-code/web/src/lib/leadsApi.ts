@@ -552,7 +552,7 @@ export async function createLead(
     source_id: form.source_id ?? defaultSourceId,
     project_id: form.project_id,
     client_assoc_id: form.client_assoc_id ?? defaultClientAssocId,
-    address_id: addressId ?? 1,
+    address_id: addressId,
     area_of_interest: form.area_of_interest.trim() || '',
     value: form.value.trim() || '0',
     description: form.description.trim() || '',
@@ -649,7 +649,7 @@ export async function updateLead(
   }
 
   if (addressId !== existingAddressId) {
-    payload.address_id = addressId ?? 1;
+    payload.address_id = addressId;
   }
 
   const { error } = await supabase
