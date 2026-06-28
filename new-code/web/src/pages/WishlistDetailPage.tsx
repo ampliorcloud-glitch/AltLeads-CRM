@@ -18,6 +18,7 @@ import { humanizeWriteError } from '../lib/writeError';
 import { AssignModal } from '../components/wishlist/AssignModal';
 import { ConvertModal, type ConvertFormResult } from '../components/wishlist/ConvertModal';
 import { useToast } from '../components/ui/Toast';
+import { pushRecent } from '../lib/useRecentlyViewed';
 import {
   ArrowLeft,
   Loader2,
@@ -179,6 +180,15 @@ export function WishlistDetailPage() {
   useEffect(() => {
     load();
   }, [load]);
+
+  // Record this wishlist item in "recently viewed" once it loads.
+  useEffect(() => {
+    if (!item?.company) return;
+    pushRecent(
+      { type: 'wishlist', id: String(item.wishlistId), label: item.company, route: `/wishlist/${item.wishlistId}` },
+      profile?.user_id,
+    );
+  }, [item?.company, item?.wishlistId, profile?.user_id]);
 
   // Local success banner is set via setToast(...) but otherwise never cleared,
   // so it would stay on screen forever. Auto-dismiss after 3s like app toasts.

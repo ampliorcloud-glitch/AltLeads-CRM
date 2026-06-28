@@ -64,6 +64,7 @@ import { fetchOptions, type DropdownOption } from '../data/dropdowns';
 import { SearchSelect, type SearchSelectOption } from '../components/ui/SearchSelect';
 import { useToast } from '../components/ui/Toast';
 import { useAuth } from '../contexts/AuthContext';
+import { pushRecent } from '../lib/useRecentlyViewed';
 import type { Interaction } from '../data/contacts';
 
 /* ------------------------------------------------------------------
@@ -1277,6 +1278,15 @@ export function CompanyDetailPage() {
     })();
     return () => { cancelled = true; };
   }, [companyId]);
+
+  // Record this company in "recently viewed" once it loads.
+  useEffect(() => {
+    if (!company?.name) return;
+    pushRecent(
+      { type: 'company', id: String(companyId), label: company.name, route: `/companies/${companyId}` },
+      profile?.user_id,
+    );
+  }, [company?.name, companyId, profile?.user_id]);
 
   async function handleContactLinked() {
     setShowLinkModal(false);

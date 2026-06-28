@@ -18,6 +18,7 @@ import {
   type SearchItem,
   type SearchType,
 } from '../../data/globalSearch';
+import { getRecent, type RecentItem } from '../../lib/useRecentlyViewed';
 
 const TYPE_META: Record<SearchType, { label: string; group: string; Icon: typeof Target; color: string }> = {
   lead: { label: 'Lead', group: 'Leads', Icon: Target, color: '#1A7EE8' },
@@ -29,6 +30,16 @@ const TYPE_META: Record<SearchType, { label: string; group: string; Icon: typeof
 
 /** Fixed display order of result groups (Zoho/HubSpot-style sections). */
 const GROUP_ORDER: SearchType[] = ['lead', 'company', 'contact', 'task', 'meeting'];
+
+/** Icon + colour for each entity type that can appear in "Recently viewed". */
+const RECENT_TYPE_META: Record<string, { label: string; Icon: typeof Target; color: string }> = {
+  lead:    { label: 'Lead',     Icon: Target,       color: '#1A7EE8' },
+  company: { label: 'Company',  Icon: Building2,    color: '#7C3AED' },
+  contact: { label: 'Contact',  Icon: User,         color: '#0E9F6E' },
+  meeting: { label: 'Meeting',  Icon: CalendarDays, color: '#0891B2' },
+  wishlist: { label: 'Wishlist', Icon: Star,        color: '#D97706' },
+  task:    { label: 'Task',     Icon: CheckSquare,  color: '#D97706' },
+};
 
 /** Quick navigation actions — shown when the box is empty, filtered as you type.
  *  Routes verified against App.tsx. They lead the result list so a power user can
@@ -56,7 +67,7 @@ const QUICK_ACTIONS: QuickAction[] = [
 ];
 
 export function CommandPalette() {
-  const { session, isInternalUser } = useAuth();
+  const { session, isInternalUser, profile } = useAuth();
   const navigate = useNavigate();
   const enabled = Boolean(session && isInternalUser);
 
@@ -65,6 +76,13 @@ export function CommandPalette() {
   const [items, setItems] = useState<SearchItem[] | null>(null);
   const [loading, setLoading] = useState(false);
   const [selected, setSelected] = useState(0);
+
+  // Re-read recents from localStorage each time the palette opens so any visit
+  // recorded since the last open is reflected immediately.
+  const [recents, setRecents] = useState<RecentItem[]>([]);
+  useEffect(() => {
+    if (open) setRecents(getRecent(profile?.user_id));
+  }, [open, profile?.user_id]);
 
   const inputRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
@@ -148,14 +166,15 @@ export function CommandPalette() {
     );
   }, [query]);
 
-  // The display-order routes the keyboard walks (actions first, then records —
-  // records only render once you've typed, matching what's on screen).
+  // The display-order routes the keyboard walks (actions first, then recents
+  // when the box is empty, then record results when the user types).
   const flatRoutes = useMemo(
     () => [
       ...actionResults.map((a) => a.route),
+      ...(query.trim() === '' ? recents.map((r) => r.route) : []),
       ...(query.trim() !== '' ? flatItems.map((i) => i.route) : []),
     ],
-    [actionResults, flatItems, query],
+    [actionResults, recents, flatItems, query],
   );
 
   // Keep the selection in range as results change.
@@ -328,6 +347,29 @@ export function CommandPalette() {
               }
 
               if (query.trim() === '') {
+                // Recently viewed — shown only when the palette opens with an empty query.
+                if (recents.length > 0) {
+                  sections.push(
+                    <div key="__recents">
+                      {groupHeader('Recently viewed', recents.length)}
+                      {recents.map((r) => {
+                        idx += 1;
+                        const meta = RECENT_TYPE_META[r.type] ?? RECENT_TYPE_META['lead'];
+                        return row(
+                          `recent-${r.type}-${r.id}`,
+                          idx,
+                          meta.Icon,
+                          meta.color,
+                          r.label,
+                          undefined,
+                          meta.label,
+                          () => navigateTo(r.route),
+                          `${meta.label}: ${r.label}`,
+                        );
+                      })}
+                    </div>,
+                  );
+                }
                 sections.push(
                   <div key="__hint" className="text-zinc-400" style={{ fontSize: 12, padding: '8px 16px 16px', textAlign: 'center' }}>
                     …or type to search leads, companies, contacts, tasks and meetings.

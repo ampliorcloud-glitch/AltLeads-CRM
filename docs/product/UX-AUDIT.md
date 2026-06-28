@@ -91,7 +91,7 @@ The deduped, prioritized backlog. (Detailed implementation notes for each are in
 | 20 | Forgot-password + show/hide toggle; reauth on password change | Login, SalesLogin, Settings | forms | High | M |
 | 21 | Constrain header stage-select + meeting workflow transitions | Lead detail, Meeting tab | forms | High | M |
 | 22 | Form validation (email/phone/URL/required/dirty) + on-blur feedback | All forms | forms | Med | M | — 🟡 PARTIAL (submit-time validation + required asterisks present; on-blur feedback still open)
-| 23 | Skeleton rows/cards instead of a single centered spinner | All lists/detail/dashboard | error states | Med | M |
+| 23 | Skeleton rows/cards instead of a single centered spinner | All lists/detail/dashboard | error states | Med | M | ✅ IMPLEMENTED (ALT-200, Skeleton.tsx; all 5 lists) |
 | 24 | Collapsible filter panels + active-filter chips + per-filter clear | All filter panels | filtering | Med | M | — ✅ IMPLEMENTED (ActiveFilters.tsx: active-filter chips + per-filter clear)
 | 25 | Fix Companies Account-Status column (load full set, sort/filter/export) | Companies | data display | High | M |
 | 26 | Proper ARIA dialog semantics + focus trap on modals | All modals | accessibility | High | M |

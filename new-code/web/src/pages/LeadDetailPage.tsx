@@ -47,6 +47,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { useIsSalesShell } from '../contexts/SalesShellContext';
 import { useConfirm } from '../components/ui/ConfirmDialog';
 import { useToast } from '../components/ui/Toast';
+import { pushRecent } from '../lib/useRecentlyViewed';
 
 /* ── Progress stepper: Pre-Sales → Meeting → Closing ─────────────────────── */
 
@@ -355,6 +356,17 @@ export function LeadDetailPage() {
   useEffect(() => {
     loadLead();
   }, [loadLead, location.key]);
+
+  // Record this lead in "recently viewed" once it loads.
+  useEffect(() => {
+    if (!lead) return;
+    const label = (company?.client_name || lead.company_name || lead.lead_name || '').trim();
+    if (!label) return;
+    pushRecent(
+      { type: 'lead', id: String(lead.lead_id), label, route: `/leads/${lead.lead_id}` },
+      profile?.user_id,
+    );
+  }, [lead, company, profile?.user_id]);
 
   // Lightweight refresh of just the lead row (header/stage) after a tab action.
   const refreshLead = useCallback(async () => {

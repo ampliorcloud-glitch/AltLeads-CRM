@@ -62,6 +62,7 @@ import { ActivityTimeline } from '../components/ui/ActivityTimeline';
 import { StatusBadge } from '../components/ui/StatusBadge';
 import type { Interaction } from '../data/contacts';
 import { formatDate } from '../data/account';
+import { pushRecent } from '../lib/useRecentlyViewed';
 
 /* ------------------------------------------------------------------ */
 /*  Helpers                                                             */
@@ -353,6 +354,15 @@ export function ContactDetailPage() {
   }, [contactId]);
 
   useEffect(() => { loadContact(); }, [loadContact]);
+
+  // Record this contact in "recently viewed" once it loads.
+  useEffect(() => {
+    if (!contact?.full_name) return;
+    pushRecent(
+      { type: 'contact', id: String(contact.contact_id), label: contact.full_name, route: `/contacts/${contact.contact_id}` },
+      profile?.user_id,
+    );
+  }, [contact?.full_name, contact?.contact_id, profile?.user_id]);
 
   // Load associated leads + colleagues once the contact (and its company) is known.
   useEffect(() => {

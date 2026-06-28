@@ -46,6 +46,7 @@ import { reassignMeeting, fetchAssignableUsers } from '../data/assignment';
 import { humanizeWriteError } from '../lib/writeError';
 import type { UserOption } from '../data/wishlist';
 import { CopyButton } from '../components/ui/CopyButton';
+import { pushRecent } from '../lib/useRecentlyViewed';
 
 /* ------------------------------------------------------------------ */
 /* Small primitives                                                    */
@@ -352,6 +353,17 @@ export function MeetingDetailPage() {
     })();
     return () => { cancelled = true; };
   }, [id]);
+
+  // Record this meeting in "recently viewed" once it loads.
+  useEffect(() => {
+    if (!meeting) return;
+    const label = (meeting.name || meeting.company || '').trim();
+    if (!label) return;
+    pushRecent(
+      { type: 'meeting', id: String(meeting.id), label, route: `/meetings/${meeting.id}` },
+      profile?.user_id,
+    );
+  }, [meeting, profile?.user_id]);
 
   const handleConfirm = async () => {
     if (!meeting) return;
