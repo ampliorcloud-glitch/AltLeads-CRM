@@ -95,7 +95,7 @@ The deduped, prioritized backlog. (Detailed implementation notes for each are in
 | 24 | Collapsible filter panels + active-filter chips + per-filter clear | All filter panels | filtering | Med | M | — ✅ IMPLEMENTED (ActiveFilters.tsx: active-filter chips + per-filter clear)
 | 25 | Fix Companies Account-Status column (load full set, sort/filter/export) | Companies | data display | High | M |
 | 26 | Proper ARIA dialog semantics + focus trap on modals | All modals | accessibility | High | M |
-| 27 | Approvals: age/SLA, sort, search, filters, pagination, in-modal approve | Approvals | table UX | Med | M |
+| 27 | Approvals: age/SLA, sort, search, filters, pagination, in-modal approve | Approvals | table UX | Med | M | 🟡 PARTIAL — search, age/SLA badge, sort (date/name/company/agent), status filter, in-modal approve all ✅; pagination still open |
 | 28 | Inline-edit + quick row/hover actions across lists & panels | Leads/Companies/Contacts | missing feature | Med | M | — ✅ IMPLEMENTED (EditableGrid.tsx inline-edit cells)
 | 29 | Make the Sales Portal a first-class shell (not the internal grid reskinned) | Sales portal | missing feature | Med | M |
 | 30 | Standardize shared primitives (Button/Badge/Avatar/Input/Modal/Pagination/EmptyState) | App-wide | consistency | Med | M |

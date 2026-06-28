@@ -418,9 +418,10 @@ export function ApprovalsPage() {
   const [err, setErr] = useState('');
   const [success, setSuccess] = useState('');
 
-  // Search + sort (ALT-204). Default sort = oldest-requested first (SLA priority).
+  // Search + sort + status filter. Default sort = oldest-requested first (SLA priority).
   const [search, setSearch] = useState('');
-  const [sortKey, setSortKey] = useState<'age' | 'name'>('age');
+  const [sortKey, setSortKey] = useState<'age' | 'name' | 'company' | 'agent'>('age');
+  const [statusFilter, setStatusFilter] = useState<string>('');
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -431,9 +432,16 @@ export function ApprovalsPage() {
 
   useEffect(() => { load(); }, [load]);
 
+  // Distinct report_status values for the status filter dropdown.
+  const statusOptions = useMemo(() => {
+    const seen = new Set<string>();
+    rows.forEach((r) => { if (r.report_status) seen.add(r.report_status); });
+    return [...seen].sort();
+  }, [rows]);
+
   const visibleRows = useMemo(() => {
     const q = search.trim().toLowerCase();
-    const filtered = q
+    let filtered = q
       ? rows.filter((row) =>
           [row.lead_name, row.lead_number, row.client_name, row.requesting_agent_name, row.assigned_sp_name]
             .filter(Boolean)
@@ -442,14 +450,19 @@ export function ApprovalsPage() {
             .includes(q),
         )
       : rows;
+    if (statusFilter) {
+      filtered = filtered.filter((row) => row.report_status === statusFilter);
+    }
     return [...filtered].sort((a, b) => {
       if (sortKey === 'name') return (a.lead_name || '').localeCompare(b.lead_name || '');
+      if (sortKey === 'company') return (a.client_name || '').localeCompare(b.client_name || '');
+      if (sortKey === 'agent') return (a.requesting_agent_name || '').localeCompare(b.requesting_agent_name || '');
       // age: oldest pending first (most urgent)
       const da = new Date(a.updated_date || a.created_date || 0).getTime();
       const db = new Date(b.updated_date || b.created_date || 0).getTime();
       return da - db;
     });
-  }, [rows, search, sortKey]);
+  }, [rows, search, sortKey, statusFilter]);
 
   const handleApprove = async (row: PendingApprovalRow) => {
     if (actor == null) {
@@ -542,15 +555,31 @@ export function ApprovalsPage() {
                 </button>
               )}
             </div>
+            {/* Status filter — only shown if the data has varied report_status values */}
+            {statusOptions.length > 1 && (
+              <select
+                value={statusFilter}
+                onChange={(e) => setStatusFilter(e.target.value)}
+                aria-label="Filter by status"
+                style={{ fontSize: 12, height: 30, padding: '0 8px', border: '1px solid #d4d4d8', borderRadius: 6, background: '#fff', color: '#52525b', cursor: 'pointer' }}
+              >
+                <option value="">All statuses</option>
+                {statusOptions.map((s) => (
+                  <option key={s} value={s}>{s}</option>
+                ))}
+              </select>
+            )}
             {/* Sort */}
             <select
               value={sortKey}
-              onChange={(e) => setSortKey(e.target.value as 'age' | 'name')}
+              onChange={(e) => setSortKey(e.target.value as 'age' | 'name' | 'company' | 'agent')}
               aria-label="Sort approvals"
               style={{ fontSize: 12, height: 30, padding: '0 8px', border: '1px solid #d4d4d8', borderRadius: 6, background: '#fff', color: '#52525b', cursor: 'pointer' }}
             >
               <option value="age">Oldest first (SLA)</option>
               <option value="name">Lead name (A–Z)</option>
+              <option value="company">Company (A–Z)</option>
+              <option value="agent">Agent (A–Z)</option>
             </select>
             <button
               onClick={load}
