@@ -29,6 +29,7 @@ import { humanizeWriteError } from '../lib/writeError';
 import type { UserOption } from '../data/wishlist';
 import { CreateTaskModal, type TaskAssociation } from '../components/tasks/CreateTaskModal';
 import { LogDispositionModal } from '../components/calls/LogDispositionModal';
+import { RecordActivityHub } from '../components/tasks/RecordActivityHub';
 import type { TaskType } from '../data/tasks';
 import {
   fetchContactById,
@@ -1164,6 +1165,9 @@ export function ContactDetailPage() {
             emptyText="No activity yet. Use Log a Call above to record the first interaction."
           />
         </SectionCard>
+
+        {/* In-record activity hub (ALT-466) — no-op while TASKS_V2 is off */}
+        {contactId != null && <RecordActivityHub recordType="contact" recordId={contactId} />}
 
       </div>
     </AppShell>

@@ -21,6 +21,7 @@ import { CopyButton } from '../components/ui/CopyButton';
 import { CreateTaskModal, type TaskAssociation } from '../components/tasks/CreateTaskModal';
 import { LogDispositionModal } from '../components/calls/LogDispositionModal';
 import { CallLogPreview } from '../components/calls/CallLogPreview';
+import { RecordActivityHub } from '../components/tasks/RecordActivityHub';
 import type { TaskType } from '../data/tasks';
 import {
   fetchLeadDetail,
@@ -767,6 +768,8 @@ export function LeadDetailPage() {
               refreshSignal={callsRefresh}
               title="Call history"
             />
+            {/* In-record activity hub (ALT-466) — no-op while TASKS_V2 is off */}
+            <RecordActivityHub recordType="lead" recordId={lead.lead_id} />
           </div>
         </div>
 

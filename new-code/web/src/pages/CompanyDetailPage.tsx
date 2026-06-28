@@ -35,6 +35,7 @@ import { StageBadge } from '../components/ui/Badge';
 import { CopyButton } from '../components/ui/CopyButton';
 import { CreateTaskModal, type TaskAssociation } from '../components/tasks/CreateTaskModal';
 import { LogDispositionModal } from '../components/calls/LogDispositionModal';
+import { RecordActivityHub } from '../components/tasks/RecordActivityHub';
 import type { TaskType } from '../data/tasks';
 import { StatusBadge } from '../components/ui/StatusBadge';
 import { ProjectSelect } from '../components/ui/ProjectSelect';
@@ -870,6 +871,8 @@ function ContactRowPanel({
             ownerUserId={ownerUserId}
             actorId={actorId}
             onLogged={({ disposition, noteText }) => {
+              // interactionId is also available here (ALT-430) but not needed
+              // for the company-mirror path — only used in RecordActivityHub.
               setDispKey((k) => k + 1);
               // Mirror the logged call onto the COMPANY's project feed.
               void logCompanyContactActivity({
@@ -1584,6 +1587,9 @@ export function CompanyDetailPage() {
           </div>
         </div>
       </div>
+
+      {/* In-record activity hub (ALT-466) — no-op while TASKS_V2 is off */}
+      <RecordActivityHub recordType="company" recordId={companyId} />
 
       {/* Link-existing-contact modal (Fix #6) */}
       {showLinkModal && (
