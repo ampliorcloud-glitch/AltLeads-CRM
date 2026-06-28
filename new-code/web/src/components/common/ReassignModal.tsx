@@ -70,7 +70,7 @@ export function ReassignModal({
     : `${isReassign ? 'Reassign' : 'Assign'} ${entityLabel}`;
 
   return (
-    <ModalShell title={title} icon={<UserCheck size={16} />} onClose={onClose}>
+    <ModalShell title={title} icon={<UserCheck size={16} />} onClose={onClose} busy={saving}>
       <p className="text-zinc-500 mb-4" style={{ fontSize: 12 }}>
         {isBulk
           ? `Choose the new ${ownerLabel.toLowerCase()} for the ${count} selected ${entityLabel.toLowerCase()}s. They will be notified.`

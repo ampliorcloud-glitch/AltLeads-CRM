@@ -44,6 +44,7 @@ export function BulkProjectModal({
       title={`Add ${count} ${entityLabel}${count === 1 ? '' : 's'} to a project`}
       icon={<FolderPlus size={16} />}
       onClose={onClose}
+      busy={saving}
     >
       <p className="text-zinc-500 mb-4" style={{ fontSize: 12 }}>
         {`Enroll the ${count} selected ${entityLabel.toLowerCase()}${count === 1 ? '' : 's'} into a project. ` +

@@ -11,12 +11,15 @@ export function ModalShell({
   onClose,
   children,
   width = 460,
+  busy = false,
 }: {
   title: string;
   icon?: React.ReactNode;
   onClose: () => void;
   children: React.ReactNode;
   width?: number;
+  /** When true (bulk op in progress), backdrop clicks are a no-op. */
+  busy?: boolean;
 }) {
   const dialogRef = useRef<HTMLDivElement>(null);
   useFocusTrap(dialogRef, true); // ModalShell only renders while open (ALT-203)
@@ -26,7 +29,8 @@ export function ModalShell({
   }, []);
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      <div className="absolute inset-0" style={{ background: 'rgba(24,24,27,0.30)' }} onClick={onClose} />
+      {/* Backdrop: swallow clicks while a bulk op is running (Fix 1 — ALT-UX). */}
+      <div className="absolute inset-0" style={{ background: 'rgba(24,24,27,0.30)' }} onClick={busy ? undefined : onClose} />
       <div
         ref={dialogRef}
         role="dialog"

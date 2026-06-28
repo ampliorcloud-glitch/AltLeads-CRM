@@ -67,10 +67,18 @@ export function ConfirmProvider({ children }: { children: React.ReactNode }) {
       cur?.resolve(ok);
       return null;
     });
-    // restore focus to whatever triggered the dialog
+    // Restore focus to whatever triggered the dialog.
+    // Guard: if that element was unmounted while the dialog was open,
+    // isConnected will be false — fall back to document.body (Fix 2 — ALT-UX).
     const prev = lastFocused.current;
     if (prev && typeof prev.focus === 'function') {
-      window.setTimeout(() => prev.focus(), 0);
+      window.setTimeout(() => {
+        if (prev.isConnected) {
+          prev.focus();
+        } else {
+          document.body.focus();
+        }
+      }, 0);
     }
   }, []);
 

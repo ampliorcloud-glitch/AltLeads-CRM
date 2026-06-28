@@ -20,7 +20,6 @@ import React, { useEffect, useMemo, useState } from 'react';
 import {
   Modal,
   Field,
-  TextInput,
   SelectInput,
   PrimaryButton,
   GhostButton,
@@ -87,6 +86,8 @@ export function LogCallModal({ open, onClose, onLogged, association }: LogCallMo
   const [whenLocal, setWhenLocal] = useState(''); // datetime-local (IST wall-clock)
   const [notes, setNotes] = useState('');
   const [saving, setSaving] = useState(false);
+  /** Inline error shown below the Duration field on blur (Fix 3 — ALT-UX). */
+  const [durationBlurError, setDurationBlurError] = useState<string | null>(null);
 
   const dirty = useMemo(
     () =>
@@ -101,6 +102,7 @@ export function LogCallModal({ open, onClose, onLogged, association }: LogCallMo
     setDirection('OUTBOUND');
     setDisposition('CONNECTED');
     setDurationRaw('');
+    setDurationBlurError(null);
     // Default "when" to now (IST wall-clock) each time the modal opens.
     setWhenLocal(isoToISTLocalInput(new Date().toISOString()));
     setNotes('');
@@ -244,8 +246,50 @@ export function LogCallModal({ open, onClose, onLogged, association }: LogCallMo
           </div>
           <div style={{ flex: 1 }}>
             <Field label="Duration (mm:ss)">
-              <TextInput value={durationRaw} onChange={setDurationRaw} placeholder="e.g. 3:45" />
+              {/* Inline input (not TextInput) so we can add onBlur validation (Fix 3 — ALT-UX). */}
+              <input
+                type="text"
+                value={durationRaw}
+                onChange={(e) => {
+                  setDurationRaw(e.target.value);
+                  // Clear the blur error as soon as the value becomes valid or empty.
+                  if (!e.target.value.trim() || parseDuration(e.target.value) != null) {
+                    setDurationBlurError(null);
+                  }
+                }}
+                onBlur={(e) => {
+                  const v = e.target.value.trim();
+                  if (v && parseDuration(v) == null) {
+                    setDurationBlurError('Use mm:ss (e.g. 3:45) or plain seconds.');
+                  } else {
+                    setDurationBlurError(null);
+                  }
+                }}
+                placeholder="e.g. 3:45"
+                style={{
+                  fontSize: 13,
+                  padding: '7px 10px',
+                  border: `1px solid ${durationBlurError ? '#EF4444' : '#D1D5DB'}`,
+                  borderRadius: 6,
+                  background: '#fff',
+                  color: '#374151',
+                  outline: 'none',
+                  height: 36,
+                  width: '100%',
+                  transition: 'border-color 0.15s',
+                  boxSizing: 'border-box',
+                }}
+                onFocus={(e) => {
+                  e.currentTarget.style.borderColor = '#1A7EE8';
+                  e.currentTarget.style.boxShadow = '0 0 0 3px rgba(26,126,232,0.1)';
+                }}
+              />
             </Field>
+            {durationBlurError && (
+              <p style={{ fontSize: 11, color: '#EF4444', marginTop: 3, marginBottom: 0 }}>
+                {durationBlurError}
+              </p>
+            )}
           </div>
         </div>
 

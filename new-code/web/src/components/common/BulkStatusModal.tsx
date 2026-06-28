@@ -45,6 +45,7 @@ export function BulkStatusModal({
       title={`Set status for ${count} ${entityLabel}${count === 1 ? '' : 's'}`}
       icon={<Tag size={16} />}
       onClose={onClose}
+      busy={saving}
     >
       <p className="text-zinc-500 mb-4" style={{ fontSize: 12 }}>
         {`Update the status of the ${count} selected ${entityLabel.toLowerCase()}${count === 1 ? '' : 's'} ` +
