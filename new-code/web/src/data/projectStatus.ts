@@ -99,28 +99,33 @@ async function appendInteraction(params: {
   disposition?: string | null;
   noteText?: string | null;
   actorId: string | null;
-}): Promise<{ error: string | null }> {
+}): Promise<{ interactionId: number | null; error: string | null }> {
   const ts = nowIso();
-  const { error } = await supabase.from('interaction').insert({
-    record_type: params.recordType,
-    record_id: params.recordId,
-    project_id: params.projectId,
-    owner_user_id: params.ownerUserId,
-    type: params.type,
-    disposition: params.disposition ?? null,
-    note_text: params.noteText ?? null,
-    occurred_at: ts,
-    created_at: ts,
-    created_by: params.actorId,
-  });
+  const { data, error } = await supabase
+    .from('interaction')
+    .insert({
+      record_type: params.recordType,
+      record_id: params.recordId,
+      project_id: params.projectId,
+      owner_user_id: params.ownerUserId,
+      type: params.type,
+      disposition: params.disposition ?? null,
+      note_text: params.noteText ?? null,
+      occurred_at: ts,
+      created_at: ts,
+      created_by: params.actorId,
+    })
+    .select('interaction_id')
+    .single();
   if (error) {
     return {
+      interactionId: null,
       error: error.code === '42501'
         ? "You can only edit records you own (ask an admin or the owner's manager)."
         : humanizeWriteError(error),
     };
   }
-  return { error: null };
+  return { interactionId: (data as { interaction_id: number } | null)?.interaction_id ?? null, error: null };
 }
 
 /**
@@ -329,13 +334,17 @@ export async function upsertCompanyStatus(
 /* ------------------------------------------------------------------ */
 
 /**
- * Log a call disposition as an interaction (type `call`). Returns { error }.
+ * Log a call disposition as an interaction (type `call`).
+ * Returns { interactionId, error }.
  *
  * Unlike the status-edit history (where a failed interaction write is best-effort
  * and swallowed because the primary status upsert already succeeded), THIS is the
  * primary write for the call-log path: if the interaction insert is denied (RLS)
  * or the table is missing, the call wrote nothing — so we must PROPAGATE that to
  * the caller (humanized) rather than reporting a false success.
+ *
+ * interactionId is returned so the caller (e.g. RecordActivityHub) can link the
+ * newly-created interaction row to the task that triggered the call (ALT-430).
  */
 export async function logDisposition(params: {
   recordType: RecordType;
@@ -345,7 +354,7 @@ export async function logDisposition(params: {
   noteText: string;
   ownerUserId: number | null;
   actorId: string | null;
-}): Promise<{ error: string | null }> {
+}): Promise<{ interactionId: number | null; error: string | null }> {
   const res = await appendInteraction({
     recordType: params.recordType,
     recordId: params.recordId,
@@ -358,9 +367,9 @@ export async function logDisposition(params: {
   });
   if (res.error) {
     console.error('[projectStatus] logDisposition interaction write failed', res.error);
-    return { error: humanizeWriteError(res.error) };
+    return { interactionId: null, error: humanizeWriteError(res.error) };
   }
-  return { error: null };
+  return { interactionId: res.interactionId, error: null };
 }
 
 /**
@@ -385,7 +394,7 @@ export async function logCompanyContactActivity(params: {
   actorId: string | null;
 }): Promise<{ error: string | null }> {
   const who = params.contactName.trim() || 'contact';
-  return appendInteraction({
+  const { error } = await appendInteraction({
     recordType: 'company',
     recordId: params.companyId,
     projectId: params.projectId,
@@ -395,6 +404,7 @@ export async function logCompanyContactActivity(params: {
     noteText: `${who}: ${params.noteText}`,
     actorId: params.actorId,
   });
+  return { error };
 }
 
 /**
