@@ -51,6 +51,7 @@ import {
   type CompanyDeal,
 } from '../data/companies';
 import { fetchAllContacts, updateContactCompany, type Contact } from '../data/contacts';
+import { isConflict, CONFLICT_MESSAGE } from '../lib/concurrency';
 import {
   getCompanyStatus,
   upsertCompanyStatus,
@@ -167,10 +168,14 @@ function LinkContactModal({ companyId, companyName, onLinked, onClose }: LinkCon
     if (!selectedId) return;
     setSaving(true);
     setSaveError(null);
-    const { error } = await updateContactCompany(selectedId, companyId);
+    const res = await updateContactCompany(selectedId, companyId);
     setSaving(false);
-    if (error) {
-      setSaveError(error);
+    if (isConflict(res)) {
+      setSaveError(CONFLICT_MESSAGE);
+      return;
+    }
+    if (res.error) {
+      setSaveError(res.error);
       return;
     }
     onLinked();

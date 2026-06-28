@@ -31,6 +31,11 @@ import { supabase } from '../lib/supabase';
 import { insertLeadWithUniqueNumber } from '../lib/leadsApi';
 import { notify, notifyInApp, resolveUserEmailAndName } from '../lib/notify';
 import { humanizeWriteError } from '../lib/writeError';
+import {
+  concurrencyPrecondition,
+  makeConflict,
+  type ConflictResult,
+} from '../lib/concurrency';
 
 /* ── Constants ───────────────────────────────────────────────────────────── */
 
@@ -494,7 +499,9 @@ export async function assignWishlist(input: {
   leadName?: string;
   company?: string;
   isReassign?: boolean;
-}): Promise<{ error: string } | null> {
+  /** Original wishlist.updated_date when the page loaded (concurrency guard). */
+  originalUpdatedDate?: string | null;
+}): Promise<{ error: string } | ConflictResult | null> {
   const actorErr = assertNumericActor(input.actor);
   if (actorErr) return actorErr;
 
@@ -507,8 +514,17 @@ export async function assignWishlist(input: {
   };
   if (input.teamLeadId != null) patch.assign_tl = input.teamLeadId;
 
-  const { error } = await supabase.from('wishlist').update(patch).eq('wishlist_id', input.wishlistId);
-  if (error) return { error: humanizeWriteError(error) ?? error.message };
+  const guard = concurrencyPrecondition(input.originalUpdatedDate);
+  if (guard !== undefined) {
+    const { data: affected, error } = await supabase
+      .from('wishlist').update(patch).eq('wishlist_id', input.wishlistId)
+      .eq('updated_date', guard).select('wishlist_id');
+    if (error) return { error: humanizeWriteError(error) ?? (error as { message: string }).message };
+    if (!affected || affected.length === 0) return makeConflict('wishlist');
+  } else {
+    const { error } = await supabase.from('wishlist').update(patch).eq('wishlist_id', input.wishlistId);
+    if (error) return { error: humanizeWriteError(error) ?? (error as { message: string }).message };
+  }
 
   // Fire-and-forget: notify the assigned agent — BOTH email and in-app.
   // TODO recipients: owner will tune per-action later
@@ -568,22 +584,32 @@ export async function assignWishlist(input: {
 export async function updateWishlistStatus(
   wishlistId: number,
   status: string,
-  actor: string
-): Promise<{ error: string } | null> {
+  actor: string,
+  /** Original wishlist.updated_date when the page loaded (concurrency guard). */
+  originalUpdatedDate?: string | null,
+): Promise<{ error: string } | ConflictResult | null> {
   const actorErr = assertNumericActor(actor);
   if (actorErr) return actorErr;
 
+  const statusPatch = { status, updated_by: actor, updated_date: new Date().toISOString() };
+  const guard = concurrencyPrecondition(originalUpdatedDate);
+  if (guard !== undefined) {
+    const { data, error } = await supabase
+      .from('wishlist').update(statusPatch).eq('wishlist_id', wishlistId)
+      .eq('updated_date', guard).select('wishlist_id');
+    if (error) {
+      console.error('[wishlist] updateWishlistStatus failed', error);
+      return { error: humanizeWriteError(error) ?? 'Could not update the wishlist status.' };
+    }
+    if (!data || data.length === 0) return makeConflict('wishlist');
+    return null;
+  }
   const { data, error } = await supabase
-    .from('wishlist')
-    .update({ status, updated_by: actor, updated_date: new Date().toISOString() })
-    .eq('wishlist_id', wishlistId)
-    .select('wishlist_id');
+    .from('wishlist').update(statusPatch).eq('wishlist_id', wishlistId).select('wishlist_id');
   if (error) {
     console.error('[wishlist] updateWishlistStatus failed', error);
     return { error: humanizeWriteError(error) ?? 'Could not update the wishlist status.' };
   }
-  // No error but 0 rows changed = the row exists but RLS hid the update (you don't
-  // own it). Mirror data/contacts.ts so the user sees the assigned-only message.
   if (!data || (data as { wishlist_id: number }[]).length === 0) {
     return { error: 'You can only edit records assigned to you.' };
   }

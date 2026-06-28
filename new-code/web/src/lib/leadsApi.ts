@@ -9,6 +9,11 @@
 
 import { supabase } from './supabase';
 import { notify, notifyInApp, resolveUserEmailAndName } from './notify';
+import {
+  concurrencyPrecondition,
+  makeConflict,
+  type ConflictResult,
+} from './concurrency';
 
 /* ── Types ─────────────────────────────────────────────────────────────── */
 
@@ -625,8 +630,10 @@ export async function updateLead(
   form: LeadFormData,
   updatedBy: string,
   existingAddressId: number | null,
-  existingCityId: number | null
-): Promise<{ error: string } | null> {
+  existingCityId: number | null,
+  /** Original updated_date loaded into the edit form (used by the concurrency guard). */
+  originalUpdatedDate?: string | null
+): Promise<{ error: string } | ConflictResult | null> {
   const now = new Date().toISOString();
 
   const companyRes = await ensureCompany(form.company_id, form.new_company_name, updatedBy);
@@ -671,13 +678,23 @@ export async function updateLead(
     payload.address_id = addressId;
   }
 
-  const { error } = await supabase
-    .from('lead_master')
-    .update(payload)
-    .eq('lead_id', leadId);
+  const guard = concurrencyPrecondition(originalUpdatedDate);
+  if (guard !== undefined) {
+    // Guard active: add updated_date precondition and request affected rows back.
+    const { data: affected, error } = await supabase
+      .from('lead_master')
+      .update(payload)
+      .eq('lead_id', leadId)
+      .eq('updated_date', guard)
+      .select('lead_id');
+    if (error) return { error: (error as { message: string }).message };
+    if (!affected || affected.length === 0) return makeConflict('lead_master');
+    return null;
+  }
 
-  if (error) return { error: error.message };
-
+  // Guard off: original behaviour — no precondition, no row-count check.
+  const { error } = await supabase.from('lead_master').update(payload).eq('lead_id', leadId);
+  if (error) return { error: (error as { message: string }).message };
   return null;
 }
 
@@ -689,18 +706,30 @@ export async function updateLead(
 export async function updateLeadStage(
   reportId: number,
   stageId: number,
-  updatedBy: string
-): Promise<{ error: string } | null> {
-  const { error } = await supabase
-    .from('lead_report')
-    .update({
-      stage_id: stageId,
-      updated_by: updatedBy,
-      updated_date: new Date().toISOString(),
-    })
-    .eq('report_id', reportId);
+  updatedBy: string,
+  /** Original updated_date of the lead_report row (used by the concurrency guard). */
+  originalUpdatedDate?: string | null
+): Promise<{ error: string } | ConflictResult | null> {
+  const payload = {
+    stage_id: stageId,
+    updated_by: updatedBy,
+    updated_date: new Date().toISOString(),
+  };
+  const guard = concurrencyPrecondition(originalUpdatedDate);
+  if (guard !== undefined) {
+    const { data: affected, error } = await supabase
+      .from('lead_report')
+      .update(payload)
+      .eq('report_id', reportId)
+      .eq('updated_date', guard)
+      .select('report_id');
+    if (error) return { error: (error as { message: string }).message };
+    if (!affected || affected.length === 0) return makeConflict('lead_report');
+    return null;
+  }
 
-  if (error) return { error: error.message };
+  const { error } = await supabase.from('lead_report').update(payload).eq('report_id', reportId);
+  if (error) return { error: (error as { message: string }).message };
   return null;
 }
 

@@ -14,6 +14,7 @@ import {
   type WishlistDetail,
   type WishlistLookups,
 } from '../data/wishlist';
+import { isConflict, CONFLICT_MESSAGE } from '../lib/concurrency';
 import { humanizeWriteError } from '../lib/writeError';
 import { AssignModal } from '../components/wishlist/AssignModal';
 import { ConvertModal, type ConvertFormResult } from '../components/wishlist/ConvertModal';
@@ -223,8 +224,15 @@ export function WishlistDetailPage() {
       leadName: item.contactName || item.company || undefined,
       company: item.company || undefined,
       isReassign: item.assignAgentId != null,
+      // Concurrency guard (ALT-430): pass the raw updated_date from the loaded item.
+      originalUpdatedDate: item.updatedDateRaw ?? null,
     });
     setActionSaving(false);
+    if (isConflict(res)) {
+      setActionError(CONFLICT_MESSAGE);
+      await refresh();
+      return;
+    }
     if (res?.error) {
       setActionError(humanizeWriteError(res.error));
       return;
@@ -241,9 +249,13 @@ export function WishlistDetailPage() {
       return;
     }
     setStatusSaving(true);
-    const res = await updateWishlistStatus(item.wishlistId, status, actor);
+    // Concurrency guard (ALT-430): pass the raw updated_date from the loaded item.
+    const res = await updateWishlistStatus(item.wishlistId, status, actor, item.updatedDateRaw ?? null);
     setStatusSaving(false);
-    if (!res?.error) {
+    if (isConflict(res)) {
+      setToast(CONFLICT_MESSAGE);
+      await refresh();
+    } else if (!res?.error) {
       setToast('Status updated.');
       await refresh();
     } else {

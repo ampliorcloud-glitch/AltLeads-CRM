@@ -16,6 +16,7 @@ import {
   formatTime,
   type MeetingDetail,
 } from '../data/meetings';
+import { isConflict, CONFLICT_MESSAGE } from '../lib/concurrency';
 import {
   ArrowLeft,
   Loader2,
@@ -377,8 +378,16 @@ export function MeetingDetailPage() {
     if (!meeting) return;
     setConfirming(true);
     setActionError('');
-    const res = await confirmMeeting(Number(meeting.id), meeting.reportId, actor);
+    // MeetingDetail does not currently expose updated_date; passing undefined means
+    // the concurrency guard uses no precondition (safe default while CONCURRENCY_GUARD
+    // is false). A follow-up can add updated_date to MeetingDetail and thread it here.
+    const res = await confirmMeeting(Number(meeting.id), meeting.reportId, actor, undefined);
     setConfirming(false);
+    if (isConflict(res)) {
+      setActionError(CONFLICT_MESSAGE);
+      await load();
+      return;
+    }
     if (res?.error) {
       setActionError(humanizeWriteError(res.error) ?? 'Something went wrong. Please try again.');
       return;

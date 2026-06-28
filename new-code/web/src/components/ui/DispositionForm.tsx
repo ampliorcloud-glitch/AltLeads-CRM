@@ -26,9 +26,13 @@ interface Props {
   projectId: number | null;
   ownerUserId: number | null;
   actorId: string | null;
-  /** Called after a successful log. Receives the disposition + note just logged
-   *  so a parent (e.g. the company view) can mirror it onto another feed. */
-  onLogged?: (logged: { disposition: string; noteText: string }) => void;
+  /**
+   * Called after a successful log. Receives the disposition + note just logged
+   * so a parent (e.g. the company view) can mirror it onto another feed, plus
+   * the interactionId of the newly-created interaction row so callers can link
+   * it to a task (ALT-430 auto-complete flow).
+   */
+  onLogged?: (logged: { disposition: string; noteText: string; interactionId: number | null }) => void;
 }
 
 export function DispositionForm({
@@ -74,7 +78,7 @@ export function DispositionForm({
     }
     setSaving(true);
     setError(null);
-    const { error: err } = await logDisposition({
+    const { interactionId, error: err } = await logDisposition({
       recordType,
       recordId,
       projectId,
@@ -94,7 +98,7 @@ export function DispositionForm({
     setDisposition('');
     setNoteText('');
     toast.success('Call logged');
-    onLogged?.({ disposition: loggedDisposition, noteText: loggedNote });
+    onLogged?.({ disposition: loggedDisposition, noteText: loggedNote, interactionId: interactionId ?? null });
   }
 
   const fieldStyle: React.CSSProperties = {

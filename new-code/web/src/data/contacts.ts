@@ -1,6 +1,11 @@
 import { supabase } from '../lib/supabase';
 import { humanizeWriteError } from '../lib/writeError';
 import { isMetroCity } from '../lib/hungerbox';
+import {
+  concurrencyPrecondition,
+  makeConflict,
+  type ConflictResult,
+} from '../lib/concurrency';
 
 export interface Contact {
   contact_id: number;
@@ -16,6 +21,8 @@ export interface Contact {
   is_demo: boolean;
   created_by: string | null;
   created_date: string | null;
+  /** ISO timestamp of last write — used as the optimistic-concurrency precondition (ALT-430). */
+  updated_date: string | null;
   // joined
   company_name: string | null;
   city_name: string | null;
@@ -68,7 +75,7 @@ export function deriveLinkedinClean(url: string | null | undefined): string | nu
 }
 
 const CONTACT_COLUMNS =
-  'contact_id, full_name, email, mobile_no, alt_mobile_no, designation, linkedin_url, linkedin_clean, company_id, city_id, is_demo, created_by, created_date, company_name, city_name';
+  'contact_id, full_name, email, mobile_no, alt_mobile_no, designation, linkedin_url, linkedin_clean, company_id, city_id, is_demo, created_by, created_date, updated_date, company_name, city_name';
 
 function mapContactRow(row: Record<string, unknown>): Contact {
   return {
@@ -85,6 +92,7 @@ function mapContactRow(row: Record<string, unknown>): Contact {
     is_demo: (row.is_demo as boolean) ?? false,
     created_by: row.created_by as string | null,
     created_date: row.created_date as string | null,
+    updated_date: (row.updated_date as string | null) ?? null,
     company_name: (row.company_name as string | null) ?? null,
     city_name: (row.city_name as string | null) ?? null,
     isMetro: isMetroCity((row.city_name as string | null) ?? null),
@@ -278,6 +286,7 @@ export async function findDuplicateContact(params: {
     is_demo: false,
     created_by: null,
     created_date: null,
+    updated_date: null,
     company_name: row.company_name ?? null,
     city_name: null,
     isMetro: false,
@@ -288,18 +297,36 @@ export async function findDuplicateContact(params: {
 export async function updateContactCompany(
   contactId: number,
   companyId: number | null,
-): Promise<{ error: string | null }> {
+  /** Original updated_date of the contact row (used by the concurrency guard). */
+  originalUpdatedDate?: string | null,
+): Promise<{ error: string | null } | ConflictResult> {
+  const patch = { company_id: companyId, updated_date: new Date().toISOString() };
+  const guard = concurrencyPrecondition(originalUpdatedDate);
+
+  if (guard !== undefined) {
+    const { data, error } = await supabase
+      .from('contact_master')
+      .update(patch)
+      .eq('contact_id', contactId)
+      .eq('updated_date', guard)
+      .select('contact_id');
+    if (error) {
+      if ((error as { code?: string }).code === '42501') {
+        return { error: "You can only edit records you own (ask an admin or the owner's manager)." };
+      }
+      return { error: humanizeWriteError(error) };
+    }
+    if (!data || data.length === 0) return makeConflict('contact_master');
+    return { error: null };
+  }
+
   const { data, error } = await supabase
     .from('contact_master')
-    .update({
-      company_id: companyId,
-      updated_date: new Date().toISOString(),
-    })
+    .update(patch)
     .eq('contact_id', contactId)
     .select('contact_id');
-
   if (error) {
-    if (error.code === '42501') {
+    if ((error as { code?: string }).code === '42501') {
       return { error: "You can only edit records you own (ask an admin or the owner's manager)." };
     }
     return { error: humanizeWriteError(error) };

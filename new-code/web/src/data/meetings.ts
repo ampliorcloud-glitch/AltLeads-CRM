@@ -42,6 +42,11 @@
 
 import { supabase } from '../lib/supabase';
 import { humanizeWriteError } from '../lib/writeError';
+import {
+  concurrencyPrecondition,
+  makeConflict,
+  type ConflictResult,
+} from '../lib/concurrency';
 
 /* ------------------------------------------------------------------ */
 /* OWNER-DEFAULT decisions baked into this module                      */
@@ -921,10 +926,13 @@ export async function updateMeetingStatus(input: {
   newTime?: string;
   newDuration?: string;
   actor: string;
-}): Promise<{ error: string } | null> {
+  /** Original meeting_master.updated_date when the page loaded (concurrency guard). */
+  originalUpdatedDate?: string | null;
+}): Promise<{ error: string } | ConflictResult | null> {
   const now = new Date().toISOString();
   const { meetingId, action, by, reason, actor } = input;
   const reasonTrim = reason.trim();
+  const guard = concurrencyPrecondition(input.originalUpdatedDate);
 
   if (action === 'reschedule') {
     const patch: Record<string, unknown> = {
@@ -936,8 +944,16 @@ export async function updateMeetingStatus(input: {
     if (input.newDate) patch.meeting_date = input.newDate;
     if (input.newTime) patch.meeting_time = input.newTime;
     if (input.newDuration) patch.duration = input.newDuration;
-    const { error } = await supabase.from('meeting_master').update(patch).eq('meeting_id', meetingId);
-    if (error) return { error: humanizeWriteError(error) ?? error.message };
+    if (guard !== undefined) {
+      const { data: affected, error } = await supabase
+        .from('meeting_master').update(patch).eq('meeting_id', meetingId)
+        .eq('updated_date', guard).select('meeting_id');
+      if (error) return { error: humanizeWriteError(error) ?? (error as { message: string }).message };
+      if (!affected || affected.length === 0) return makeConflict('meeting_master');
+    } else {
+      const { error } = await supabase.from('meeting_master').update(patch).eq('meeting_id', meetingId);
+      if (error) return { error: humanizeWriteError(error) ?? (error as { message: string }).message };
+    }
 
     // history row
     await supabase.from('meeting_reschedule').insert({
@@ -959,16 +975,22 @@ export async function updateMeetingStatus(input: {
         .eq('report_id', input.reportId);
     }
   } else {
-    const { error } = await supabase
-      .from('meeting_master')
-      .update({
-        meeting_status: 'Cancelled',
-        reason: reasonTrim || null,
-        updated_by: actor,
-        updated_date: now,
-      })
-      .eq('meeting_id', meetingId);
-    if (error) return { error: humanizeWriteError(error) ?? error.message };
+    const cancelPatch = {
+      meeting_status: 'Cancelled',
+      reason: reasonTrim || null,
+      updated_by: actor,
+      updated_date: now,
+    };
+    if (guard !== undefined) {
+      const { data: affected, error } = await supabase
+        .from('meeting_master').update(cancelPatch).eq('meeting_id', meetingId)
+        .eq('updated_date', guard).select('meeting_id');
+      if (error) return { error: humanizeWriteError(error) ?? (error as { message: string }).message };
+      if (!affected || affected.length === 0) return makeConflict('meeting_master');
+    } else {
+      const { error } = await supabase.from('meeting_master').update(cancelPatch).eq('meeting_id', meetingId);
+      if (error) return { error: humanizeWriteError(error) ?? (error as { message: string }).message };
+    }
 
     // history row
     await supabase.from('meeting_reschedule').insert({
@@ -1018,8 +1040,10 @@ export function canConfirmMeeting(status: string | null | undefined): boolean {
 export async function confirmMeeting(
   meetingId: number,
   reportId: number | null,
-  actor: string
-): Promise<{ error: string } | null> {
+  actor: string,
+  /** Original meeting_master.updated_date when the page loaded (concurrency guard). */
+  originalUpdatedDate?: string | null,
+): Promise<{ error: string } | ConflictResult | null> {
   const now = new Date().toISOString();
 
   // Re-read the live status so a stale page can't confirm a concluded/cancelled meeting.
@@ -1029,18 +1053,25 @@ export async function confirmMeeting(
     .eq('meeting_id', meetingId)
     .is('deleted_date', null)
     .maybeSingle();
-  if (readErr) return { error: readErr.message };
+  if (readErr) return { error: (readErr as { message: string }).message };
   if (!cur) return { error: 'Meeting not found' };
   const curStatus = (cur as { meeting_status: string | null }).meeting_status;
   if (!canConfirmMeeting(curStatus)) {
     return { error: `Can't confirm a ${(curStatus ?? '').trim() || 'concluded'} meeting.` };
   }
 
-  const { error } = await supabase
-    .from('meeting_master')
-    .update({ meeting_confirm: true, meeting_status: 'Confirmed', updated_by: actor, updated_date: now })
-    .eq('meeting_id', meetingId);
-  if (error) return { error: humanizeWriteError(error) ?? error.message };
+  const confirmPatch = { meeting_confirm: true, meeting_status: 'Confirmed', updated_by: actor, updated_date: now };
+  const guard = concurrencyPrecondition(originalUpdatedDate);
+  if (guard !== undefined) {
+    const { data: affected, error } = await supabase
+      .from('meeting_master').update(confirmPatch).eq('meeting_id', meetingId)
+      .eq('updated_date', guard).select('meeting_id');
+    if (error) return { error: humanizeWriteError(error) ?? (error as { message: string }).message };
+    if (!affected || affected.length === 0) return makeConflict('meeting_master');
+  } else {
+    const { error } = await supabase.from('meeting_master').update(confirmPatch).eq('meeting_id', meetingId);
+    if (error) return { error: humanizeWriteError(error) ?? (error as { message: string }).message };
+  }
 
   if (reportId) {
     // Only advance the stage — never regress a lead that is already at Meeting Successful (8)
@@ -1074,21 +1105,30 @@ export interface EditMeetingInput {
   agenda: string;
   meetingUrl: string;
   actor: string;
+  /** Original meeting_master.updated_date when the page loaded (concurrency guard). */
+  originalUpdatedDate?: string | null;
 }
-export async function editMeetingDetails(input: EditMeetingInput): Promise<{ error: string } | null> {
-  const { error } = await supabase
-    .from('meeting_master')
-    .update({
-      meeting_date: input.meetingDate || null,
-      meeting_time: input.meetingTime.trim() || null,
-      meeting_mode: input.mode || null,
-      description: input.agenda.trim() || null,
-      meeting_url: input.meetingUrl.trim() || null,
-      updated_by: input.actor,
-      updated_date: new Date().toISOString(),
-    })
-    .eq('meeting_id', input.meetingId);
-  if (error) return { error: humanizeWriteError(error) ?? error.message };
+export async function editMeetingDetails(input: EditMeetingInput): Promise<{ error: string } | ConflictResult | null> {
+  const editPatch = {
+    meeting_date: input.meetingDate || null,
+    meeting_time: input.meetingTime.trim() || null,
+    meeting_mode: input.mode || null,
+    description: input.agenda.trim() || null,
+    meeting_url: input.meetingUrl.trim() || null,
+    updated_by: input.actor,
+    updated_date: new Date().toISOString(),
+  };
+  const guard = concurrencyPrecondition(input.originalUpdatedDate);
+  if (guard !== undefined) {
+    const { data: affected, error } = await supabase
+      .from('meeting_master').update(editPatch).eq('meeting_id', input.meetingId)
+      .eq('updated_date', guard).select('meeting_id');
+    if (error) return { error: humanizeWriteError(error) ?? (error as { message: string }).message };
+    if (!affected || affected.length === 0) return makeConflict('meeting_master');
+    return null;
+  }
+  const { error } = await supabase.from('meeting_master').update(editPatch).eq('meeting_id', input.meetingId);
+  if (error) return { error: humanizeWriteError(error) ?? (error as { message: string }).message };
   return null;
 }
 

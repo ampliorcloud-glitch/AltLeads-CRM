@@ -14,6 +14,7 @@ import {
   updateMeetingStatus,
   type MeetingDetail,
 } from '../../data/meetings';
+import { isConflict, CONFLICT_MESSAGE } from '../../lib/concurrency';
 import {
   inputCls,
   FieldLabel,
@@ -86,8 +87,17 @@ export function UpdateMeetingModal({
       newTime: action === 'reschedule' ? newTime : undefined,
       newDuration: action === 'reschedule' ? newDuration : undefined,
       actor,
+      // MeetingDetail does not currently expose updated_date in its type; when the
+      // concurrency guard is ON (ALT-430) the page should pass this down. For now
+      // the guard uses undefined (= no precondition) since we don't have the value
+      // here. A future pass can add updatedDate to MeetingDetail and wire it through.
+      originalUpdatedDate: undefined,
     });
     setSaving(false);
+    if (isConflict(res)) {
+      setErr(CONFLICT_MESSAGE);
+      return;
+    }
     if (res?.error) {
       setErr(res.error);
       return;

@@ -11,6 +11,7 @@
  */
 import React, { useEffect, useState, useCallback } from 'react';
 import { Calendar, Clock, Link2, CheckCircle2, X, Loader2 } from 'lucide-react';
+import { isConflict, CONFLICT_MESSAGE } from '../../lib/concurrency';
 import {
   fetchLeadMeeting,
   fetchLeadMeetings,
@@ -160,8 +161,16 @@ export function MeetingTab({
     }
     setConfirming(true);
     setErr('');
+    // leadWorkspace.confirmMeeting (3-arg version) — concurrency guard not wired
+    // here (no updated_date available in MeetingRow). When CONCURRENCY_GUARD is ON
+    // a follow-up pass should expose updated_date from the lead's meeting record.
     const res = await confirmMeeting(meeting.meeting_id, reportId, actor);
     setConfirming(false);
+    if (isConflict(res)) {
+      setErr(CONFLICT_MESSAGE);
+      await load();
+      return;
+    }
     if (res?.error) {
       setErr(res.error);
       return;

@@ -30,6 +30,7 @@ import {
   type LeadDetail,
   type LookupOption,
 } from '../lib/leadsApi';
+import { isConflict, CONFLICT_MESSAGE } from '../lib/concurrency';
 import {
   fetchCompanyInfo,
   clinchLead,
@@ -403,9 +404,17 @@ export function LeadDetailPage() {
   const handleStageChange = async (stageId: number) => {
     if (!lead?.report_id || !hasActor) return;
     setStageSaving(true);
-    const res = await updateLeadStage(lead.report_id, stageId, actor);
+    // Pass the lead_report's updated_date as the optimistic-concurrency guard
+    // (ALT-430). The lead detail page fetches lead_master; the report's updated_date
+    // isn't surfaced separately here — we use the lead's own updated_date as a proxy.
+    // When CONCURRENCY_GUARD is false this arg is ignored, so there is no behaviour change.
+    const res = await updateLeadStage(lead.report_id, stageId, actor, lead.updated_date ?? undefined);
     setStageSaving(false);
-    if (!res?.error) {
+    if (isConflict(res)) {
+      toast.error(CONFLICT_MESSAGE);
+      // Refresh the detail to show the latest data.
+      refreshLead();
+    } else if (!res?.error) {
       const found = stages.find((s) => s.id === stageId);
       setLead((prev) => (prev ? { ...prev, stage_id: stageId, stage_name: found?.label ?? prev.stage_name } : prev));
     } else {

@@ -25,6 +25,7 @@ import {
   type LeadFormData,
   type LookupOption,
 } from '../lib/leadsApi';
+import { isConflict, CONFLICT_MESSAGE } from '../lib/concurrency';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import { SearchSelect, type SearchSelectOption } from '../components/ui/SearchSelect';
@@ -254,6 +255,9 @@ export function LeadFormPage() {
   // original values so we never write null back if the user clears the dropdown.
   const [origSourceId, setOrigSourceId] = useState<number | null>(null);
   const [origClientAssocId, setOrigClientAssocId] = useState<number | null>(null);
+  // The updated_date at the time the form was loaded — passed to updateLead as the
+  // concurrency guard precondition (ALT-430). Null = no guard applied (safe default).
+  const [origUpdatedDate, setOrigUpdatedDate] = useState<string | null>(null);
 
   // Audit columns (created_by / updated_by) MUST store the numeric user_id as text
   // (e.g. "114"), because lead ownership / RLS keys on created_by = user_id and
@@ -296,6 +300,7 @@ export function LeadFormPage() {
       setExistingCityId(cityId);
       setOrigSourceId(leadData.source_id);
       setOrigClientAssocId(leadData.client_assoc_id);
+      setOrigUpdatedDate(leadData.updated_date ?? null);
 
       setForm({
         lead_name: leadData.lead_name,
@@ -461,10 +466,16 @@ export function LeadFormPage() {
         safeForm,
         byIdentifier,
         existingAddressId,
-        existingCityId
+        existingCityId,
+        origUpdatedDate
       );
       setSubmitting(false);
-      if (result?.error) {
+      if (isConflict(result)) {
+        // Another user saved this lead while the form was open. Keep the user's
+        // typed values in place (don't navigate away) and show the conflict banner.
+        setErrors({ submit: CONFLICT_MESSAGE });
+        toast.error(CONFLICT_MESSAGE);
+      } else if (result?.error) {
         const msg = humanizeWriteError(result.error) ?? 'Something went wrong. Please try again.';
         setErrors({ submit: msg });
         toast.error(msg);

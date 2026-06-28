@@ -18,6 +18,7 @@ import {
   SecondaryButton,
   InlineNote,
 } from '../lead/primitives';
+import { isConflict, CONFLICT_MESSAGE } from '../../lib/concurrency';
 
 function urlLabel(mode: string): string {
   switch (mode.toLowerCase()) {
@@ -64,8 +65,15 @@ export function EditMeetingModal({
       agenda,
       meetingUrl: url,
       actor,
+      // MeetingDetail does not currently expose updated_date; the concurrency guard
+      // therefore has no precondition here (safe default while CONCURRENCY_GUARD=false).
+      originalUpdatedDate: undefined,
     });
     setSaving(false);
+    if (isConflict(res)) {
+      setErr(CONFLICT_MESSAGE);
+      return;
+    }
     if (res?.error) {
       setErr(res.error);
       return;

@@ -26,6 +26,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { ReassignModal } from '../components/common/ReassignModal';
 import { reassignContact, fetchAssignableUsers, fetchUserLabel } from '../data/assignment';
 import { humanizeWriteError } from '../lib/writeError';
+import { isConflict, CONFLICT_MESSAGE } from '../lib/concurrency';
 import type { UserOption } from '../data/wishlist';
 import { CreateTaskModal, type TaskAssociation } from '../components/tasks/CreateTaskModal';
 import { LogDispositionModal } from '../components/calls/LogDispositionModal';
@@ -493,9 +494,17 @@ export function ContactDetailPage() {
       return;
     }
 
-    // If company changed, also run the dedicated helper (it may do extra work)
+    // If company changed, also run the dedicated helper (it may do extra work).
+    // The main update above already succeeded; if this secondary call gets a conflict
+    // (only possible when CONCURRENCY_GUARD=true), surface the message but don't
+    // block the rest of the save path — the main record is already written.
     if (companyChanged) {
-      await updateContactCompany(contactId, editDraft.company_id);
+      const compRes = await updateContactCompany(contactId, editDraft.company_id, contact.updated_date ?? undefined);
+      if (isConflict(compRes)) {
+        setEditError(CONFLICT_MESSAGE);
+      } else if (compRes.error) {
+        setEditError(compRes.error);
+      }
     }
 
     // Refresh contact
