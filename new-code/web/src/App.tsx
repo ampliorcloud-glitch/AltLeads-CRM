@@ -38,6 +38,7 @@ const AdminPage = lazy(() => import('./pages/AdminPage'));
 const NotificationsPage = lazy(() => import('./pages/NotificationsPage').then(m => ({ default: m.NotificationsPage })));
 const SettingsPage = lazy(() => import('./pages/SettingsPage').then(m => ({ default: m.SettingsPage })));
 const ApprovalsPage = lazy(() => import('./pages/ApprovalsPage').then(m => ({ default: m.ApprovalsPage })));
+const ImportPage = lazy(() => import('./pages/ImportPage').then(m => ({ default: m.ImportPage })));
 const ContactsPage = lazy(() => import('./pages/ContactsPage').then(m => ({ default: m.ContactsPage })));
 const ContactDetailPage = lazy(() => import('./pages/ContactDetailPage').then(m => ({ default: m.ContactDetailPage })));
 const ContactFormPage = lazy(() => import('./pages/ContactFormPage').then(m => ({ default: m.ContactFormPage })));
@@ -93,6 +94,21 @@ function ApproverRoute({ children }: { children: React.ReactNode }) {
   // ProtectedRoute owns the loading spinner + no-session / pure-sales redirects;
   // here we only bounce a logged-in internal non-approver (e.g. a plain agent).
   if (!loading && session && !isApprover) return <Navigate to="/dashboard" replace />;
+
+  return <ProtectedRoute>{children}</ProtectedRoute>;
+}
+
+/**
+ * Guards admin-only routes (e.g. the Import Wizard at /import). Builds on
+ * ProtectedRoute (session + internal-only), then narrows to ADMIN. Mirrors how
+ * the Super Admin nav entry is gated (Sidebar adminOnly). A logged-in internal
+ * non-admin is bounced to the dashboard. The page itself also re-checks isAdmin
+ * (defence in depth).
+ */
+function AdminRoute({ children }: { children: React.ReactNode }) {
+  const { loading, session, isAdmin } = useAuth();
+
+  if (!loading && session && !isAdmin) return <Navigate to="/dashboard" replace />;
 
   return <ProtectedRoute>{children}</ProtectedRoute>;
 }
@@ -375,6 +391,17 @@ function AppRoutes() {
           <ProtectedRoute>
             <SettingsPage />
           </ProtectedRoute>
+        }
+      />
+      {/* Admin-only Import Wizard (ALT-399). Frontend-only: parses/maps/validates/
+         previews a CSV/XLSX, but performs NO writes — the final Import action is
+         disabled pending the server-side admin import endpoint. */}
+      <Route
+        path="/import"
+        element={
+          <AdminRoute>
+            <ImportPage />
+          </AdminRoute>
         }
       />
       {/* ───────────────────────── Client Portal (/portal/*) ─────────────────────────

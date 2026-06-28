@@ -13,6 +13,7 @@ import {
   Settings,
   LogOut,
   ClipboardCheck,
+  Upload,
 } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { useNavigate } from 'react-router-dom';
@@ -38,6 +39,7 @@ const navItems: NavItem[] = [
   { to: '/wishlist', icon: Star, label: 'Wish List' },
   { to: '/notifications', icon: Bell, label: 'Notifications' },
   { to: '/approvals', icon: ClipboardCheck, label: 'Approvals', approverOnly: true },
+  { to: '/import', icon: Upload, label: 'Import', adminOnly: true },
   { to: '/admin', icon: ShieldCheck, label: 'Super Admin', adminOnly: true },
 ];
 
