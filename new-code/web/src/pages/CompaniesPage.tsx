@@ -596,16 +596,11 @@ export function CompaniesPage() {
     });
   }, [filters, advFilters, allCompanies]);
 
-  /* ---- on-demand export rows: loads status for the FULL filtered set (ALT-429) ----
-     Called by ExportButton's getRows prop right before the download. When a project
-     is selected we ensure statusMap covers every row in filteredData (not just the
-     current page) by fetching missing ids in chunks via fetchCompanyStatuses, then
-     merge them into statusMap so the inline display also benefits. When no project
-     is selected, account_status / owner are per-project and therefore N/A for the
-     export (they'd be blank anyway), so we skip the load.
-     TODO(ALT-429): sort/filter on Account Status / Owner columns still operate only
-     over the currently-loaded page subset; a full-set sort/filter would require
-     either server-side sorting or upfront loading — deferred to a future ticket. */
+  /* ---- on-demand export rows (ALT-429) ----
+     statusMap is kept in sync with the full filtered set whenever a project is
+     selected (see the effect below), so by export time the map is already complete.
+     When no project is selected, account_status / owner are per-project and therefore
+     N/A for the export (they'd be blank anyway). */
   const getExportRows = useCallback(async (): Promise<ExportRow[] | null> => {
     // ALT-450: warn when no project is selected — Account Status and Owner are
     // per-project and will be blank in the export without a selected project.
@@ -619,32 +614,29 @@ export function CompaniesPage() {
       });
       if (!proceed) return null;
     }
-    const allIds = filteredData.map((c) => Number(c.id));
-    if (projectId != null && allIds.length > 0) {
-      const missing = allIds.filter((id) => !(id in statusMap));
-      if (missing.length > 0) {
-        // Fetch the missing statuses directly (don't use loadStatuses so we
-        // don't clobber the reqId token that guards the page-level loader).
-        const result = await fetchCompanyStatuses(projectId, missing);
-        setStatusMap((prev) => ({ ...prev, ...result }));
-        // Build export rows from the merged map so the downloaded file is complete.
-        const merged = { ...statusMap, ...result };
-        return filteredData.map((c) => ({
-          ...c,
-          accountStatus: merged[Number(c.id)]?.account_status ?? null,
-        }));
-      }
-    }
-    // All statuses already in map (or no project → status N/A): use current map.
+    // statusMap already covers the full filtered set — just map directly.
     return filteredData.map((c) => ({
       ...c,
       accountStatus: statusMap[Number(c.id)]?.account_status ?? null,
     }));
   }, [filteredData, projectId, statusMap, confirm]);
 
-  /* ---- batch-load statuses for the CURRENT PAGE rows when project changes ---- */
+  /* ---- ALT-429: batch-load statuses for the FULL filtered set (not just the current page)
+     so sort/filter/export on Account Status and Owner columns are correct across all pages.
+     Mirrors ContactsPage's approach: load all ids up-front when project or filteredData
+     changes; merge new results into the map so stale entries from prior filters aren't
+     evicted unnecessarily. */
+
+  // All company ids in the current filtered result set.
+  const filteredCompanyIds = useMemo(
+    () => filteredData.map((c) => Number(c.id)),
+    [filteredData],
+  );
+
+  // Page-visible ids only — used for the AMBIG E1 no-project company-projects loader
+  // below. We intentionally keep that one page-scoped to avoid fetching project
+  // membership for all 10k companies when no global project is selected.
   const pageCompanyIds = useMemo(() => {
-    // We compute this after the table is built; for now derive from filteredData + pagination.
     const start = pagination.pageIndex * pagination.pageSize;
     const end = start + pagination.pageSize;
     return filteredData.slice(start, end).map((c) => Number(c.id));
@@ -662,28 +654,30 @@ export function CompaniesPage() {
     setStatusLoading(false);
   }, []);
 
+  // When project changes, clear the per-project cache and reload for the FULL
+  // filtered set so every row's status is known from the start.
   useEffect(() => {
     if (projectId == null) return;
-    // Load statuses for ids not yet in the map.
-    const missing = pageCompanyIds.filter((id) => !(id in statusMap));
+    setStatusMap({});
+    loadStatuses(projectId, filteredCompanyIds);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [projectId]);
+
+  // When the filtered set changes (filter/search change), load statuses for any
+  // ids that aren't yet in the map (newly visible rows after a filter).
+  useEffect(() => {
+    if (projectId == null) return;
+    const missing = filteredCompanyIds.filter((id) => !(id in statusMap));
     if (missing.length > 0) {
       loadStatuses(projectId, missing);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [projectId, pageCompanyIds]);
+  }, [projectId, filteredCompanyIds]);
 
-  // When project changes, clear the cache and reload for current page.
-  useEffect(() => {
-    if (projectId == null) return;
-    setStatusMap({});
-    loadStatuses(projectId, pageCompanyIds);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [projectId]);
-
-  // No global project scoped → load each visible company's project membership so a
-  // single-project company can auto-resolve its inline status edit (AMBIG E1).
-  // Then load that resolved project's status into statusMap so the badge shows the
-  // real value (not a blank, which would only appear once a project was picked).
+  // No global project scoped → load each VISIBLE PAGE company's project membership
+  // so a single-project company can auto-resolve its inline status edit (AMBIG E1).
+  // Kept page-scoped intentionally: fetching all 10k companies' project membership
+  // when no project is selected would be expensive and provides no benefit.
   useEffect(() => {
     if (projectId != null) { setCompanyProjects({}); return; }
     if (pageCompanyIds.length === 0) return;
@@ -736,9 +730,10 @@ export function CompaniesPage() {
      are built from the known account_status options (+ an "Unset" bucket for
      blanks); cards open the same preview drawer the row uses.
 
-     Statuses are normally batch-loaded for the current page only — so when the
-     board is shown, load statuses for the WHOLE filtered set so every card lands
-     in the right column. */
+     Statuses for the full filtered set are kept in sync by the filteredCompanyIds
+     effect below, so by the time the board renders the map is already populated.
+     This effect is retained as a safety net for any ids that might still be missing
+     (e.g. rapid view-switch before the main effect fires). */
   useEffect(() => {
     if (view !== 'kanban' || projectId == null) return;
     const ids = filteredData.map((c) => Number(c.id)).filter((id) => !(id in statusMap));
