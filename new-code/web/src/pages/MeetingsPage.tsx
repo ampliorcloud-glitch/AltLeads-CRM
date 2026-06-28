@@ -40,6 +40,7 @@ import { EmptyState } from '../components/ui/EmptyState';
 import { ActiveFilters, type FilterChip } from '../components/ui/ActiveFilters';
 import { SelectAllMatchingBar } from '../components/ui/SelectAllMatchingBar';
 import { useListFilters } from '../lib/listFilters';
+import { useSortPersistence } from '../lib/useSortPersistence';
 import { EditableGrid, type EditableColumn } from '../components/ui/EditableGrid';
 import { GenericKanban } from '../components/kanban/GenericKanban';
 import {
@@ -268,7 +269,8 @@ export function MeetingsPage() {
 
   // Persisted across refresh per browser (ALT-369).
   const [filters, setFilters] = useListFilters<Filters>('meetings', defaultFilters);
-  const [sorting, setSorting] = useState<SortingState>([]);
+  // Persisted sort state (ALT-440) — mirrors density key convention: altleads:sort:<entity>:<userId>.
+  const [sorting, setSorting] = useSortPersistence('meetings', userId);
   const [pageIndex, setPageIndex] = useState(0);
 
   // Column visibility/order — seeded from defaults; ColumnCustomizer loads saved view on mount.

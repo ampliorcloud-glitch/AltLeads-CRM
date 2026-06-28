@@ -42,6 +42,7 @@ import { ActiveFilters, type FilterChip } from '../components/ui/ActiveFilters';
 import { EditableGrid, type EditableColumn } from '../components/ui/EditableGrid';
 import { SelectAllMatchingBar } from '../components/ui/SelectAllMatchingBar';
 import { useListFilters } from '../lib/listFilters';
+import { useSortPersistence } from '../lib/useSortPersistence';
 import { GenericKanban } from '../components/kanban/GenericKanban';
 import {
   KanbanGroupBySelect,
@@ -354,7 +355,8 @@ export function LeadsPage() {
 
   // Persisted across refresh per browser (ALT-369).
   const [filters, setFilters] = useListFilters<Filters>('leads', defaultFilters);
-  const [sorting, setSorting] = useState<SortingState>([]);
+  // Persisted sort state (ALT-440) — mirrors density key convention: altleads:sort:<entity>:<userId>.
+  const [sorting, setSorting] = useSortPersistence('leads', userId);
   const [pagination, setPagination] = useState<PaginationState>({ pageIndex: 0, pageSize: 25 });
 
   // Column visibility / order state (seeded from catalogue defaults)

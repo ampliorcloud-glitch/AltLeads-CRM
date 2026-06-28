@@ -25,6 +25,7 @@ import { ListToolbar } from '../components/ui/ListToolbar';
 import { ActiveFilters, type FilterChip } from '../components/ui/ActiveFilters';
 import { SelectAllMatchingBar } from '../components/ui/SelectAllMatchingBar';
 import { useListFilters } from '../lib/listFilters';
+import { sortKey } from '../lib/useSortPersistence';
 import { humanizeWriteError } from '../lib/writeError';
 import { EditableGrid, type EditableColumn } from '../components/ui/EditableGrid';
 import { GenericKanban } from '../components/kanban/GenericKanban';
@@ -318,7 +319,22 @@ export function ContactsPage() {
   const [reloadKey, setReloadKey] = useState(0);
   // Persisted across refresh per browser (ALT-369).
   const [filters, setFilters] = useListFilters<Filters>('contacts', defaultFilters);
-  const [sort, setSort] = useState<SortState>({ key: 'full_name', dir: 'asc' });
+  // Persisted sort state (ALT-440) — key: altleads:sort:contacts:<userId>.
+  const [sort, setSort] = useState<SortState>(() => {
+    try {
+      const raw = localStorage.getItem(sortKey('contacts', userId));
+      if (raw) {
+        const p = JSON.parse(raw) as unknown;
+        if (p && typeof p === 'object' && !Array.isArray(p)) {
+          const { key, dir } = p as Record<string, unknown>;
+          if ((typeof key === 'string' || key === null) && (dir === 'asc' || dir === 'desc')) {
+            return { key: key as SortKey, dir };
+          }
+        }
+      }
+    } catch { /* ignore */ }
+    return { key: 'full_name', dir: 'asc' };
+  });
   const [pageIndex, setPageIndex] = useState(0);
   const [pageSize, setPageSize] = useState(25);
 
@@ -878,12 +894,13 @@ export function ContactsPage() {
     }));
   }
 
-  // Sorting toggle
+  // Sorting toggle — persists new sort to localStorage (ALT-440).
   function handleSort(key: SortKey) {
-    setSort((prev) => ({
-      key,
-      dir: prev.key === key && prev.dir === 'asc' ? 'desc' : 'asc',
-    }));
+    setSort((prev) => {
+      const next = { key, dir: (prev.key === key && prev.dir === 'asc' ? 'desc' : 'asc') as 'asc' | 'desc' };
+      try { localStorage.setItem(sortKey('contacts', userId), JSON.stringify(next)); } catch { /* ignore */ }
+      return next;
+    });
     setPageIndex(0);
   }
 

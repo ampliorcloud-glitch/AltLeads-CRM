@@ -30,6 +30,7 @@ import { ListToolbar } from '../components/ui/ListToolbar';
 import { ActiveFilters, type FilterChip } from '../components/ui/ActiveFilters';
 import { SelectAllMatchingBar } from '../components/ui/SelectAllMatchingBar';
 import { useListFilters } from '../lib/listFilters';
+import { useSortPersistence } from '../lib/useSortPersistence';
 import { EditableGrid, type EditableColumn } from '../components/ui/EditableGrid';
 import { GenericKanban } from '../components/kanban/GenericKanban';
 import {
@@ -309,7 +310,8 @@ export function CompaniesPage() {
 
   // Persisted across refresh per browser (ALT-369).
   const [filters, setFilters] = useListFilters<Filters>('companies', defaultFilters);
-  const [sorting, setSorting] = useState<SortingState>([]);
+  // Persisted sort state (ALT-440) — mirrors density key convention: altleads:sort:<entity>:<userId>.
+  const [sorting, setSorting] = useSortPersistence('companies', userId);
   const [pagination, setPagination] = useState<PaginationState>({ pageIndex: 0, pageSize: 25 });
 
   const [allCompanies, setAllCompanies] = useState<Company[]>([]);

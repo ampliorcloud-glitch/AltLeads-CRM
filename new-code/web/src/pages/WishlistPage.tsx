@@ -27,6 +27,7 @@ import { ListToolbar } from '../components/ui/ListToolbar';
 import { ActiveFilters, type FilterChip } from '../components/ui/ActiveFilters';
 import { SelectAllMatchingBar } from '../components/ui/SelectAllMatchingBar';
 import { useListFilters } from '../lib/listFilters';
+import { useSortPersistence } from '../lib/useSortPersistence';
 import { EditableGrid, type EditableColumn } from '../components/ui/EditableGrid';
 import { CardShell } from '../components/ui/CardGrid';
 import { GenericKanban } from '../components/kanban/GenericKanban';
@@ -225,7 +226,8 @@ export function WishlistPage() {
 
   // Persisted across refresh per browser (ALT-369).
   const [filters, setFilters] = useListFilters<Filters>('wishlist', defaultFilters);
-  const [sorting, setSorting] = useState<SortingState>([]);
+  // Persisted sort state (ALT-440) — mirrors density key convention: altleads:sort:<entity>:<userId>.
+  const [sorting, setSorting] = useSortPersistence('wishlist', userId);
   const [pagination, setPagination] = useState<PaginationState>({ pageIndex: 0, pageSize: PAGE_SIZE });
 
   // Column customizer state — seeded from defaults, overridden by saved view on mount.
