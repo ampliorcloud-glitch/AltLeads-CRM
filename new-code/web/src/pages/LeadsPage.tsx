@@ -42,6 +42,10 @@ import { ActiveFilters, type FilterChip } from '../components/ui/ActiveFilters';
 import { EditableGrid, type EditableColumn } from '../components/ui/EditableGrid';
 import { SelectAllMatchingBar } from '../components/ui/SelectAllMatchingBar';
 import { useListFilters } from '../lib/listFilters';
+import { ADVANCED_FILTERS, LEADS_FIELDS, EMPTY_FILTER_STATE, evalFilterState, type AdvancedFilterState } from '../lib/filterEngine';
+import { FilterBuilderButton, FilterBuilderPanel } from '../components/filters/FilterBuilder';
+import { ViewPicker } from '../components/filters/ViewPicker';
+import type { SavedViewRecord } from '../data/savedViews';
 import { useSortPersistence } from '../lib/useSortPersistence';
 import { usePinPersistence } from '../lib/usePinPersistence';
 import { GenericKanban } from '../components/kanban/GenericKanban';
@@ -356,6 +360,10 @@ export function LeadsPage() {
 
   // Persisted across refresh per browser (ALT-369).
   const [filters, setFilters] = useListFilters<Filters>('leads', defaultFilters);
+  // Advanced filter state (ALT-270) — only used when ADVANCED_FILTERS is on.
+  const [advFilters, setAdvFilters] = useState<AdvancedFilterState>(EMPTY_FILTER_STATE);
+  const [filterPanelOpen, setFilterPanelOpen] = useState(false);
+  const [activeViewId, setActiveViewId] = useState<number | null>(null);
   // Persisted sort state (ALT-440) — mirrors density key convention: altleads:sort:<entity>:<userId>.
   const [sorting, setSorting] = useSortPersistence('leads', userId);
   // Persisted column pinning (ALT-440) — key: altleads:pin:leads:<userId>.
@@ -558,9 +566,13 @@ export function LeadsPage() {
         if (!lead.meetingDate || lead.meetingDate > filters.meetingDateTo) return false;
       }
       if (filters.stage.length && !filters.stage.includes(lead.stage)) return false;
+      // Advanced filter evaluation (ALT-270)
+      if (ADVANCED_FILTERS && advFilters.groups.length > 0) {
+        if (!evalFilterState(lead as unknown as Record<string, unknown>, advFilters)) return false;
+      }
       return true;
     });
-  }, [filters, allLeads, projectScopeId]);
+  }, [filters, advFilters, allLeads, projectScopeId]);
 
   // How many leads are hidden ONLY because they carry no project_id while a project
   // is scoped — surfaced as a small note so a project filter never looks like missing
@@ -1076,6 +1088,27 @@ export function LeadsPage() {
           }
           viewSwitcher={
             <div className="inline-flex items-center" style={{ gap: 6 }}>
+              {/* Advanced filter button (ALT-270) — only when flag is on. */}
+              {ADVANCED_FILTERS && (
+                <FilterBuilderButton
+                  open={filterPanelOpen}
+                  onToggle={() => setFilterPanelOpen((v) => !v)}
+                  conditionCount={advFilters.groups[0]?.conditions.length ?? 0}
+                />
+              )}
+              {ADVANCED_FILTERS && (
+                <ViewPicker
+                  entity="leads"
+                  userId={profile?.user_id ?? null}
+                  projectId={projectScopeId}
+                  currentState={{ filter_state: advFilters }}
+                  activeViewId={activeViewId}
+                  onApply={(v: SavedViewRecord) => {
+                    if (v.filter_state) setAdvFilters(v.filter_state);
+                    setActiveViewId(v.id);
+                  }}
+                />
+              )}
               {/* Density toggle only affects the Table view's row height. */}
               {view === 'table' && <DensityToggle value={density} onChange={setDensity} />}
               <ViewSwitcher value={view} onChange={setView} />
@@ -1132,6 +1165,15 @@ export function LeadsPage() {
             ) : null
           }
         />
+
+        {/* Advanced filter panel (ALT-270) — shown below toolbar when flag + open. */}
+        {ADVANCED_FILTERS && filterPanelOpen && (
+          <FilterBuilderPanel
+            fields={LEADS_FIELDS}
+            value={advFilters}
+            onChange={(next) => { setAdvFilters(next); setPagination((p) => ({ ...p, pageIndex: 0 })); sel.clear(); }}
+          />
+        )}
 
         {/* Active-filter chips — shown in every view (table/grid/kanban). */}
         <ActiveFilters

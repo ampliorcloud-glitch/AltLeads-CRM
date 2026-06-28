@@ -32,6 +32,10 @@ import { SelectAllMatchingBar } from '../components/ui/SelectAllMatchingBar';
 import { useListFilters } from '../lib/listFilters';
 import { useSortPersistence } from '../lib/useSortPersistence';
 import { HUNGERBOX_FEATURES } from '../lib/hungerbox';
+import { ADVANCED_FILTERS, COMPANIES_FIELDS, EMPTY_FILTER_STATE, evalFilterState, type AdvancedFilterState } from '../lib/filterEngine';
+import { FilterBuilderButton, FilterBuilderPanel } from '../components/filters/FilterBuilder';
+import { ViewPicker } from '../components/filters/ViewPicker';
+import type { SavedViewRecord } from '../data/savedViews';
 import { usePinPersistence } from '../lib/usePinPersistence';
 import { EditableGrid, type EditableColumn } from '../components/ui/EditableGrid';
 import { GenericKanban } from '../components/kanban/GenericKanban';
@@ -316,6 +320,10 @@ export function CompaniesPage() {
 
   // Persisted across refresh per browser (ALT-369).
   const [filters, setFilters] = useListFilters<Filters>('companies', defaultFilters);
+  // Advanced filter state (ALT-270) — only used when ADVANCED_FILTERS is on.
+  const [advFilters, setAdvFilters] = useState<AdvancedFilterState>(EMPTY_FILTER_STATE);
+  const [filterPanelOpen, setFilterPanelOpen] = useState(false);
+  const [activeViewId, setActiveViewId] = useState<number | null>(null);
   // Persisted sort state (ALT-440) — mirrors density key convention: altleads:sort:<entity>:<userId>.
   const [sorting, setSorting] = useSortPersistence('companies', userId);
   // Persisted column pinning (ALT-440) — key: altleads:pin:companies:<userId>.
@@ -580,9 +588,13 @@ export function CompaniesPage() {
       if (filters.city.length && !filters.city.includes(c.city)) return false;
       // HungerBox: metro-only work queue filter (only active when HUNGERBOX_FEATURES=true)
       if (HUNGERBOX_FEATURES && filters.metroOnly === 'metro' && !c.isMetro) return false;
+      // Advanced filter evaluation (ALT-270)
+      if (ADVANCED_FILTERS && advFilters.groups.length > 0) {
+        if (!evalFilterState(c as unknown as Record<string, unknown>, advFilters)) return false;
+      }
       return true;
     });
-  }, [filters, allCompanies]);
+  }, [filters, advFilters, allCompanies]);
 
   /* ---- on-demand export rows: loads status for the FULL filtered set (ALT-429) ----
      Called by ExportButton's getRows prop right before the download. When a project
@@ -1326,6 +1338,28 @@ export function CompaniesPage() {
           ) : undefined}
           viewSwitcher={
             <div className="inline-flex items-center" style={{ gap: 6 }}>
+              {/* Advanced filter button (ALT-270) — only when flag is on. */}
+              {ADVANCED_FILTERS && (
+                <FilterBuilderButton
+                  open={filterPanelOpen}
+                  onToggle={() => setFilterPanelOpen((v) => !v)}
+                  conditionCount={advFilters.groups[0]?.conditions.length ?? 0}
+                />
+              )}
+              {ADVANCED_FILTERS && (
+                <ViewPicker
+                  entity="companies"
+                  userId={profile?.user_id ?? null}
+                  projectId={selectedProjectId}
+                  currentState={{ filter_state: advFilters }}
+                  activeViewId={activeViewId}
+                  onApply={(v: SavedViewRecord) => {
+                    if (v.filter_state) setAdvFilters(v.filter_state);
+                    setActiveViewId(v.id);
+                    setPagination((p) => ({ ...p, pageIndex: 0 }));
+                  }}
+                />
+              )}
               {/* Density toggle only affects the Table view's row height. */}
               {view === 'table' && <DensityToggle value={density} onChange={setDensity} />}
               <ViewSwitcher value={view} onChange={setView} />
@@ -1396,6 +1430,15 @@ export function CompaniesPage() {
             ) : undefined
           }
         />
+
+        {/* Advanced filter panel (ALT-270) — shown below toolbar when flag + open. */}
+        {ADVANCED_FILTERS && filterPanelOpen && (
+          <FilterBuilderPanel
+            fields={COMPANIES_FIELDS}
+            value={advFilters}
+            onChange={(next) => { setAdvFilters(next); setPagination((p) => ({ ...p, pageIndex: 0 })); sel.clear(); }}
+          />
+        )}
 
         {/* Active-filter chips — removable, with one-click Clear all (ALT). */}
         <ActiveFilters

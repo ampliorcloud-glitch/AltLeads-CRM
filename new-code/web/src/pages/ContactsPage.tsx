@@ -72,6 +72,10 @@ import type { UserOption } from '../data/wishlist';
 import { RecordPreviewPanel } from '../components/common/RecordPreviewPanel';
 import { ContactPreview } from '../components/contacts/ContactPreview';
 import { HUNGERBOX_FEATURES } from '../lib/hungerbox';
+import { ADVANCED_FILTERS, CONTACTS_FIELDS, EMPTY_FILTER_STATE, evalFilterState, type AdvancedFilterState } from '../lib/filterEngine';
+import { FilterBuilderButton, FilterBuilderPanel } from '../components/filters/FilterBuilder';
+import { ViewPicker } from '../components/filters/ViewPicker';
+import type { SavedViewRecord } from '../data/savedViews';
 
 /* ------------------------------------------------------------------ */
 /*  Helpers                                                             */
@@ -329,6 +333,10 @@ export function ContactsPage() {
   const [reloadKey, setReloadKey] = useState(0);
   // Persisted across refresh per browser (ALT-369).
   const [filters, setFilters] = useListFilters<Filters>('contacts', defaultFilters);
+  // Advanced filter state (ALT-270) — only used when ADVANCED_FILTERS is on.
+  const [advFilters, setAdvFilters] = useState<AdvancedFilterState>(EMPTY_FILTER_STATE);
+  const [filterPanelOpen, setFilterPanelOpen] = useState(false);
+  const [activeViewId, setActiveViewId] = useState<number | null>(null);
   // Persisted sort state (ALT-440) — key: altleads:sort:contacts:<userId>.
   const [sort, setSort] = useState<SortState>(() => {
     try {
@@ -780,8 +788,15 @@ export function ContactsPage() {
       });
     }
 
-    return enriched;
-  }, [allContacts, filters, statusMap, ownerMap, sort]);
+    // Advanced filter evaluation (ALT-270) — applied after basic filters when flag is on.
+    // TODO(v2 server-side filter for contacts): for 100K+ contacts translate
+    // advFilters to PostgREST operators instead of Array.filter client-side.
+    const result = ADVANCED_FILTERS && advFilters.groups.length > 0
+      ? enriched.filter((r) => evalFilterState(r as unknown as Record<string, unknown>, advFilters))
+      : enriched;
+
+    return result;
+  }, [allContacts, filters, advFilters, statusMap, ownerMap, sort]);
 
   // Kanban (Board) view — selectable "Group by" field (ALT-338). Default =
   // Contact Status, which is PER PROJECT (contact_project_status.contact_status):
@@ -1404,6 +1419,28 @@ export function ContactsPage() {
           }
           viewSwitcher={
             <>
+              {/* Advanced filter button (ALT-270) — only when flag is on. */}
+              {ADVANCED_FILTERS && (
+                <FilterBuilderButton
+                  open={filterPanelOpen}
+                  onToggle={() => setFilterPanelOpen((v) => !v)}
+                  conditionCount={advFilters.groups[0]?.conditions.length ?? 0}
+                />
+              )}
+              {ADVANCED_FILTERS && (
+                <ViewPicker
+                  entity="contacts"
+                  userId={profile?.user_id ?? null}
+                  projectId={projectId}
+                  currentState={{ filter_state: advFilters }}
+                  activeViewId={activeViewId}
+                  onApply={(v: SavedViewRecord) => {
+                    if (v.filter_state) setAdvFilters(v.filter_state);
+                    setActiveViewId(v.id);
+                    setPageIndex(0);
+                  }}
+                />
+              )}
               <ViewSwitcher value={view} onChange={setView} />
               {view === 'table' && <DensityToggle value={density} onChange={setDensity} />}
             </>
@@ -1471,6 +1508,15 @@ export function ContactsPage() {
             ) : undefined
           }
         />
+
+        {/* Advanced filter panel (ALT-270) — shown below toolbar when flag + open. */}
+        {ADVANCED_FILTERS && filterPanelOpen && (
+          <FilterBuilderPanel
+            fields={CONTACTS_FIELDS}
+            value={advFilters}
+            onChange={(next) => { setAdvFilters(next); setPageIndex(0); sel.clear(); }}
+          />
+        )}
 
         {/* Silent-truncation banner (ALT-428) — the loader stops at a 50,000-row
             safety ceiling; warn so the list never looks complete when it isn't. */}

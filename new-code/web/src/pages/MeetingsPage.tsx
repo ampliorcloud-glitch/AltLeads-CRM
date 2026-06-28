@@ -40,6 +40,10 @@ import { EmptyState } from '../components/ui/EmptyState';
 import { ActiveFilters, type FilterChip } from '../components/ui/ActiveFilters';
 import { SelectAllMatchingBar } from '../components/ui/SelectAllMatchingBar';
 import { useListFilters } from '../lib/listFilters';
+import { ADVANCED_FILTERS, MEETINGS_FIELDS, EMPTY_FILTER_STATE, evalFilterState, type AdvancedFilterState } from '../lib/filterEngine';
+import { FilterBuilderButton, FilterBuilderPanel } from '../components/filters/FilterBuilder';
+import { ViewPicker } from '../components/filters/ViewPicker';
+import type { SavedViewRecord } from '../data/savedViews';
 import { useSortPersistence } from '../lib/useSortPersistence';
 import { usePinPersistence } from '../lib/usePinPersistence';
 import { EditableGrid, type EditableColumn } from '../components/ui/EditableGrid';
@@ -271,6 +275,10 @@ export function MeetingsPage() {
 
   // Persisted across refresh per browser (ALT-369).
   const [filters, setFilters] = useListFilters<Filters>('meetings', defaultFilters);
+  // Advanced filter state (ALT-270) — only used when ADVANCED_FILTERS is on.
+  const [advFilters, setAdvFilters] = useState<AdvancedFilterState>(EMPTY_FILTER_STATE);
+  const [filterPanelOpen, setFilterPanelOpen] = useState(false);
+  const [activeViewId, setActiveViewId] = useState<number | null>(null);
   // Persisted sort state (ALT-440) — mirrors density key convention: altleads:sort:<entity>:<userId>.
   const [sorting, setSorting] = useSortPersistence('meetings', userId);
   // Persisted column pinning (ALT-440) — key: altleads:pin:meetings:<userId>.
@@ -464,9 +472,13 @@ export function MeetingsPage() {
       if (filters.city.length && !filters.city.includes(m.city)) return false;
       if (filters.salesperson.length && !filters.salesperson.includes(m.salesperson)) return false;
       if (filters.status.length && !filters.status.includes(m.status)) return false;
+      // Advanced filter evaluation (ALT-270)
+      if (ADVANCED_FILTERS && advFilters.groups.length > 0) {
+        if (!evalFilterState(m as unknown as Record<string, unknown>, advFilters)) return false;
+      }
       return true;
     });
-  }, [filters, allMeetings, selectedProjectId]);
+  }, [filters, advFilters, allMeetings, selectedProjectId]);
 
   // Meetings hidden ONLY because their lead carries no project_id while a project is
   // scoped — surfaced as a note so the filter never looks like missing data
@@ -1047,6 +1059,27 @@ export function MeetingsPage() {
           ) : null}
           viewSwitcher={
             <>
+              {/* Advanced filter button (ALT-270) — only when flag is on. */}
+              {ADVANCED_FILTERS && (
+                <FilterBuilderButton
+                  open={filterPanelOpen}
+                  onToggle={() => setFilterPanelOpen((v) => !v)}
+                  conditionCount={advFilters.groups[0]?.conditions.length ?? 0}
+                />
+              )}
+              {ADVANCED_FILTERS && (
+                <ViewPicker
+                  entity="meetings"
+                  userId={profile?.user_id ?? null}
+                  projectId={selectedProjectId}
+                  currentState={{ filter_state: advFilters }}
+                  activeViewId={activeViewId}
+                  onApply={(v: SavedViewRecord) => {
+                    if (v.filter_state) setAdvFilters(v.filter_state);
+                    setActiveViewId(v.id);
+                  }}
+                />
+              )}
               <ViewSwitcher value={view} onChange={setView} />
               {view === 'table' && <DensityToggle value={density} onChange={setDensity} />}
             </>
@@ -1077,6 +1110,15 @@ export function MeetingsPage() {
           }
           create={null}
         />
+
+        {/* Advanced filter panel (ALT-270) — shown below toolbar when flag + open. */}
+        {ADVANCED_FILTERS && filterPanelOpen && (
+          <FilterBuilderPanel
+            fields={MEETINGS_FIELDS}
+            value={advFilters}
+            onChange={(next) => { setAdvFilters(next); sel.clear(); }}
+          />
+        )}
 
         {/* Active-filter chips — what's filtering the list, removable + Clear all. */}
         <ActiveFilters chips={filterChips} onClearAll={clearFilters} />

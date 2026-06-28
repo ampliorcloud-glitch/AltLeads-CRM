@@ -30,6 +30,10 @@ import { ListToolbar } from '../components/ui/ListToolbar';
 import { ActiveFilters, type FilterChip } from '../components/ui/ActiveFilters';
 import { SelectAllMatchingBar } from '../components/ui/SelectAllMatchingBar';
 import { useListFilters } from '../lib/listFilters';
+import { ADVANCED_FILTERS, WISHLIST_FIELDS, EMPTY_FILTER_STATE, evalFilterState, type AdvancedFilterState } from '../lib/filterEngine';
+import { FilterBuilderButton, FilterBuilderPanel } from '../components/filters/FilterBuilder';
+import { ViewPicker } from '../components/filters/ViewPicker';
+import type { SavedViewRecord } from '../data/savedViews';
 import { useSortPersistence } from '../lib/useSortPersistence';
 import { usePinPersistence } from '../lib/usePinPersistence';
 import { EditableGrid, type EditableColumn } from '../components/ui/EditableGrid';
@@ -232,6 +236,10 @@ export function WishlistPage() {
 
   // Persisted across refresh per browser (ALT-369).
   const [filters, setFilters] = useListFilters<Filters>('wishlist', defaultFilters);
+  // Advanced filter state (ALT-270) — only used when ADVANCED_FILTERS is on.
+  const [advFilters, setAdvFilters] = useState<AdvancedFilterState>(EMPTY_FILTER_STATE);
+  const [filterPanelOpen, setFilterPanelOpen] = useState(false);
+  const [activeViewId, setActiveViewId] = useState<number | null>(null);
   // Persisted sort state (ALT-440) — mirrors density key convention: altleads:sort:<entity>:<userId>.
   const [sorting, setSorting] = useSortPersistence('wishlist', userId);
   // Persisted column pinning (ALT-440) — key: altleads:pin:wishlist:<userId>.
@@ -392,9 +400,13 @@ export function WishlistPage() {
       if (filters.teamLead.length && !filters.teamLead.includes(item.teamLead)) return false;
       if (filters.industry.length && !filters.industry.includes(item.industry)) return false;
       if (filters.city.length && !filters.city.includes(item.city)) return false;
+      // Advanced filter evaluation (ALT-270)
+      if (ADVANCED_FILTERS && advFilters.groups.length > 0) {
+        if (!evalFilterState(item as unknown as Record<string, unknown>, advFilters)) return false;
+      }
       return true;
     });
-  }, [filters, allItems]);
+  }, [filters, advFilters, allItems]);
 
   // Derive visible column keys in display order from columnPrefs
   const visibleKeys = useMemo(
@@ -909,6 +921,27 @@ export function WishlistPage() {
           }
           viewSwitcher={
             <>
+              {/* Advanced filter button (ALT-270) — only when flag is on. */}
+              {ADVANCED_FILTERS && (
+                <FilterBuilderButton
+                  open={filterPanelOpen}
+                  onToggle={() => setFilterPanelOpen((v) => !v)}
+                  conditionCount={advFilters.groups[0]?.conditions.length ?? 0}
+                />
+              )}
+              {ADVANCED_FILTERS && (
+                <ViewPicker
+                  entity="wishlist"
+                  userId={profile?.user_id ?? null}
+                  projectId={selectedProjectId}
+                  currentState={{ filter_state: advFilters }}
+                  activeViewId={activeViewId}
+                  onApply={(v: SavedViewRecord) => {
+                    if (v.filter_state) setAdvFilters(v.filter_state);
+                    setActiveViewId(v.id);
+                  }}
+                />
+              )}
               <ViewSwitcher value={view} onChange={setView} />
               {/* Density toggle only affects the Table view's row height. */}
               {view === 'table' && <DensityToggle value={density} onChange={setDensity} />}
@@ -938,6 +971,15 @@ export function WishlistPage() {
           }
           create={null}
         />
+
+        {/* Advanced filter panel (ALT-270) — shown below toolbar when flag + open. */}
+        {ADVANCED_FILTERS && filterPanelOpen && (
+          <FilterBuilderPanel
+            fields={WISHLIST_FIELDS}
+            value={advFilters}
+            onChange={(next) => { setAdvFilters(next); sel.clear(); }}
+          />
+        )}
 
         {/* Active-filter chip bar — one removable chip per selected facet value,
             with a one-click "Clear all" (reuses the page's clearFilters). Renders

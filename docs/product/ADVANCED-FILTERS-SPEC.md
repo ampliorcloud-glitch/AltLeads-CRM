@@ -1,8 +1,51 @@
 # Advanced Per-Field Filters + Saved Views — Build Spec
 
 **Tickets:** ALT-270 (Advanced filters with exclude) · backlog row "Saved views capturing filters+sort+density"
-**Status:** Planned / Spec only — no code written yet
+**Status:** ✅ v1 IMPLEMENTED (2026-06-28) — see "Implemented v1" section below
 **Author:** Claude (research + spec, 2026-06-28)
+
+---
+
+## Implemented v1 (2026-06-28)
+
+### Files added
+- `new-code/web/src/lib/filterEngine.ts` — serialisable filter model + client-side evaluator + per-entity field catalogues
+- `new-code/web/src/components/filters/FilterBuilder.tsx` — FilterBuilderButton + FilterBuilderPanel + combined FilterBuilder
+- `new-code/web/src/components/filters/ViewPicker.tsx` — toolbar dropdown (list / save / load / delete / set-default)
+- `new-code/web/src/data/savedViews.ts` — CRUD for `saved_view` table (listSavedViews, createSavedView, updateSavedView, deleteSavedView, setDefaultView, unsetDefaultView)
+- `new-code/migration/apply-saved-views.cjs` — staged (NOT executed) migration: `public.saved_view` table with RLS
+
+### Feature flag
+`ADVANCED_FILTERS = false` in `filterEngine.ts`. When false, all 5 list pages render exactly as before (the FilterBuilderButton + FilterBuilderPanel + ViewPicker are wrapped in `{ADVANCED_FILTERS && ...}` and never mount). Flip to `true` and apply the migration to activate.
+
+### Operator set shipped (v1)
+Text/Enum: `contains`, `not_contains`, `is`, `is_not`, `is_any_of`, `is_none_of` (**exclude/NOT first-class**), `is_known`, `is_unknown`
+Date: `on`, `before`, `after`, `between`, `not_between`, `relative_past`, `relative_next`, `is_known`, `is_unknown`
+Number: `eq`, `neq`, `gt`, `gte`, `lt`, `lte`, `between`, `is_known`, `is_unknown`
+Boolean: `is`, `is_not`
+
+### saved_view table keying
+Per `(user_id, entity, project_id)`. Cross-project views have `project_id IS NULL` and appear in every project scope. Partial-unique index enforces at most one `is_default=true` per scope. `UNIQUE NULLS NOT DISTINCT` prevents duplicate names.
+
+### HungerBox fields
+`is_dnc` and `is_feasible` are in the Companies + Contacts field catalogues but gated on `hungerboxOnly: true` — `FilterBuilderPanel` hides them when `HUNGERBOX_FEATURES` is false. `isMetro` is always offered.
+
+### Pages wired
+All 5: LeadsPage, CompaniesPage, ContactsPage, MeetingsPage, WishlistPage. Each has:
+- `advFilters: AdvancedFilterState` state + `filterPanelOpen` + `activeViewId`
+- `FilterBuilderButton` in the toolbar's `viewSwitcher` slot
+- `ViewPicker` in the toolbar's `viewSwitcher` slot
+- `FilterBuilderPanel` injected below the `</ListToolbar>` (flag-gated)
+- Advanced filter evaluation added to `filteredData` `useMemo` (after basic filters; flag-gated)
+
+### Deferred to v2
+- Nested OR group UI (data model already supports it)
+- Server-side PostgREST query builder (`buildSupabaseQuery`) — marked with `TODO(v2 server-side filter for contacts)` in ContactsPage
+- View sharing / `is_shared` column
+- Chip bar surfacing advanced conditions (can be added by looping `advFilters.groups[0].conditions` in the page's `filterChips` memo)
+- Write gatekeeper — marked with `TODO(gatekeeper ALT-431)` in every savedViews write call
+
+---
 **Scope:** All 5 list pages — Leads, Companies, Contacts, Meetings, Wishlist
 
 ---
