@@ -14,6 +14,7 @@
  * components/tasks/taskScheduling.ts for the shared helper.
  */
 import { supabase } from '../lib/supabase';
+import { TASKS_V2 } from '../lib/tasksFlags';
 import { humanizeWriteError } from '../lib/writeError';
 import { bucketOf, type TaskBucket } from '../components/tasks/taskScheduling';
 
@@ -276,4 +277,143 @@ export async function setDigestPref(
     );
 
   return { error: error ? humanizeWriteError(error) : null };
+}
+
+/* ------------------------------------------------------------------ */
+/*  Per-record task listing (ALT-430)                                  */
+/* ------------------------------------------------------------------ */
+
+/**
+ * List all tasks linked to a specific record (lead / contact / company).
+ * Returns all statuses (open + done + skipped); the caller filters in the UI.
+ * Ordered: open tasks by due_at ASC, then completed/skipped by updated_date DESC.
+ */
+export async function listTasksForRecord(
+  recordType: 'lead' | 'contact' | 'company',
+  recordId: number | string,
+): Promise<{ tasks: Task[]; error: string | null }> {
+  const col =
+    recordType === 'lead'
+      ? 'lead_id'
+      : recordType === 'contact'
+        ? 'contact_id'
+        : 'company_id';
+
+  const { data, error } = await supabase
+    .from('task')
+    .select(TASK_COLUMNS)
+    .eq(col, recordId)
+    .is('deleted_date', null)
+    .order('due_at', { ascending: true });
+
+  if (error) return { tasks: [], error: error.message };
+  return { tasks: (data ?? []) as unknown as Task[], error: null };
+}
+
+/* ------------------------------------------------------------------ */
+/*  Task completion (ALT-430)                                          */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Complete a task — sets status = DONE.
+ *
+ * When TASKS_V2 = true (after apply-task-enhancements.cjs is run):
+ *   - Also stamps completed_at
+ *   - Optionally writes linked_interaction_id (interaction row that closed it)
+ *   - Optionally writes outcome_note (short text for TODO/MEETING completions)
+ *
+ * When TASKS_V2 = false: only flips status to DONE (same as markDone()).
+ *
+ * TODO(gatekeeper ALT-431): flip TASKS_V2 after migration runs in prod.
+ * TODO(event-spine): emit task-completed event here when the event bus is ready.
+ */
+export async function completeTask(
+  taskId: number,
+  opts: {
+    linked_interaction_id?: number | null;
+    outcome_note?: string | null;
+  } = {},
+): Promise<{ task: Task | null; error: string | null }> {
+  const patch: Record<string, unknown> = { status: 'DONE' };
+
+  if (TASKS_V2) {
+    patch.completed_at = new Date().toISOString();
+    if (opts.linked_interaction_id != null) {
+      patch.linked_interaction_id = opts.linked_interaction_id;
+    }
+    if (opts.outcome_note != null) {
+      patch.outcome_note = opts.outcome_note;
+    }
+  }
+
+  const { data, error } = await supabase
+    .from('task')
+    .update(patch)
+    .eq('task_id', taskId)
+    .select(TASK_COLUMNS)
+    .single();
+
+  if (error) return { task: null, error: humanizeWriteError(error) };
+  return { task: data as unknown as Task, error: null };
+}
+
+/* ------------------------------------------------------------------ */
+/*  Bulk update (ALT-430)                                              */
+/* ------------------------------------------------------------------ */
+
+export interface TaskBulkPatch {
+  status?: TaskStatus;
+  due_at?: string;
+  owner_user_id?: number;
+  priority?: TaskPriority;
+}
+
+export interface BulkTaskResult {
+  ok: number;
+  failed: number;
+  error: string | null;
+}
+
+export interface BulkTaskProgress {
+  onProgress?: (done: number, total: number) => void;
+  signal?: AbortSignal;
+}
+
+/**
+ * Bulk update tasks — loops over the ids calling updateTask one-by-one so
+ * RLS is applied per-row and partial-success is tracked.
+ * Reuses the same BulkProgress shape as bulkActions.ts.
+ *
+ * TODO(gatekeeper ALT-431): no migration required — works against existing columns.
+ */
+export async function bulkUpdateTasks(
+  taskIds: number[],
+  patch: TaskBulkPatch,
+  opts?: BulkTaskProgress,
+): Promise<BulkTaskResult> {
+  let ok = 0;
+  let failed = 0;
+  let firstErr: string | null = null;
+  const total = taskIds.length;
+
+  for (const id of taskIds) {
+    if (opts?.signal?.aborted) break;
+    const { error } = await updateTask(id, patch as TaskPatch);
+    if (error) {
+      failed += 1;
+      if (!firstErr) firstErr = error;
+    } else {
+      ok += 1;
+    }
+    opts?.onProgress?.(ok + failed, total);
+  }
+
+  return {
+    ok,
+    failed,
+    error:
+      failed > 0
+        ? firstErr ?? `${failed} task${failed === 1 ? '' : 's'} could not be updated.`
+        : null,
+  };
 }

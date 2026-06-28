@@ -24,6 +24,9 @@ import {
   Plus,
   AlertCircle,
   RefreshCw,
+  List,
+  LayoutGrid,
+  Square,
 } from 'lucide-react';
 import { AppShell } from '../components/layout/AppShell';
 import { SkeletonTable } from '../components/ui/Skeleton';
@@ -32,16 +35,20 @@ import { useConfirm } from '../components/ui/ConfirmDialog';
 import { useAuth } from '../contexts/AuthContext';
 import { useProjectScope } from '../contexts/ProjectContext';
 import { CreateTaskModal } from '../components/tasks/CreateTaskModal';
+import { TasksKanbanView } from '../components/tasks/TasksKanbanView';
+import { TASKS_V2 } from '../lib/tasksFlags';
 import {
   listMyTasks,
   markDone,
   skipTask,
   snoozeTask,
+  bulkUpdateTasks,
   type Task,
   type TaskType,
   type TaskPriority,
   type GroupedTasks,
   type TaskBucket,
+  type TaskBulkPatch,
 } from '../data/tasks';
 import {
   formatISTDateTime,
@@ -192,6 +199,8 @@ function TaskRow({
   onSkip,
   onSnooze,
   onOpen,
+  selected,
+  onToggleSelect,
 }: {
   task: Task;
   busy: boolean;
@@ -199,6 +208,8 @@ function TaskRow({
   onSkip: () => void;
   onSnooze: (iso: string) => void;
   onOpen: () => void;
+  selected?: boolean;
+  onToggleSelect?: () => void;
 }) {
   const [snoozeOpen, setSnoozeOpen] = useState(false);
   const { Icon } = TYPE_META[task.task_type];
@@ -214,9 +225,20 @@ function TaskRow({
         gap: 12,
         padding: '12px 16px',
         borderBottom: '1px solid var(--color-gray-100)',
-        background: '#fff',
+        background: selected ? '#EFF6FF' : '#fff',
       }}
     >
+      {/* Bulk-select checkbox */}
+      {onToggleSelect && (
+        <button
+          type="button"
+          onClick={(e) => { e.stopPropagation(); onToggleSelect(); }}
+          aria-label={selected ? 'Deselect task' : 'Select task'}
+          style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0, flexShrink: 0, color: selected ? '#1A7EE8' : '#D1D5DB', display: 'inline-flex', alignItems: 'center' }}
+        >
+          {selected ? <CheckSquare size={16} style={{ color: '#1A7EE8' }} /> : <Square size={16} />}
+        </button>
+      )}
       {/* Type icon */}
       <span
         aria-hidden="true"
@@ -370,6 +392,18 @@ export function MyTasksPage() {
   const [createOpen, setCreateOpen] = useState(false);
   const [busyId, setBusyId] = useState<number | null>(null);
 
+  // View mode (list vs kanban). Kanban only available when TASKS_V2 = true.
+  const [viewMode, setViewMode] = useState<'list' | 'kanban'>('list');
+
+  // Bulk selection state (works regardless of TASKS_V2)
+  const [selectMode, setSelectMode] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
+  // Bulk progress feedback
+  const [bulkProgress, setBulkProgress] = useState<{ done: number; total: number } | null>(null);
+  // Bulk action inputs (shown inline in bulk bar)
+  const [bulkDueDateInput, setBulkDueDateInput] = useState('');
+  const abortControllerRef = useRef<AbortController | null>(null);
+
   // Reload-token guard (review ALT-273B): rapid actions each call load(); without
   // this, an earlier listMyTasks() could resolve AFTER a later one and clobber the
   // fresher result. Only the newest in-flight load applies its result.
@@ -423,6 +457,51 @@ export function MyTasksPage() {
     else if (task.contact_id != null) navigate(`/contacts/${task.contact_id}`);
   }
 
+  /* ---- Bulk helpers ---- */
+
+  function toggleSelectMode() {
+    setSelectMode((v) => {
+      if (v) setSelectedIds(new Set()); // clear on exit
+      return !v;
+    });
+  }
+
+  function toggleSelectTask(taskId: number) {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(taskId)) next.delete(taskId);
+      else next.add(taskId);
+      return next;
+    });
+  }
+
+  function toggleSelectAll() {
+    if (selectedIds.size === rows.length) {
+      setSelectedIds(new Set());
+    } else {
+      setSelectedIds(new Set(rows.map((t) => t.task_id)));
+    }
+  }
+
+  async function runBulkUpdate(patch: TaskBulkPatch, label: string) {
+    const ids = [...selectedIds];
+    if (ids.length === 0) return;
+    abortControllerRef.current = new AbortController();
+    setBulkProgress({ done: 0, total: ids.length });
+    const result = await bulkUpdateTasks(ids, patch, {
+      onProgress: (done, total) => setBulkProgress({ done, total }),
+      signal: abortControllerRef.current.signal,
+    });
+    setBulkProgress(null);
+    if (result.failed > 0) {
+      toast.error(result.error ?? `${result.failed} task(s) failed to update`);
+    } else {
+      toast.success(`${label} — ${result.ok} task${result.ok === 1 ? '' : 's'} updated`);
+    }
+    setSelectedIds(new Set());
+    load();
+  }
+
   async function handleDone(task: Task) {
     setBusyId(task.task_id);
     const { error: e } = await markDone(task.task_id);
@@ -465,6 +544,40 @@ export function MyTasksPage() {
     load();
   }
 
+  /* ---- Derived view sections (assigned before JSX return to avoid tsc-b issues with && + JSX) ---- */
+  let kanbanSection: React.ReactNode = null;
+  if (viewMode === 'kanban' && TASKS_V2) {
+    if (loading) {
+      kanbanSection = <SkeletonTable rows={6} cols={4} />;
+    } else if (error) {
+      kanbanSection = (
+        <div role="alert" style={{ padding: '24px 0', color: '#B91C1C', fontSize: 13 }}>
+          <AlertCircle size={18} style={{ display: 'inline', marginRight: 6 }} />
+          {error}
+        </div>
+      );
+    } else {
+      kanbanSection = <TasksKanbanView groups={groups} onCardClick={openRecord} />;
+    }
+  }
+  const showListView = !(viewMode === 'kanban' && TASKS_V2);
+
+  // toolbarBtn style (mirrors LeadsKanbanPage)
+  const toolbarBtn: React.CSSProperties = {
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: 5,
+    fontSize: 12,
+    fontWeight: 500,
+    padding: '5px 10px',
+    height: 30,
+    borderRadius: 6,
+    border: '1px solid #D1D5DB',
+    background: '#fff',
+    color: '#374151',
+    cursor: 'pointer',
+  };
+
   return (
     <AppShell title="My Tasks">
       <div style={{ maxWidth: 980, margin: '0 auto' }}>
@@ -475,30 +588,189 @@ export function MyTasksPage() {
             alignItems: 'center',
             justifyContent: 'space-between',
             marginBottom: 16,
+            flexWrap: 'wrap',
+            gap: 8,
           }}
         >
           <h1 style={{ fontSize: 20, fontWeight: 600, color: '#111827', margin: 0 }}>My Tasks</h1>
-          <button
-            type="button"
-            onClick={() => setCreateOpen(true)}
+
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            {/* Bulk select toggle (always available, not gated by TASKS_V2) */}
+            <button
+              type="button"
+              onClick={toggleSelectMode}
+              style={{
+                ...toolbarBtn,
+                background: selectMode ? '#EFF6FF' : '#fff',
+                borderColor: selectMode ? '#1A7EE8' : '#D1D5DB',
+                color: selectMode ? '#1A7EE8' : '#374151',
+              }}
+            >
+              <CheckSquare size={13} />
+              {selectMode ? 'Cancel select' : 'Select'}
+            </button>
+
+            {/* View toggle — only shown when TASKS_V2 is true */}
+            {TASKS_V2 && (
+              <div style={{ display: 'inline-flex', border: '1px solid #D1D5DB', borderRadius: 6, overflow: 'hidden' }}>
+                <button
+                  type="button"
+                  onClick={() => setViewMode('list')}
+                  title="List view"
+                  style={{
+                    ...toolbarBtn,
+                    border: 'none',
+                    borderRadius: 0,
+                    borderRight: '1px solid #D1D5DB',
+                    background: viewMode === 'list' ? '#EFF6FF' : '#fff',
+                    color: viewMode === 'list' ? '#1A7EE8' : '#374151',
+                  }}
+                >
+                  <List size={13} />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setViewMode('kanban')}
+                  title="Kanban view"
+                  style={{
+                    ...toolbarBtn,
+                    border: 'none',
+                    borderRadius: 0,
+                    background: viewMode === 'kanban' ? '#EFF6FF' : '#fff',
+                    color: viewMode === 'kanban' ? '#1A7EE8' : '#374151',
+                  }}
+                >
+                  <LayoutGrid size={13} />
+                </button>
+              </div>
+            )}
+
+            <button
+              type="button"
+              onClick={() => setCreateOpen(true)}
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 6,
+                background: '#1A7EE8',
+                color: '#fff',
+                fontSize: 13,
+                fontWeight: 500,
+                borderRadius: 6,
+                padding: '8px 14px',
+                border: 'none',
+                cursor: 'pointer',
+                height: 36,
+              }}
+            >
+              <Plus size={15} /> New task
+            </button>
+          </div>
+        </div>
+
+        {/* Bulk progress bar */}
+        {bulkProgress && (
+          <div style={{ marginBottom: 12 }}>
+            <div style={{ height: 4, background: '#E5E7EB', borderRadius: 999, overflow: 'hidden' }}>
+              <div
+                style={{
+                  height: '100%',
+                  background: '#1A7EE8',
+                  borderRadius: 999,
+                  width: `${Math.round((bulkProgress.done / bulkProgress.total) * 100)}%`,
+                  transition: 'width 0.15s ease',
+                }}
+              />
+            </div>
+            <div style={{ fontSize: 11, color: '#6B7280', marginTop: 3 }}>
+              Processing {bulkProgress.done}/{bulkProgress.total}…
+            </div>
+          </div>
+        )}
+
+        {/* Bulk action bar — shown when tasks are selected */}
+        {selectMode && selectedIds.size > 0 && (
+          <div
             style={{
-              display: 'inline-flex',
+              display: 'flex',
               alignItems: 'center',
-              gap: 6,
-              background: '#1A7EE8',
-              color: '#fff',
-              fontSize: 13,
-              fontWeight: 500,
-              borderRadius: 6,
-              padding: '8px 14px',
-              border: 'none',
-              cursor: 'pointer',
-              height: 36,
+              gap: 8,
+              flexWrap: 'wrap',
+              padding: '10px 14px',
+              marginBottom: 12,
+              background: '#EFF6FF',
+              border: '1px solid #BFDBFE',
+              borderRadius: 8,
             }}
           >
-            <Plus size={15} /> New task
-          </button>
-        </div>
+            <span style={{ fontSize: 12, fontWeight: 600, color: '#1D4ED8', whiteSpace: 'nowrap' }}>
+              {selectedIds.size} task{selectedIds.size === 1 ? '' : 's'} selected
+            </span>
+
+            <button type="button" style={toolbarBtn} onClick={() => runBulkUpdate({ status: 'DONE' }, 'Marked done')}>
+              <Check size={12} /> Mark done
+            </button>
+            <button type="button" style={toolbarBtn} onClick={() => runBulkUpdate({ status: 'SKIPPED' }, 'Skipped')}>
+              <SkipForward size={12} /> Skip
+            </button>
+
+            {/* Change due date */}
+            <div style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
+              <input
+                type="datetime-local"
+                value={bulkDueDateInput}
+                onChange={(e) => setBulkDueDateInput(e.target.value)}
+                style={{
+                  fontSize: 12,
+                  padding: '4px 8px',
+                  border: '1px solid #D1D5DB',
+                  borderRadius: 6,
+                  height: 30,
+                  background: '#fff',
+                  color: '#374151',
+                }}
+              />
+              <button
+                type="button"
+                style={toolbarBtn}
+                disabled={!bulkDueDateInput}
+                onClick={() => {
+                  if (bulkDueDateInput) {
+                    runBulkUpdate({ due_at: new Date(bulkDueDateInput).toISOString() }, 'Due date updated');
+                    setBulkDueDateInput('');
+                  }
+                }}
+              >
+                Set due date
+              </button>
+            </div>
+
+            {/* Priority */}
+            <select
+              style={{ fontSize: 12, padding: '4px 8px', border: '1px solid #D1D5DB', borderRadius: 6, height: 30, background: '#fff', color: '#374151', cursor: 'pointer' }}
+              defaultValue=""
+              onChange={(e) => {
+                if (e.target.value) {
+                  runBulkUpdate({ priority: e.target.value as TaskBulkPatch['priority'] }, 'Priority updated');
+                  e.target.value = '';
+                }
+              }}
+            >
+              <option value="" disabled>Set priority…</option>
+              <option value="HIGH">High</option>
+              <option value="NORMAL">Normal</option>
+              <option value="LOW">Low</option>
+            </select>
+
+            <button
+              type="button"
+              style={{ ...toolbarBtn, marginLeft: 'auto', color: '#9CA3AF' }}
+              onClick={() => { setSelectedIds(new Set()); setSelectMode(false); }}
+            >
+              Clear
+            </button>
+          </div>
+        )}
 
         {/* Project-scope note: tasks aren't project-scoped yet (no project field). */}
         {scopedProjectName && (
@@ -508,155 +780,176 @@ export function MyTasksPage() {
           </p>
         )}
 
-        {/* Tabs */}
-        <div
-          role="tablist"
-          aria-label="Task buckets"
-          style={{
-            display: 'flex',
-            gap: 4,
-            borderBottom: '1px solid var(--color-gray-200, #E5E7EB)',
-            marginBottom: 12,
-          }}
-        >
-          {TABS.map((tab) => {
-            const active = tab === activeTab;
-            const danger = tab === 'Overdue' && counts.Overdue > 0;
-            return (
-              <button
-                key={tab}
-                role="tab"
-                aria-selected={active}
-                type="button"
-                onClick={() => setActiveTab(tab)}
-                style={{
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: 6,
-                  padding: '8px 14px',
-                  fontSize: 13,
-                  fontWeight: active ? 600 : 500,
-                  color: active ? '#1A7EE8' : danger ? '#B91C1C' : '#6B7280',
-                  background: 'transparent',
-                  border: 'none',
-                  borderBottom: active ? '2px solid #1A7EE8' : '2px solid transparent',
-                  cursor: 'pointer',
-                  marginBottom: -1,
-                }}
-              >
-                {tab}
-                <span
-                  style={{
-                    minWidth: 18,
-                    height: 18,
-                    borderRadius: 9,
-                    padding: '0 5px',
-                    fontSize: 11,
-                    fontWeight: 700,
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    background: danger ? '#FEE2E2' : 'var(--color-gray-100, #F3F4F6)',
-                    color: danger ? '#B91C1C' : '#6B7280',
-                  }}
-                >
-                  {counts[tab]}
-                </span>
-              </button>
-            );
-          })}
-        </div>
-
-        {/* Body */}
-        {loading ? (
-          <SkeletonTable rows={6} cols={4} />
-        ) : error ? (
-          <div
-            role="alert"
-            style={{
-              display: 'flex',
-              flexDirection: 'column',
-              alignItems: 'center',
-              gap: 10,
-              padding: '48px 16px',
-              border: '1px solid #FECACA',
-              borderRadius: 'var(--radius-card, 10px)',
-              background: '#FEF2F2',
-              color: '#B91C1C',
-            }}
-          >
-            <AlertCircle size={22} />
-            <div style={{ fontSize: 14, fontWeight: 500 }}>Could not load your tasks</div>
-            <div style={{ fontSize: 12, color: '#9B1C1C', textAlign: 'center', maxWidth: 420 }}>
-              {error}
-            </div>
-            <button
-              type="button"
-              onClick={load}
+        {/* Kanban view (TASKS_V2 only) — built before return, rendered here */}
+        {kanbanSection}
+        {showListView && (
+          <>
+            {/* Tabs (list view only) */}
+            <div
+              role="tablist"
+              aria-label="Task buckets"
               style={{
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: 6,
-                marginTop: 4,
-                height: 32,
-                padding: '0 14px',
-                borderRadius: 6,
-                border: '1px solid #FCA5A5',
-                background: '#fff',
-                color: '#B91C1C',
-                fontSize: 13,
-                fontWeight: 500,
-                cursor: 'pointer',
+                display: 'flex',
+                gap: 4,
+                borderBottom: '1px solid var(--color-gray-200, #E5E7EB)',
+                marginBottom: 12,
               }}
             >
-              <RefreshCw size={14} /> Retry
-            </button>
-          </div>
-        ) : rows.length === 0 ? (
-          <div
-            style={{
-              padding: '56px 16px',
-              textAlign: 'center',
-              border: '1px solid var(--color-gray-200, #E5E7EB)',
-              borderRadius: 'var(--radius-card, 10px)',
-              background: '#fff',
-              color: '#6B7280',
-            }}
-          >
-            <div style={{ fontSize: 14, fontWeight: 500, color: '#374151' }}>
-              {activeTab === 'Overdue'
-                ? 'No tasks due — nice and clear!'
-                : activeTab === 'Completed'
-                  ? 'Nothing completed yet.'
-                  : `No ${activeTab.toLowerCase()} tasks.`}
+              {/* Select-all checkbox when in select mode */}
+              {selectMode && rows.length > 0 && (
+                <button
+                  type="button"
+                  onClick={toggleSelectAll}
+                  aria-label={selectedIds.size === rows.length ? 'Deselect all' : 'Select all'}
+                  style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '0 4px', color: selectedIds.size === rows.length ? '#1A7EE8' : '#D1D5DB', display: 'inline-flex', alignItems: 'center', alignSelf: 'center' }}
+                >
+                  {selectedIds.size === rows.length
+                    ? <CheckSquare size={16} style={{ color: '#1A7EE8' }} />
+                    : <Square size={16} />}
+                </button>
+              )}
+              {TABS.map((tab) => {
+                const active = tab === activeTab;
+                const danger = tab === 'Overdue' && counts.Overdue > 0;
+                return (
+                  <button
+                    key={tab}
+                    role="tab"
+                    aria-selected={active}
+                    type="button"
+                    onClick={() => setActiveTab(tab)}
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: 6,
+                      padding: '8px 14px',
+                      fontSize: 13,
+                      fontWeight: active ? 600 : 500,
+                      color: active ? '#1A7EE8' : danger ? '#B91C1C' : '#6B7280',
+                      background: 'transparent',
+                      border: 'none',
+                      borderBottom: active ? '2px solid #1A7EE8' : '2px solid transparent',
+                      cursor: 'pointer',
+                      marginBottom: -1,
+                    }}
+                  >
+                    {tab}
+                    <span
+                      style={{
+                        minWidth: 18,
+                        height: 18,
+                        borderRadius: 9,
+                        padding: '0 5px',
+                        fontSize: 11,
+                        fontWeight: 700,
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        background: danger ? '#FEE2E2' : 'var(--color-gray-100, #F3F4F6)',
+                        color: danger ? '#B91C1C' : '#6B7280',
+                      }}
+                    >
+                      {counts[tab]}
+                    </span>
+                  </button>
+                );
+              })}
             </div>
-            {activeTab !== 'Completed' && (
-              <div style={{ fontSize: 12, marginTop: 4 }}>
-                Use “New task” to add a follow-up reminder.
+
+            {/* List body */}
+            {loading ? (
+              <SkeletonTable rows={6} cols={4} />
+            ) : error ? (
+              <div
+                role="alert"
+                style={{
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'center',
+                  gap: 10,
+                  padding: '48px 16px',
+                  border: '1px solid #FECACA',
+                  borderRadius: 'var(--radius-card, 10px)',
+                  background: '#FEF2F2',
+                  color: '#B91C1C',
+                }}
+              >
+                <AlertCircle size={22} />
+                <div style={{ fontSize: 14, fontWeight: 500 }}>Could not load your tasks</div>
+                <div style={{ fontSize: 12, color: '#9B1C1C', textAlign: 'center', maxWidth: 420 }}>
+                  {error}
+                </div>
+                <button
+                  type="button"
+                  onClick={load}
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: 6,
+                    marginTop: 4,
+                    height: 32,
+                    padding: '0 14px',
+                    borderRadius: 6,
+                    border: '1px solid #FCA5A5',
+                    background: '#fff',
+                    color: '#B91C1C',
+                    fontSize: 13,
+                    fontWeight: 500,
+                    cursor: 'pointer',
+                  }}
+                >
+                  <RefreshCw size={14} /> Retry
+                </button>
+              </div>
+            ) : rows.length === 0 ? (
+              <div
+                style={{
+                  padding: '56px 16px',
+                  textAlign: 'center',
+                  border: '1px solid var(--color-gray-200, #E5E7EB)',
+                  borderRadius: 'var(--radius-card, 10px)',
+                  background: '#fff',
+                  color: '#6B7280',
+                }}
+              >
+                <div style={{ fontSize: 14, fontWeight: 500, color: '#374151' }}>
+                  {activeTab === 'Overdue'
+                    ? 'No tasks due — nice and clear!'
+                    : activeTab === 'Completed'
+                      ? 'Nothing completed yet.'
+                      : `No ${activeTab.toLowerCase()} tasks.`}
+                </div>
+                {activeTab !== 'Completed' && (
+                  <div style={{ fontSize: 12, marginTop: 4 }}>
+                    Use "New task" to add a follow-up reminder.
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div
+                style={{
+                  border: '1px solid var(--color-gray-200, #E5E7EB)',
+                  borderRadius: 'var(--radius-card, 10px)',
+                  overflow: 'hidden',
+                  background: '#fff',
+                }}
+              >
+                {rows.map((task) => (
+                  <TaskRow
+                    key={task.task_id}
+                    task={task}
+                    busy={busyId === task.task_id}
+                    onDone={() => handleDone(task)}
+                    onSkip={() => handleSkip(task)}
+                    onSnooze={(iso) => handleSnooze(task, iso)}
+                    onOpen={() => openRecord(task)}
+                    selected={selectMode ? selectedIds.has(task.task_id) : undefined}
+                    onToggleSelect={selectMode ? () => toggleSelectTask(task.task_id) : undefined}
+                  />
+                ))}
               </div>
             )}
-          </div>
-        ) : (
-          <div
-            style={{
-              border: '1px solid var(--color-gray-200, #E5E7EB)',
-              borderRadius: 'var(--radius-card, 10px)',
-              overflow: 'hidden',
-              background: '#fff',
-            }}
-          >
-            {rows.map((task) => (
-              <TaskRow
-                key={task.task_id}
-                task={task}
-                busy={busyId === task.task_id}
-                onDone={() => handleDone(task)}
-                onSkip={() => handleSkip(task)}
-                onSnooze={(iso) => handleSnooze(task, iso)}
-                onOpen={() => openRecord(task)}
-              />
-            ))}
-          </div>
+          </>
         )}
       </div>
 

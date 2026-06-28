@@ -32,8 +32,13 @@ export interface LogDispositionModalProps {
   projectId?: number | null;
   ownerUserId?: number | null;
   actorId?: string | null;
-  /** Called after the call is successfully logged. */
-  onLogged?: () => void;
+  /**
+   * Called after the call is successfully logged.
+   * Receives the interactionId of the new interaction row so callers can
+   * link it to a task (ALT-430 auto-complete flow). May be undefined when
+   * the interaction row's id is unavailable.
+   */
+  onLogged?: (interactionId?: number | null) => void;
 }
 
 export function LogDispositionModal({
@@ -70,8 +75,8 @@ export function LogDispositionModal({
         projectId={projectId}
         ownerUserId={ownerUserId}
         actorId={actorId}
-        onLogged={() => {
-          onLogged?.();
+        onLogged={({ interactionId }) => {
+          onLogged?.(interactionId);
           onClose();
         }}
       />

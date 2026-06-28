@@ -542,3 +542,42 @@ Progress bar: same `bulkProgress` state pattern as CompaniesPage (`useState<{ do
 5. **Location state for auto-complete from MyTasksPage** — `navigate(path, { state })` works, but the detail page must read `location.state` in a `useEffect` that runs once on mount. Guard with `useRef(false)` to prevent double-firing from React StrictMode.
 
 6. **RLS on `task` table** — RLS policy must allow each agent to SELECT tasks where `owner_user_id = auth.uid()` AND tasks linked to records they own. The `apply-task-rls.cjs` migration must be verified on the prod schema before launch.
+
+---
+
+## Implemented v1
+
+**Session:** 2026-06-28 | **Ticket:** ALT-430 | **Build status:** CLEAN (`tsc -b && vite build` passes)
+
+### Files created
+| File | Purpose |
+|---|---|
+| `new-code/web/src/lib/tasksFlags.ts` | `TASKS_V2 = false` feature flag; flip to `true` after migration runs |
+| `new-code/web/src/components/tasks/CompleteTodoPopup.tsx` | Outcome-note popup for TODO/MEETING completion; delegates to `markDone` when flag off |
+| `new-code/web/src/components/tasks/TaskKanbanCard.tsx` | Single card for kanban board (type icon, subject, assoc label, priority chip, relative due) |
+| `new-code/web/src/components/tasks/TasksKanbanView.tsx` | Kanban board using `GenericKanban<Task>` with OVERDUE/TODAY/UPCOMING/DONE columns; placeholder when flag off |
+| `new-code/web/src/components/tasks/RecordActivityHub.tsx` | In-record activity hub (renders `null` when flag off); auto-complete CALL→LogDisposition→completeTask flow |
+| `new-code/migration/apply-task-enhancements.cjs` | **STAGED — NOT run** (ALT-431): adds `completed_at`, `linked_interaction_id`, `outcome_note` columns + compound indexes to `public.task` |
+
+### Files modified
+| File | Change |
+|---|---|
+| `new-code/web/src/data/tasks.ts` | Added `listTasksForRecord`, `completeTask`, `bulkUpdateTasks`; added `TaskBulkPatch`, `BulkTaskResult`, `BulkTaskProgress` interfaces |
+| `new-code/web/src/data/projectStatus.ts` | `appendInteraction()` now returns `{ interactionId, error }`; `logDisposition()` returns same; `logCompanyContactActivity` destructures correctly |
+| `new-code/web/src/components/ui/DispositionForm.tsx` | `onLogged` prop now passes `{ disposition, noteText, interactionId }` |
+| `new-code/web/src/components/calls/LogDispositionModal.tsx` | `onLogged` prop now `(interactionId?: number | null) => void`; forwards `interactionId` from DispositionForm |
+| `new-code/web/src/pages/MyTasksPage.tsx` | Kanban toggle (TASKS_V2-gated), bulk select mode + bulk action bar (mark done / skip / set due date / set priority), `TasksKanbanView` integration |
+
+### Architecture decisions
+- **TASKS_V2 flag off by default** — zero impact on all existing pages until migration runs and flag is flipped. `RecordActivityHub` returns `null`; `TasksKanbanView` shows "coming soon" placeholder.
+- **Auto-complete chain:** `LogDispositionModal.onLogged(interactionId)` → `completeTask(taskId, { linked_interaction_id: interactionId })` — only active when TASKS_V2=true.
+- **Build fix:** `tsc -b` (composite build mode) choked on JSX inside `&&` chains inside JSX. Fixed by computing `kanbanSection: React.ReactNode` as a plain variable before the `return`, then rendering `{kanbanSection}` inline.
+- **Smart-quote bug:** One edit session introduced Unicode curly-quote chars (U+201C/U+201D) into JSX attribute strings. Fixed by a Python byte-replace pass across MyTasksPage.tsx.
+
+### What still requires owner action before v1 goes live
+1. **Run staged migration** `node new-code/migration/apply-task-enhancements.cjs` (adds columns + indexes). Requires `.env` with `PG_CONNECTION_STRING` in `new-code/migration/`.
+2. **Flip flag:** set `TASKS_V2 = true` in `new-code/web/src/lib/tasksFlags.ts` after migration.
+3. **Push** (`git push altleads clean-main:main`) when owner says "push".
+4. **`/tasks/board` route** — spec §3.1 mentions a standalone kanban route. Not added yet; kanban view is inline in MyTasksPage via view-mode toggle. Add route when standalone page is needed.
+5. **RecordActivityHub wiring** — component is built but not yet dropped into LeadDetailPage / ContactDetailPage / CompanyDetailPage. Add `<RecordActivityHub recordType="lead" recordId={lead.lead_id} />` (guarded by flag so it's a no-op until migration runs).
+6. **RLS verification** — validate `apply-task-rls.cjs` against prod schema before flipping flag to true.
