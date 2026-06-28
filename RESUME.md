@@ -21,9 +21,13 @@ Record-ID export · keyboard-first nav · density fan-out · /health build-stamp
 - `docs/product/CRM-PARITY-HUBSPOT-ZOHO.md`, `docs/product/BULK-OPS-AUDIT.md`.
 - Backlog tracker has a new **Roadmap sheet** = all 135 discovery tickets (regen: `node new-code/web/scripts/gen-backlog-tracker.cjs`). Review Hub: DEC-09..14.
 
-## DONE since the 2026-06-27 push (committed locally, UNPUSHED)
-- ✅ **ALT-414 Sticky table headers** (commit a80a103) — all 5 list pages; height-bounded scroll container so headers stay visible.
-- ✅ **ALT-401 Bulk progress bar + cancel** (commit 3d266c7) — additive `BulkProgress {onProgress, signal}` through `bulkActions.ts`/`assignment.ts` (abort only BETWEEN records) + shared `BulkProgressBar` wired into the 3 bulk modals across Leads/Meetings/Companies/Contacts.
+## DONE since the 2026-06-27 push (committed locally, UNPUSHED — 9 commits)
+> To deploy: see **`docs/PUSH-GUIDE.md`**. `git log --oneline altleads/main..HEAD` shows exactly this list. Push: `git push altleads clean-main:main`.
+- ✅ **ALT-414 Sticky table headers** (a80a103) · ✅ **ALT-415 Bulk progress+cancel** (3d266c7).
+- ✅ **ALT-399 Import Wizard (frontend)** (5675d00) — admin-only; parse/auto-map/validate/preview; ZERO DB writes (server endpoint gated, DEC-14).
+- ✅ **ALT-416/432 Atomic merge** (d5b0b44) — staged `apply-merge-rpc.cjs` + client path behind `USE_MERGE_RPC=false` (prod unchanged until migration applied) + fixed false "recoverable" merge copy.
+- ✅ **ALT-428/436 Trust fixes** (d61c910) — Meetings/Contacts row-cap truncation banners + clear Contacts selection on filter change.
+- 📄 **Docs:** CRM-CAPABILITY-CENSUS, DATA-OPS-LAUNCH-BLOCKERS (6-agent wave, ALT-428..449), **MASTER-FINDINGS-INDEX** (all audits deduped→1), **TASKS-FOR-ANTIGRAVITY** (guided safe tasks), **docs/PUSH-GUIDE.md**.
 
 ## NEXT (on "keep going") — non-dependent quick-wins queue
 1. **Grid-view keyboard nav** — wire `useListKeyboardNav` into `EditableGrid.tsx`. ⚠️ NOTE: the page-level nav hook is mounted even in grid view → a 2nd listener would double-fire j/k. Coordinate (disable the page hook when grid view is active, or have the page pass its existing `focusedId` down) — NOT a blind 1-file drop-in.
