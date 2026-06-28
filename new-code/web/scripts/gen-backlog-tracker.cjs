@@ -2713,6 +2713,15 @@ const TICKETS = [
         'Save a list view (serialized filter JSON + sort + visible columns + name) keyed per project_id + user_id. Extends data/views.ts. Decision: per-project-per-user (Ankit 2026-06-28). May need a saved_view table.'),
       V('ALT-462','Call logs not working — fix','Bug','P1','In Progress',
         'Ankit 2026-06-28: call logs not working. Diagnose root cause (write/display/RLS/schema-mismatch) and fix. callLogs.ts/calls.ts/components/calls + LeadDetail call tab + activityTimeline.'),
+      // ─── Tasks-module overhaul 2026-06-28 (spec: TASKS-OVERHAUL-SPEC.md) ───
+      V('ALT-465','Task Kanban view','Feature','P1','In Progress',
+        'Tasks not manageable like other modules: add a Kanban board (group by status and/or due bucket Overdue/Today/Week/Later), reusing LeadsKanbanPage pattern. Ankit 2026-06-28.'),
+      V('ALT-466','In-record activity hub (Zoho-style) — manage tasks/calls/notes inside the record','Feature','P1','In Progress',
+        'A record (lead/contact/company) manages its associated activities/cadence/calls/email/tasks/notes from inside the detail page (Zoho Open/Closed Activities + quick actions Log-Call/Add-Task/Note). Universal component across all 3 modules; reuse leadWorkspace.ts + activityTimeline.ts. Ankit 2026-06-28.'),
+      V('ALT-467','Task auto-complete on action log (call task -> LogCall popup in record -> task done)','Feature','P1','In Progress',
+        'Clicking a task opens its record + the right popup: CALL task opens LogCallModal in-record and on save auto-marks the task done + links the call; normal task opens a complete/outcome popup that closes it. Today the task never auto-finishes. Ankit 2026-06-28.'),
+      V('ALT-468','Bulk update in Task manager','Feature','P2','In Progress',
+        'MyTasksPage bulk-select + bulk update status/due/assignee/priority, reusing bulkActions.ts pattern. Ankit 2026-06-28.'),
     ];
   })()),
 
