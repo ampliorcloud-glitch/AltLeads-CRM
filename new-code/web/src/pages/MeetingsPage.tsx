@@ -294,6 +294,10 @@ export function MeetingsPage() {
   const [cities, setCities] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
+  // True when fetchMeetings hit its 2,000-row hard cap and older meetings were
+  // dropped server-side (ALT-428). Surfaced as a banner so the list never looks
+  // complete when it isn't.
+  const [truncated, setTruncated] = useState(false);
   // Bump to re-run the load effect (Retry on error). ALT-215 #12.
   const [reloadKey, setReloadKey] = useState(0);
 
@@ -358,6 +362,7 @@ export function MeetingsPage() {
       setStatuses(result.statuses);
       setIndustries(result.industries);
       setCities(result.cities);
+      setTruncated(result.truncated);
       setLoadError(result.error);
       setLoading(false);
     }).catch(() => {
@@ -1003,8 +1008,35 @@ export function MeetingsPage() {
         {/* Active-filter chips — what's filtering the list, removable + Clear all. */}
         <ActiveFilters chips={filterChips} onClearAll={clearFilters} />
 
+        {/* Silent-truncation banner (ALT-428) — fetchMeetings caps at 2,000 rows
+            and drops older meetings; warn so the list never looks complete when
+            it isn't. This also qualifies the "select all N matching" claim below:
+            allMatchingIds is built from the loaded (capped) set, so "all N" means
+            all LOADED matching meetings — not every meeting that exists. */}
+        {!loading && !loadError && truncated && (
+          <div
+            role="status"
+            className="flex items-center gap-2 rounded-md"
+            style={{
+              background: '#FFFBEB',
+              border: '1px solid #FDE68A',
+              color: '#92400E',
+              fontSize: 12.5,
+              padding: '7px 12px',
+            }}
+          >
+            <AlertCircle size={14} style={{ color: '#D97706', flexShrink: 0 }} />
+            <span>
+              Showing the first <strong>2,000</strong> meetings. Refine filters to see the rest.
+            </span>
+          </div>
+        )}
+
         {/* "Select all N matching" bar — bridges page-level checkbox to the full
-            filtered set (mirrors LeadsPage). */}
+            filtered set (mirrors LeadsPage). NOTE (ALT-436): when `truncated` is
+            true the "N matching" set covers only the loaded (capped) rows; the
+            banner above makes the cap explicit so select-all can't imply it hit
+            meetings that were never loaded. */}
         {!loading && !loadError && (
           <SelectAllMatchingBar
             noun="meeting"

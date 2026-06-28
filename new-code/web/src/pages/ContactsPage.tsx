@@ -311,6 +311,9 @@ export function ContactsPage() {
   const [allContacts, setAllContacts] = useState<Contact[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
+  // True when fetchAllContacts hit its safety ceiling (CONTACTS_MAX = 50,000) and
+  // more rows may exist server-side than were loaded (ALT-428). Surfaced as a banner.
+  const [truncated, setTruncated] = useState(false);
   // Bump to re-run the contacts-load effect (Retry on error). ALT-215 #12.
   const [reloadKey, setReloadKey] = useState(0);
   // Persisted across refresh per browser (ALT-369).
@@ -494,10 +497,11 @@ export function ContactsPage() {
     let cancelled = false;
     setLoading(true);
     setLoadError(null);
-    fetchAllContacts().then(({ contacts, error }) => {
+    fetchAllContacts().then(({ contacts, error, truncated: cap }) => {
       if (cancelled) return;
       setAllContacts(contacts);
       setLoadError(error);
+      setTruncated(!!cap);
       setLoading(false);
     });
     return () => { cancelled = true; };
@@ -659,6 +663,9 @@ export function ContactsPage() {
   const setFilter = <K extends keyof Filters>(key: K, value: Filters[K]) => {
     setFilters((prev) => ({ ...prev, [key]: value }));
     setPageIndex(0);
+    // Clear selection so a bulk action can't act on rows filtered out of view
+    // (mirrors Leads / Companies / Wishlist / Meetings setFilter). ALT-436.
+    sel.clear();
   };
 
   // Unique companies and cities for filter dropdowns
@@ -1349,6 +1356,27 @@ export function ContactsPage() {
             ) : undefined
           }
         />
+
+        {/* Silent-truncation banner (ALT-428) — the loader stops at a 50,000-row
+            safety ceiling; warn so the list never looks complete when it isn't. */}
+        {!loading && !loadError && truncated && (
+          <div
+            role="status"
+            className="flex items-center gap-2 rounded-md"
+            style={{
+              background: '#FFFBEB',
+              border: '1px solid #FDE68A',
+              color: '#92400E',
+              fontSize: 12.5,
+              padding: '7px 12px',
+            }}
+          >
+            <AlertCircle size={14} style={{ color: '#D97706', flexShrink: 0 }} />
+            <span>
+              Showing the first <strong>50,000</strong> contacts. Refine filters to see the rest.
+            </span>
+          </div>
+        )}
 
         {/* Active-filter chips (ALT) — removable chips for every applied filter
             (free-text search excluded). "Clear all" reuses the same reset the
