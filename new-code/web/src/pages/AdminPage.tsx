@@ -66,12 +66,12 @@ function Restricted() {
 }
 
 export default function AdminPage() {
-  const { profile } = useAuth();
+  const { profile, isAdmin } = useAuth();
   const [tab, setTab] = useState<TabKey>('users');
   const [lookups, setLookups] = useState<AdminLookups | null>(null);
   const [lookupsError, setLookupsError] = useState<string | null>(null);
 
-  const isAdmin = profile?.role === 'ADMIN';
+  // isAdmin via useAuth() (roles[]-aware) so a dual-role admin isn't locked out (GAP-8).
   const actorId = profile?.user_id != null ? String(profile.user_id) : '';
 
   useEffect(() => {

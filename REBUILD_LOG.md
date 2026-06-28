@@ -1132,6 +1132,15 @@ Ankit: "spread sub agents — research Apollo/HubSpot, build import/merge/etc, f
 - **DEC-13 (PII export, ALT-403):** Export is gated by a **per-USER permission** — nobody (not even a normal admin) can export unless granted; "data people" get admin access + this grant. Needs a per-user `can_export` flag + UI gating + (for true enforcement) server-side export. OPEN Q: who may GRANT the flag (super-admin only?).
 - PENDING explanation to Ankit: recycle-bin restore RLS validation (throwaway login) + ALT-431 server-side write layer.
 
+### 2026-06-28 (cont. 2) — HungerBox = first launch project + orchestrated build program
+Ankit: launch the CRM on the **HungerBox** project first. Will upload **~10k large companies + ~100k contacts** we already hold. New domain requirements (all captured in **`docs/product/HUNGERBOX-LAUNCH.md`**, tickets ALT-452..457):
+- **DNC** (Do-Not-Contact) at **whole-company OR company+location/site** scope, set by agent or admin, who/when/reason history. Effect: contacts in a DNC company+city render **reddish-blur + non-contactable** (call/email/log disabled) — location-aware.
+- **Feasibility** (non-feasible) at company OR site scope — same reddish treatment, **tracked separately** from DNC (compliance vs business-fit).
+- **Metro prioritisation** of contacts (Indian Tier-1 cities vs others) — sort/filter for metro-first queues.
+- **Company-site entity** + per-site **pre-qualified questions** (total employees, commercial model, …) — shown so agents know why to call/not-call; **editable with full history** (what/by-whom/when/old→new). **Feasible-only + metro-first work-queue filters.**
+- **Role walkthroughs + standing QC** (`docs/product/ROLE-WALKTHROUGHS.md`): step-by-step happy path per role (first login → daily job) + repeatable QC checklist, so PM doesn't hand-UAT every user.
+**Orchestration (Sonnet subagents, disjoint file areas / separate build targets to avoid races):** wave-1 = (A) HungerBox companies/contacts domain [sole web-build] · (C) server-side write **gatekeeper** ALT-431 in notify-service · (D) role-walkthroughs+QC docs. Wave-2 (after A) = import write-engine (DEC-14) · DEC-03 owner-resolution flip · automation/event-spine. All new behavior ships **dark** behind flags (`HUNGERBOX_FEATURES`, `USE_WRITE_GATEWAY`) until migrations applied + flipped. Tracker tickets ALT-452..457 added (In Progress). NOT pushed.
+
 ---
 ## 2026-06-26 — Amp Intranet planned to share the CRM/Client-Portal stack (new doc)
 Ankit opened `Amp-Intranet/Amp PRD.md` (v1.0 "Amp — Amplior Employee Portal" — mobile-first staff portal: Home/Craft/Culture/Me/Tools+Knowledge) and asked to plan it so it **shares the same DB as the Client Portal**, with **CRM + Client Portal + Intranet all hosted the same way**. Wrote **`docs/product/AMP-INTRANET.md`** — the architecture/integration plan (the PRD stays the product spec).
