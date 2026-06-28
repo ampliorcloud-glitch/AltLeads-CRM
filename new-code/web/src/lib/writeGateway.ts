@@ -82,7 +82,14 @@ export type GatewayAction =
   | 'lead.reassign'
   | 'record.markDnc'
   | 'record.setFeasibility'
+  // ── Import write-engine (DEC-14) ──
+  | 'company.import'
+  | 'contact.import'
   | 'lead.import'
+  | 'company.importUndo'
+  | 'contact.importUndo'
+  | 'lead.importUndo'
+  // ── Other ──
   | 'lead.export'
   | 'contact.markDnc'
   | 'ownership.reassign'
@@ -195,7 +202,14 @@ export function roleCanCall(role: string | null | undefined, action: GatewayActi
     'lead.reassign':        ['ADMIN', 'TEAM_LEAD'],
     'record.markDnc':       ['ADMIN', 'TEAM_LEAD', 'AGENT', 'QC'],
     'record.setFeasibility':['ADMIN', 'TEAM_LEAD', 'QC'],
+    // Import write-engine (DEC-14)
+    'company.import':       ['ADMIN'],
+    'contact.import':       ['ADMIN'],
     'lead.import':          ['ADMIN'],
+    'company.importUndo':   ['ADMIN'],
+    'contact.importUndo':   ['ADMIN'],
+    'lead.importUndo':      ['ADMIN'],
+    // Other
     'lead.export':          ['ADMIN', 'TEAM_LEAD'],
     'contact.markDnc':      ['ADMIN', 'TEAM_LEAD', 'AGENT', 'QC'],
     'ownership.reassign':   ['ADMIN'],
