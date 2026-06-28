@@ -38,6 +38,8 @@ interface Tab {
 const TABS: Tab[] = [
   { id: 'company', label: 'Companies' },
   { id: 'contact', label: 'Contacts' },
+  { id: 'lead', label: 'Leads' },
+  { id: 'meeting', label: 'Meetings' },
 ];
 
 /* ------------------------------------------------------------------ */
@@ -94,7 +96,11 @@ export function RecycleBinPage() {
 
   /* ── Restore handler ── */
   async function handleRestore(record: DeletedRecord) {
-    const entityLabel = activeTab === 'company' ? 'company' : 'contact';
+    const entityLabel =
+      activeTab === 'company' ? 'company'
+      : activeTab === 'contact' ? 'contact'
+      : activeTab === 'lead' ? 'lead'
+      : 'meeting';
 
     const ok = await confirm({
       title: `Restore this ${entityLabel}?`,
@@ -263,7 +269,7 @@ export function RecycleBinPage() {
                 }}
               >
                 <Trash2 size={28} strokeWidth={1.25} style={{ color: '#D1D5DB' }} />
-                No deleted {activeTab === 'company' ? 'companies' : 'contacts'} found.
+                No deleted {activeTab === 'company' ? 'companies' : activeTab === 'contact' ? 'contacts' : activeTab === 'lead' ? 'leads' : 'meetings'} found.
               </div>
             )}
 

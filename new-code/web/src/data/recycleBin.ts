@@ -1,13 +1,11 @@
 /**
  * Recycle Bin data layer (ALT-400) — admin-only.
  *
- * Tables covered (soft-delete confirmed via merge.ts + admin.ts):
+ * Tables covered (soft-delete confirmed):
  *   company_master  — deleted_date / deleted_by confirmed (merge.ts:273, companies.ts:177)
  *   contact_master  — deleted_date / deleted_by confirmed (merge.ts:330, admin.ts:165)
- *
- * Excluded (only deleted_date filter is present in the codebase; deleted_by write
- * not confirmed for these tables — do not include until verified against live schema):
- *   lead_master     — meeting_master
+ *   lead_master     — deleted_date / deleted_by schema-confirmed (ALT-400 2026-06-28)
+ *   meeting_master  — deleted_date / deleted_by schema-confirmed (ALT-400 2026-06-28)
  *
  * NOTE(ALT-400): validate restore against RLS on a throwaway admin login before
  * relying on it in prod.
@@ -20,7 +18,7 @@ import { humanizeWriteError } from '../lib/writeError';
 /*  Types                                                              */
 /* ------------------------------------------------------------------ */
 
-export type RecycleBinEntity = 'company' | 'contact';
+export type RecycleBinEntity = 'company' | 'contact' | 'lead' | 'meeting';
 
 export interface DeletedRecord {
   /** Primary key as string for uniformity. */
@@ -158,6 +156,80 @@ export async function fetchDeleted(
     return { records, truncated, error: null };
   }
 
+  if (entity === 'lead') {
+    const { data, error } = await supabase
+      .from('lead_master')
+      .select('lead_id, lead_name, deleted_date, deleted_by')
+      .not('deleted_date', 'is', null)
+      .order('deleted_date', { ascending: false, nullsFirst: false })
+      .limit(LIMIT + 1);
+
+    if (error) return { ...empty, error: humanizeWriteError(error) };
+
+    const rows = (data ?? []) as {
+      lead_id: number;
+      lead_name: string | null;
+      deleted_date: string;
+      deleted_by: string | null;
+    }[];
+
+    const truncated = rows.length > LIMIT;
+    const trimmed = truncated ? rows.slice(0, LIMIT) : rows;
+
+    const deletedByIds = trimmed
+      .map((r) => r.deleted_by)
+      .filter((v): v is string => v != null && v.trim() !== '');
+    const nameMap = await resolveUserNames(deletedByIds);
+
+    const records: DeletedRecord[] = trimmed.map((r) => ({
+      id: String(r.lead_id),
+      name: r.lead_name?.trim() || `Lead #${r.lead_id}`,
+      deleted_date: r.deleted_date,
+      deleted_by: r.deleted_by
+        ? (nameMap.get(r.deleted_by.trim()) ?? r.deleted_by.trim())
+        : '—',
+    }));
+
+    return { records, truncated, error: null };
+  }
+
+  if (entity === 'meeting') {
+    const { data, error } = await supabase
+      .from('meeting_master')
+      .select('meeting_id, meeting_name, deleted_date, deleted_by')
+      .not('deleted_date', 'is', null)
+      .order('deleted_date', { ascending: false, nullsFirst: false })
+      .limit(LIMIT + 1);
+
+    if (error) return { ...empty, error: humanizeWriteError(error) };
+
+    const rows = (data ?? []) as {
+      meeting_id: number;
+      meeting_name: string | null;
+      deleted_date: string;
+      deleted_by: string | null;
+    }[];
+
+    const truncated = rows.length > LIMIT;
+    const trimmed = truncated ? rows.slice(0, LIMIT) : rows;
+
+    const deletedByIds = trimmed
+      .map((r) => r.deleted_by)
+      .filter((v): v is string => v != null && v.trim() !== '');
+    const nameMap = await resolveUserNames(deletedByIds);
+
+    const records: DeletedRecord[] = trimmed.map((r) => ({
+      id: String(r.meeting_id),
+      name: r.meeting_name?.trim() || `Meeting #${r.meeting_id}`,
+      deleted_date: r.deleted_date,
+      deleted_by: r.deleted_by
+        ? (nameMap.get(r.deleted_by.trim()) ?? r.deleted_by.trim())
+        : '—',
+    }));
+
+    return { records, truncated, error: null };
+  }
+
   return { ...empty, error: `Unknown entity: ${entity as string}` };
 }
 
@@ -200,6 +272,22 @@ export async function restoreRecord(
       .from('contact_master')
       .update(patch)
       .eq('contact_id', Number(id));
+    return { error: error ? humanizeWriteError(error) : null };
+  }
+
+  if (entity === 'lead') {
+    const { error } = await supabase
+      .from('lead_master')
+      .update(patch)
+      .eq('lead_id', Number(id));
+    return { error: error ? humanizeWriteError(error) : null };
+  }
+
+  if (entity === 'meeting') {
+    const { error } = await supabase
+      .from('meeting_master')
+      .update(patch)
+      .eq('meeting_id', Number(id));
     return { error: error ? humanizeWriteError(error) : null };
   }
 

@@ -632,22 +632,33 @@ export async function updateClient(
 }
 
 /**
- * Create a new client. address_id and country_code_id are NOT NULL FKs with no
- * dedicated editor here, so we reuse an existing client's values (country_code_id
- * is always 1 in this DB; address_id is borrowed from the most recent client).
+ * Create a new client. A fresh address_master row is inserted (city_id null —
+ * the client form doesn't capture a city yet; ALT-434 tracks exposing it) so
+ * every client gets its own address record instead of borrowing a foreign one.
+ * country_code_id is hardcoded to 1 (always India in this DB — no semantic change).
+ *
+ * TODO(ALT-434): expose city / address fields in the client form so the address
+ * row can be populated at creation time.
  */
 export async function createClient(input: ClientEditInput, actorId: string): Promise<string | null> {
   const dupErr = await checkClientUniqueness(input.email, input.cin_number, null);
   if (dupErr) return dupErr;
 
-  const { data: refRaw } = await supabase
-    .from('client_association')
-    .select('address_id, country_code_id')
-    .is('deleted_date', null)
-    .order('client_assoc_id', { ascending: false })
-    .limit(1);
-  const ref = ((refRaw ?? []) as unknown as { address_id: number; country_code_id: number }[])[0];
-  if (!ref) return 'Cannot create client: no reference address available.';
+  // Insert a fresh address_master row for this client.
+  // city_id is nullable (schema-confirmed) — left null until the form captures it.
+  const { data: addrData, error: addrErr } = await supabase
+    .from('address_master')
+    .insert({
+      city_id: null,
+      created_by: actorId,
+      created_date: new Date().toISOString(),
+    })
+    .select('address_id')
+    .single();
+  if (addrErr || !addrData) {
+    return friendlyWriteError(addrErr) ?? 'Failed to create address record for client.';
+  }
+  const addressId = (addrData as unknown as { address_id: number }).address_id;
 
   const { error } = await supabase.from('client_association').insert({
     client_name: input.client_name,
@@ -660,8 +671,8 @@ export async function createClient(input: ClientEditInput, actorId: string): Pro
     industry_id: input.industry_id,
     domain_id: input.domain_id,
     enabled: input.enabled,
-    address_id: ref.address_id,
-    country_code_id: ref.country_code_id,
+    address_id: addressId,
+    country_code_id: 1,
     created_by: actorId,
     created_date: new Date().toISOString(),
   });
