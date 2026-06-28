@@ -233,11 +233,11 @@ export function MergeDuplicatesModal({
                 <ArrowRight size={13} />
                 <span className="truncate" style={{ maxWidth: 200 }}>{recordName(type, survivorRec)}</span>
               </div>
-              The duplicate <strong>{recordName(type, loserRec)}</strong> will be soft-deleted
-              (recoverable by an admin), and all of its linked{' '}
+              All of <strong>{recordName(type, loserRec)}</strong>'s linked{' '}
               {type === 'company' ? 'contacts, deals, statuses and activity' : 'deals, statuses and activity'}{' '}
-              will be re-pointed to <strong>{recordName(type, survivorRec)}</strong>. This is hard
-              to undo.
+              will be re-pointed to <strong>{recordName(type, survivorRec)}</strong>, then the
+              duplicate is soft-deleted. <strong>This can't be undone yet</strong> — there is no
+              restore UI for a merged-away {noun}. Export both records first if you're unsure.
             </div>
           </div>
 

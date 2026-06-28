@@ -53,6 +53,20 @@
 import { supabase } from '../lib/supabase';
 import { humanizeWriteError } from '../lib/writeError';
 
+/**
+ * ALT-416 ATOMIC-MERGE FLAG.
+ *
+ * false (DEFAULT — PRODUCTION UNCHANGED): the legacy client-side sequence below
+ * runs. Non-atomic, but exactly today's behavior.
+ *
+ * true: route through the `merge_records` Postgres RPC (one server-side
+ * transaction — all-or-nothing). ⚠️ Flip this to `true` ONLY AFTER
+ * new-code/migration/apply-merge-rpc.cjs has been applied to the database
+ * (owner sign-off + throwaway-login validation). Flipping it before the
+ * function exists makes every merge fail with "feature isn't enabled yet".
+ */
+const USE_MERGE_RPC = false;
+
 export interface MergeArgs {
   /** The record that SURVIVES (children get re-pointed to it). */
   survivorId: string;
@@ -163,10 +177,65 @@ async function softDeleteLoser(
 }
 
 /* ------------------------------------------------------------------ */
+/*  Atomic path (ALT-416) — one Postgres RPC, all-or-nothing.          */
+/*  Used ONLY when USE_MERGE_RPC === true (see flag at top of file).   */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Call the `merge_records` SECURITY DEFINER RPC, which does the SAME FK
+ * re-points + loser soft-delete as the client-side path below, but inside ONE
+ * server-side transaction (so a mid-merge failure rolls the whole thing back —
+ * no half-merge). Maps errors through the same friendly-error helper.
+ */
+async function mergeRecordsViaRpc(
+  recordType: 'company' | 'contact',
+  { survivorId, loserId, actor }: MergeArgs,
+): Promise<MergeResult> {
+  const repointed: Record<string, number> = {};
+  const survivor = Number(survivorId);
+  const loser = Number(loserId);
+
+  if (!Number.isFinite(survivor) || !Number.isFinite(loser)) {
+    return { ok: false, error: 'Invalid record id.', repointed };
+  }
+  if (survivor === loser) {
+    return {
+      ok: false,
+      error: `Pick two different ${recordType === 'company' ? 'companies' : 'contacts'} to merge.`,
+      repointed,
+    };
+  }
+
+  const { data, error } = await supabase.rpc('merge_records', {
+    p_record_type: recordType,
+    p_survivor_id: survivor,
+    p_loser_id: loser,
+    p_actor: actor,
+  });
+
+  if (error) {
+    return { ok: false, error: friendlyError(error, 'Merge failed.'), repointed };
+  }
+
+  // The RPC returns { ok, type, survivorId, loserId, repointed:{...} }. Surface
+  // the per-relationship counts (numbers only) so the modal's "moved N" toast works.
+  const payload = (data ?? {}) as { repointed?: Record<string, unknown> };
+  for (const [k, v] of Object.entries(payload.repointed ?? {})) {
+    if (typeof v === 'number') repointed[k] = v;
+  }
+  return { ok: true, error: null, repointed };
+}
+
+/* ------------------------------------------------------------------ */
 /*  Company merge                                                      */
 /* ------------------------------------------------------------------ */
 
-export async function mergeCompanies({ survivorId, loserId, actor }: MergeArgs): Promise<MergeResult> {
+export async function mergeCompanies(args: MergeArgs): Promise<MergeResult> {
+  if (USE_MERGE_RPC) return mergeRecordsViaRpc('company', args);
+  return mergeCompaniesClientSide(args);
+}
+
+async function mergeCompaniesClientSide({ survivorId, loserId, actor }: MergeArgs): Promise<MergeResult> {
   const repointed: Record<string, number> = {};
   const survivor = Number(survivorId);
   const loser = Number(loserId);
@@ -220,7 +289,12 @@ export async function mergeCompanies({ survivorId, loserId, actor }: MergeArgs):
 /*  Contact merge                                                      */
 /* ------------------------------------------------------------------ */
 
-export async function mergeContacts({ survivorId, loserId, actor }: MergeArgs): Promise<MergeResult> {
+export async function mergeContacts(args: MergeArgs): Promise<MergeResult> {
+  if (USE_MERGE_RPC) return mergeRecordsViaRpc('contact', args);
+  return mergeContactsClientSide(args);
+}
+
+async function mergeContactsClientSide({ survivorId, loserId, actor }: MergeArgs): Promise<MergeResult> {
   const repointed: Record<string, number> = {};
   const survivor = Number(survivorId);
   const loser = Number(loserId);
