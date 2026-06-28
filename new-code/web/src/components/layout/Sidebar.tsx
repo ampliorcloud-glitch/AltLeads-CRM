@@ -50,11 +50,8 @@ const bottomItems: NavItem[] = [
 ];
 
 export function Sidebar() {
-  const { profile, signOut } = useAuth();
+  const { profile, signOut, isAdmin, isApprover } = useAuth();
   const navigate = useNavigate();
-  const isAdmin = profile?.role === 'ADMIN';
-  // QC (role 6) is a parallel approver to Team Lead (AMBIG B1/A5).
-  const isApprover = profile?.role === 'ADMIN' || profile?.role === 'TEAM_LEAD' || profile?.role === 'QC';
   const [pendingCount, setPendingCount] = useState(0);
   const [unreadNotifCount, setUnreadNotifCount] = useState(0);
 

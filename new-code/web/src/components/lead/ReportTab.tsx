@@ -47,6 +47,7 @@ import {
   InlineNote,
 } from './primitives';
 import { useConfirm } from '../ui/ConfirmDialog';
+import { useAuth } from '../../contexts/AuthContext';
 
 const MODES = ['Telephonic', 'Online', 'Offline'];
 const MAX_NEW_QUESTIONS = 5;
@@ -70,6 +71,7 @@ export function ReportTab({
   onReportSaved: () => void; // tell the parent to refresh header/stage
 }) {
   const confirm = useConfirm();
+  const { isApprover } = useAuth();
   const [loading, setLoading] = useState(true);
   const [salespeople, setSalespeople] = useState<SalespersonOption[]>([]);
   const [questions, setQuestions] = useState<PreSalesQuestion[]>([]);
@@ -375,7 +377,8 @@ export function ReportTab({
     onReportSaved();
   };
 
-  const isApprover = userRole === 'ADMIN' || userRole === 'TEAM_LEAD';
+  // isApprover is sourced from useAuth() (accounts for multi-role users via the
+  // full roles[] array) instead of the legacy single-string userRole prop.
 
   if (loading) {
     return (
