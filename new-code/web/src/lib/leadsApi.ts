@@ -567,6 +567,26 @@ export async function createLead(
 
   const result = await insertLeadWithUniqueNumber(payload);
 
+  // Seed an initial lead_report so the new lead has an assignee and stage from
+  // the start (mirrors convertWishlistToLead in data/wishlist.ts).
+  // user_id = ownerId (the agent if chosen, else the creator) — same value that
+  // went into lead_master.created_by.  Best-effort: surface the error through
+  // the return value if it fails, but do NOT roll back the lead_master row.
+  if (!('error' in result)) {
+    const reportUserId = Number(ownerId);
+    const { error: reportError } = await supabase.from('lead_report').insert({
+      lead_id: result.lead_id,
+      user_id: reportUserId,
+      stage_id: 1,            // "Warm" — lowest/initial stage in stage_master
+      report_status: 'Warm',
+      created_by: ownerId,
+      created_date: now,
+    });
+    if (reportError) {
+      return { error: `Lead created (id=${result.lead_id}) but failed to seed lead_report: ${reportError.message}` };
+    }
+  }
+
   // Fire-and-forget: notify assigned agent if one was chosen
   if (!('error' in result) && form.agent_id) {
     const leadId = result.lead_id;
