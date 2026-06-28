@@ -1125,6 +1125,13 @@ Ankit: "spread sub agents — research Apollo/HubSpot, build import/merge/etc, f
 - Plus **docs/PUSH-GUIDE.md** (self-serve deploy: `git push altleads clean-main:main` → verify `curl .../health`).
 **Decision-free build order remaining** (see DATA-OPS-LAUNCH-BLOCKERS §G): recycle-bin read+restore (ALT-400) · default-sort+pinned-columns (ALT-440) · more trust fixes (ALT-429 companies full-status export, ALT-435 error-vs-empty, ALT-437 sort/display). **Decision-gated:** DEC-03 ownership (ALT-433), collaborators/associations (ALT-441/442, specs ready), server-side write layer (ALT-431). **Efficiency note (Ankit):** run build/research subagents on **Sonnet**, reserve Opus (main loop) for orchestration.
 
+### Owner decisions locked 2026-06-28 (Ankit)
+- **DEC ALT-450 (export scope):** Export ships **selected project only**; when no project is selected (so per-project status/owner/notes aren't available), **warn the user not to proceed** rather than export blanks. (Not multi-project.)
+- **DEC-03 (lead ownership) RESOLVED:** Owner-of-record = the **assignee** `lead_report.user_id`. At CREATE it defaults to `created_by` (creator is the first assignee) and stays that person until a **TL/Admin reassigns**, which updates `lead_report.user_id`. `created_by` becomes **immutable provenance** (who created it) — the Edit-Lead form must STOP rewriting it (census bug O1). RLS for agent-edit keys on `lead_report.user_id` (ALT-152) — validate on throwaway login before prod. → ALT-433.
+- **DEC collaborators/associations (ALT-441/442):** GREENLIT. Build HubSpot-style. Collaborator access (**view vs edit**) is an **admin Setting** (configurable), not hard-coded. Research HubSpot features/pros/cons first.
+- **DEC-13 (PII export, ALT-403):** Export is gated by a **per-USER permission** — nobody (not even a normal admin) can export unless granted; "data people" get admin access + this grant. Needs a per-user `can_export` flag + UI gating + (for true enforcement) server-side export. OPEN Q: who may GRANT the flag (super-admin only?).
+- PENDING explanation to Ankit: recycle-bin restore RLS validation (throwaway login) + ALT-431 server-side write layer.
+
 ---
 ## 2026-06-26 — Amp Intranet planned to share the CRM/Client-Portal stack (new doc)
 Ankit opened `Amp-Intranet/Amp PRD.md` (v1.0 "Amp — Amplior Employee Portal" — mobile-first staff portal: Home/Craft/Culture/Me/Tools+Knowledge) and asked to plan it so it **shares the same DB as the Client Portal**, with **CRM + Client Portal + Intranet all hosted the same way**. Wrote **`docs/product/AMP-INTRANET.md`** — the architecture/integration plan (the PRD stays the product spec).

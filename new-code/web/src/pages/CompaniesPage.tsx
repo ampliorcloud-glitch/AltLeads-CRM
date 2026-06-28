@@ -70,6 +70,7 @@ import { addCompaniesToProject, setCompaniesStatus } from '../data/bulkActions';
 import { upsertCompanyStatus } from '../data/projectStatus';
 import type { UserOption } from '../data/wishlist';
 import { useToast } from '../components/ui/Toast';
+import { useConfirm } from '../components/ui/ConfirmDialog';
 import { RecordPreviewPanel } from '../components/common/RecordPreviewPanel';
 import { CompanyPreview } from '../components/companies/CompanyPreview';
 import { InlineAccountStatusCell } from '../components/companies/InlineAccountStatusCell';
@@ -308,6 +309,7 @@ export function CompaniesPage() {
   // actorId is the numeric user_id as text for audit columns / status writes.
   const actorId = userId != null ? String(userId) : null;
   const toast = useToast();
+  const confirm = useConfirm();
 
   // Persisted across refresh per browser (ALT-369).
   const [filters, setFilters] = useListFilters<Filters>('companies', defaultFilters);
@@ -581,6 +583,18 @@ export function CompaniesPage() {
      over the currently-loaded page subset; a full-set sort/filter would require
      either server-side sorting or upfront loading — deferred to a future ticket. */
   const getExportRows = useCallback(async (): Promise<ExportRow[] | null> => {
+    // ALT-450: warn when no project is selected — Account Status and Owner are
+    // per-project and will be blank in the export without a selected project.
+    if (projectId == null) {
+      const proceed = await confirm({
+        title: 'No project selected',
+        message: 'Account Status and Owner are per-project fields and will be blank in this export because no project is currently selected. Export anyway?',
+        confirmLabel: 'Export anyway',
+        cancelLabel: 'Cancel',
+        tone: 'default',
+      });
+      if (!proceed) return null;
+    }
     const allIds = filteredData.map((c) => Number(c.id));
     if (projectId != null && allIds.length > 0) {
       const missing = allIds.filter((id) => !(id in statusMap));
@@ -602,7 +616,7 @@ export function CompaniesPage() {
       ...c,
       accountStatus: statusMap[Number(c.id)]?.account_status ?? null,
     }));
-  }, [filteredData, projectId, statusMap]);
+  }, [filteredData, projectId, statusMap, confirm]);
 
   /* ---- batch-load statuses for the CURRENT PAGE rows when project changes ---- */
   const pageCompanyIds = useMemo(() => {

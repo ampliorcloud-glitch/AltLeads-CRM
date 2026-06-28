@@ -42,6 +42,7 @@ import { StatusBadge } from '../components/ui/StatusBadge';
 import { MultiSelectFilter } from '../components/ui/MultiSelectFilter';
 import { Skeleton } from '../components/ui/Skeleton';
 import { useToast } from '../components/ui/Toast';
+import { useConfirm } from '../components/ui/ConfirmDialog';
 import type { ColumnDef, ExportColumn } from '../components/ui/columns';
 import type { ColumnPref } from '../data/views';
 import {
@@ -310,6 +311,7 @@ export function ContactsPage() {
   const { profile, canCreateData, canReassign } = useAuth();
   const userId = profile?.user_id ?? null;
   const toast = useToast();
+  const confirm = useConfirm();
   // actorId is numeric user_id as text for audit columns
   const actorId = userId != null ? String(userId) : null;
 
@@ -948,6 +950,23 @@ export function ContactsPage() {
       });
   }, [columnPrefs, projectId]);
 
+  /* ---- on-demand export rows for Contacts (ALT-450) ----
+     When no project is selected, Contact Status and Owner will be blank
+     (they are per-project). Warn the user and let them cancel. */
+  const getContactExportRows = useCallback(async (): Promise<ContactRow[] | null> => {
+    if (projectId == null) {
+      const proceed = await confirm({
+        title: 'No project selected',
+        message: 'Contact Status and Owner are per-project fields and will be blank in this export because no project is currently selected. Export anyway?',
+        confirmLabel: 'Export anyway',
+        cancelLabel: 'Cancel',
+        tone: 'default',
+      });
+      if (!proceed) return null;
+    }
+    return filteredData;
+  }, [projectId, filteredData, confirm]);
+
   /* ----------------------------------------------------------------- */
   /*  EditableGrid columns (ALT-331) — mirror the visible Table columns. */
   /*  Editable: Contact Status (select) + Description / Comments (text), */
@@ -1381,7 +1400,8 @@ export function ContactsPage() {
                 entityLabel="contacts"
               />
               <ExportButton<ContactRow>
-                rows={filteredData}
+                rows={[] as unknown as ContactRow[]}
+                getRows={getContactExportRows}
                 columns={exportColumns}
                 filename="amplior-contacts"
                 selectedIds={sel.selectedIds}
