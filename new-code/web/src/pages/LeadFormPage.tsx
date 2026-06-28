@@ -705,14 +705,25 @@ export function LeadFormPage() {
           <div className="space-y-4">
             <SectionHeading title="Assignment" />
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-              <FieldGroup label="Agent (Owner)" error={errors.agent_id}>
+              {/* DEC-03 (Step 3): In EDIT mode, Agent is immutable provenance — the
+                  owner-of-record is lead_report.user_id, changed only via the
+                  "Change salesperson" button on the Lead Detail page (ReassignModal →
+                  assignment.ts reassignLead → lead_report.user_id, TL/Admin gated).
+                  We show the picker as read-only to preserve context; routine saves
+                  do NOT alter ownership. In CREATE mode the picker still sets the
+                  initial assignee (seeded into lead_report.user_id by createLead). */}
+              <FieldGroup
+                label={isEdit ? 'Agent (Provenance — read-only)' : 'Agent (Owner)'}
+                error={errors.agent_id}
+              >
                 <SelectInput
                   value={form.agent_id ?? ''}
-                  onChange={(v) => set('agent_id', v ? Number(v) : null)}
+                  onChange={(v) => !isEdit && set('agent_id', v ? Number(v) : null)}
                   options={users}
                   placeholder="Select agent..."
+                  disabled={isEdit}
                 />
-                {profile?.user_id != null && form.agent_id !== profile.user_id && (
+                {!isEdit && profile?.user_id != null && form.agent_id !== profile.user_id && (
                   <button
                     type="button"
                     onClick={() => set('agent_id', profile.user_id)}
@@ -721,6 +732,11 @@ export function LeadFormPage() {
                   >
                     Assign to me
                   </button>
+                )}
+                {isEdit && (
+                  <p style={{ fontSize: 11, color: '#6b7280' }}>
+                    To reassign this lead, use "Change salesperson" on the Lead Detail page.
+                  </p>
                 )}
               </FieldGroup>
               <FieldGroup label="Source" error={errors.source_id}>

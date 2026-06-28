@@ -647,6 +647,8 @@ export async function updateLead(
     designation: form.designation.trim() || '',
     title: form.title.trim() || '',
     company_id: companyId,
+    // agent_id is kept for FK integrity (legacy column); still written so the
+    // lead_master.agent_id column stays in sync with the picker value.
     agent_id: form.agent_id,
     source_id: form.source_id,
     project_id: form.project_id,
@@ -659,14 +661,11 @@ export async function updateLead(
     updated_by: updatedBy,
     updated_date: now,
     contact_id: form.contact_id ?? null,
+    // DEC-03 (Step 3): created_by is IMMUTABLE PROVENANCE — never rewrite it from
+    // the Edit form. Ownership = lead_report.user_id, changed only via ReassignModal
+    // (assignment.ts reassignLead writes lead_report.user_id, gated to TL/Admin).
+    // TODO(gatekeeper ALT-431): route reassign through ownership.reassign action
   };
-
-  // Reassigning the "Agent (Owner)" must move ownership, which lives in created_by
-  // (the list/detail resolve the owner from created_by, not agent_id). Only rewrite
-  // created_by when an agent is selected, so blanking the dropdown never clears it.
-  if (form.agent_id != null) {
-    payload.created_by = String(form.agent_id);
-  }
 
   if (addressId !== existingAddressId) {
     payload.address_id = addressId;
@@ -678,33 +677,6 @@ export async function updateLead(
     .eq('lead_id', leadId);
 
   if (error) return { error: error.message };
-
-  // Fire-and-forget: if agent was reassigned, notify the new agent
-  if (form.agent_id != null) {
-    const newAgentId = form.agent_id;
-    (async () => {
-      try {
-        const { email: agentEmail } = await resolveUserEmailAndName(supabase, newAgentId);
-        const updaterInfo = await resolveUserEmailAndName(supabase, Number(updatedBy));
-        const eventData = {
-          leadName: form.lead_name.trim(),
-          company: form.new_company_name.trim() || '',
-          assignedByName: updaterInfo.name || updatedBy,
-        };
-        if (agentEmail) {
-          await notify('lead_reassigned', agentEmail, eventData);
-        }
-        await notifyInApp(supabase, newAgentId, {
-          status: 'Reassigned',
-          notif_descr: `Lead reassigned to you: "${form.lead_name.trim()}"`,
-          route: `/leads/${leadId}`,
-          actor: updatedBy,
-        });
-      } catch {
-        /* non-fatal */
-      }
-    })();
-  }
 
   return null;
 }

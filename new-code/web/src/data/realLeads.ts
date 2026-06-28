@@ -302,13 +302,21 @@ export async function fetchLeadsFallback(): Promise<LeadsResult> {
     const report = latestReportMap.get(l.lead_id);
     const stageName = report?.stage_id != null ? (stageMap.get(report.stage_id) ?? '') : '';
 
-    // Assigned salesperson: lead_report.user_id (latest report) -> full_name.
-    // Distinct from `agent` (created_by, the internal owner). userMap is keyed by
-    // user_id-as-text and already covers every user_master row.
+    // Assigned salesperson (owner-of-record): lead_report.user_id (latest report).
+    // Distinct from `agent` (created_by = immutable provenance; see DEC-03).
+    // Fallback: if no active report row exists (legacy lead not yet backfilled),
+    // fall back to created_by so the column never renders blank before the
+    // apply-dec03-backfill.cjs migration runs (Step 4, DEC-03).
     const salespersonUserId = report?.user_id ?? null;
-    const salespersonName = salespersonUserId != null
-      ? (userMap.get(String(salespersonUserId)) ?? '')
-      : '';
+    let salespersonName: string;
+    if (salespersonUserId != null) {
+      salespersonName = userMap.get(String(salespersonUserId)) ?? '';
+    } else {
+      // No report row → fall back to created_by (provenance = temporary owner display)
+      salespersonName = l.created_by != null && l.created_by !== ''
+        ? (userMap.get(l.created_by) ?? l.created_by)
+        : '';
+    }
 
     let meetingDate: string | null = null;
     if (report) {
