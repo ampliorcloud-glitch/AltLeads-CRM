@@ -69,3 +69,8 @@ test_db_connection.js
 
 # Durable conversation archive (regenerated locally; old chats contain pasted secrets)
 docs/CONVERSATION-LOG.md
+
+# Open-source CRM/ERP reference codebases (READ-ONLY study refs; large, not our code).
+# The folder convention + how to use it is tracked via reference/README.md only.
+reference/*
+!reference/README.md
