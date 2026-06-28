@@ -1208,6 +1208,13 @@ app.get('/api/admin/login-coverage', requireAdmin, async (req, res) => {
   }
 });
 
+/* ── Write gateway (ALT-431) ─────────────────────────────────────── */
+// Mounts POST /api/write — server-side write gatekeeper.  Must come AFTER the
+// existing /api/* routes (rate limiter already covers /api/) but BEFORE static
+// serving so the route is not shadowed by the SPA catch-all.
+const writeGateway = require('./src/writeGateway');
+writeGateway.mount(app, getSupabaseAdmin);
+
 /* ── Serve React web app (static + SPA fallback) ─────────────────── */
 // Serve built assets. Must come AFTER all API routes so /health and /notify
 // are handled by the Express routes above, not treated as static file requests.
