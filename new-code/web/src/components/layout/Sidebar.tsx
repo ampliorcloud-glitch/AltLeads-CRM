@@ -14,6 +14,7 @@ import {
   LogOut,
   ClipboardCheck,
   Upload,
+  Trash2,
 } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { useNavigate } from 'react-router-dom';
@@ -40,6 +41,7 @@ const navItems: NavItem[] = [
   { to: '/notifications', icon: Bell, label: 'Notifications' },
   { to: '/approvals', icon: ClipboardCheck, label: 'Approvals', approverOnly: true },
   { to: '/import', icon: Upload, label: 'Import', adminOnly: true },
+  { to: '/recycle-bin', icon: Trash2, label: 'Recycle Bin', adminOnly: true },
   { to: '/admin', icon: ShieldCheck, label: 'Super Admin', adminOnly: true },
 ];
 

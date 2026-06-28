@@ -39,6 +39,7 @@ const NotificationsPage = lazy(() => import('./pages/NotificationsPage').then(m 
 const SettingsPage = lazy(() => import('./pages/SettingsPage').then(m => ({ default: m.SettingsPage })));
 const ApprovalsPage = lazy(() => import('./pages/ApprovalsPage').then(m => ({ default: m.ApprovalsPage })));
 const ImportPage = lazy(() => import('./pages/ImportPage').then(m => ({ default: m.ImportPage })));
+const RecycleBinPage = lazy(() => import('./pages/RecycleBinPage').then(m => ({ default: m.RecycleBinPage })));
 const ContactsPage = lazy(() => import('./pages/ContactsPage').then(m => ({ default: m.ContactsPage })));
 const ContactDetailPage = lazy(() => import('./pages/ContactDetailPage').then(m => ({ default: m.ContactDetailPage })));
 const ContactFormPage = lazy(() => import('./pages/ContactFormPage').then(m => ({ default: m.ContactFormPage })));
@@ -401,6 +402,17 @@ function AppRoutes() {
         element={
           <AdminRoute>
             <ImportPage />
+          </AdminRoute>
+        }
+      />
+      {/* Admin-only Recycle Bin (ALT-400). Lists soft-deleted companies + contacts
+         and allows an admin to restore them. Gated by AdminRoute + isAdmin in the
+         page itself. NOTE: validate restore against RLS before prod use. */}
+      <Route
+        path="/recycle-bin"
+        element={
+          <AdminRoute>
+            <RecycleBinPage />
           </AdminRoute>
         }
       />
