@@ -1,5 +1,7 @@
 # Tasks for Antigravity — small, safe, fully-guided front-end fixes
 
+> ✅ **EXECUTED 2026-06-28** — all actionable tasks below were applied (Tasks 2–8, 10, 11) or were already done (Task 1) / no-op (Task 9). Don't re-run; kept for reference. Add NEW small tasks below the line if you want this used again.
+
 > A queue of tiny, low-risk, **additive** UI tasks for a less-capable AI agent ("antigravity")
 > to execute **independently and safely** when the senior agent is unavailable. Every task here
 > was checked against the **real current code** (file paths and surrounding context verified on

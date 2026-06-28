@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Search, Loader2, Copy, Check } from 'lucide-react';
+import { Search, Loader2, Copy, Check, X } from 'lucide-react';
 import {
   fetchUsers,
   setUserEnabled,
@@ -263,6 +263,19 @@ export function UsersTab({ lookups, actorId }: { lookups: AdminLookups; actorId:
             onFocus={(e) => { e.currentTarget.style.borderColor = '#1A7EE8'; }}
             onBlur={(e) => { e.currentTarget.style.borderColor = '#D1D5DB'; }}
           />
+          {search && (
+            <button
+              type="button"
+              onClick={() => { setSearch(''); setPage(0); }}
+              aria-label="Clear search"
+              style={{
+                position: 'absolute', right: 8, background: 'none', border: 'none',
+                cursor: 'pointer', color: '#9CA3AF', padding: 2, display: 'inline-flex', lineHeight: 0,
+              }}
+            >
+              <X size={14} />
+            </button>
+          )}
         </div>
 
         <AddButton label="Add User" onClick={() => { resetAddModal(); setAddModalOpen(true); }} />

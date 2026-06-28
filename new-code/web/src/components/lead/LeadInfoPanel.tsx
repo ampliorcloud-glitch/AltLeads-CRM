@@ -80,6 +80,7 @@ export function LeadInfoPanel({
             className="flex items-center gap-1 text-zinc-400 hover:text-blue-600 transition-colors"
             style={{ fontSize: 12 }}
             title="Edit lead"
+            aria-label="Edit lead"
           >
             <Pencil size={13} />
           </Link>

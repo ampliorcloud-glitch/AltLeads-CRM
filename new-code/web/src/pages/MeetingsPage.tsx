@@ -549,10 +549,10 @@ export function MeetingsPage() {
             <div className="flex items-center gap-2 min-w-0">
               <CompanyAvatar name={company} />
               <div className="min-w-0">
-                <p className="font-medium text-zinc-900 truncate" style={{ fontSize: 13, maxWidth: 200 }}>
+                <p className="font-medium text-zinc-900 truncate" style={{ fontSize: 13, maxWidth: 200 }} title={company || undefined}>
                   {company || <span className="text-zinc-400">Unlinked meeting</span>}
                 </p>
-                <p className="text-zinc-400 truncate" style={{ fontSize: 11, maxWidth: 200 }}>
+                <p className="text-zinc-400 truncate" style={{ fontSize: 11, maxWidth: 200 }} title={[info.row.original.leadName, info.row.original.city].filter(Boolean).join(' · ') || undefined}>
                   {[info.row.original.leadName, info.row.original.city].filter(Boolean).join(' · ')}
                 </p>
               </div>
@@ -632,7 +632,7 @@ export function MeetingsPage() {
         id: 'salesperson',
         header: 'Salesperson',
         cell: (info) => (
-          <span className="text-zinc-700 truncate" style={{ fontSize: 13 }}>
+          <span className="text-zinc-700 truncate" style={{ fontSize: 13 }} title={(info.getValue() as string) || undefined}>
             {info.getValue() || <span className="text-zinc-300">—</span>}
           </span>
         ),
@@ -862,7 +862,7 @@ export function MeetingsPage() {
       header: 'Salesperson',
       getValue: (r) => r.salesperson ?? '',
       render: (r) => (
-        <span className="text-zinc-700 truncate" style={{ fontSize: 13 }}>
+        <span className="text-zinc-700 truncate" style={{ fontSize: 13 }} title={r.salesperson || undefined}>
           {r.salesperson || <span className="text-zinc-300">—</span>}
         </span>
       ),

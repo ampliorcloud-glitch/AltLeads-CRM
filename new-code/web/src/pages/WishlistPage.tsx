@@ -702,7 +702,7 @@ export function WishlistPage() {
           return (
             <div className="flex items-center gap-2 min-w-0">
               <CompanyAvatar name={name} />
-              <span className="font-medium text-zinc-900 truncate" style={{ fontSize: 13 }}>
+              <span className="font-medium text-zinc-900 truncate" style={{ fontSize: 13 }} title={name || undefined}>
                 {name || <span className="text-zinc-400">—</span>}
               </span>
             </div>

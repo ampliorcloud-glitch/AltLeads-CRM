@@ -317,7 +317,7 @@ export function LogCallModal({ open, onClose, onLogged, association }: LogCallMo
           <textarea
             value={notes}
             onChange={(e) => setNotes(e.target.value)}
-            placeholder="What was discussed, next steps…"
+            placeholder="Optional — what was discussed, objections, and the next step…"
             style={textareaStyle}
           />
         </Field>

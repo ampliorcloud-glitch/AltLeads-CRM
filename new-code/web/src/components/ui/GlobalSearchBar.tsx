@@ -12,7 +12,7 @@
  */
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Search, Loader2, Target, Building2, User, CheckSquare, CalendarDays, CornerDownLeft } from 'lucide-react';
+import { Search, Loader2, Target, Building2, User, CheckSquare, CalendarDays, CornerDownLeft, X } from 'lucide-react';
 import {
   loadSearchIndex,
   searchIndex,
@@ -180,6 +180,19 @@ export function GlobalSearchBar() {
             background: 'transparent',
           }}
         />
+        {query && (
+          <button
+            type="button"
+            onClick={() => { setQuery(''); setOpen(false); }}
+            aria-label="Clear search"
+            style={{
+              flexShrink: 0, background: 'none', border: 'none', cursor: 'pointer',
+              color: 'var(--color-gray-400)', padding: 0, display: 'inline-flex', lineHeight: 0,
+            }}
+          >
+            <X size={14} />
+          </button>
+        )}
       </div>
 
       {showPanel && (
