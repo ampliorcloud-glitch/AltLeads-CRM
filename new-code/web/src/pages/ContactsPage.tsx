@@ -733,24 +733,38 @@ export function ContactsPage() {
       };
     });
 
-    // Sort
+    // Sort (ALT-437): nulls/empties last regardless of direction; numeric values
+    // compared numerically; everything else compared with localeCompare (case-insensitive).
     if (sort.key) {
       const key = sort.key;
       enriched.sort((a, b) => {
         let av: unknown;
         let bv: unknown;
         if (key === 'phone_combined') {
-          av = a.mobile_no ?? a.alt_mobile_no ?? '';
-          bv = b.mobile_no ?? b.alt_mobile_no ?? '';
+          av = a.mobile_no ?? a.alt_mobile_no ?? null;
+          bv = b.mobile_no ?? b.alt_mobile_no ?? null;
         } else {
           av = (a as Record<string, unknown>)[key as string];
           bv = (b as Record<string, unknown>)[key as string];
         }
-        const as = (av ?? '').toString().toLowerCase();
-        const bs = (bv ?? '').toString().toLowerCase();
-        if (as < bs) return sort.dir === 'asc' ? -1 : 1;
-        if (as > bs) return sort.dir === 'asc' ? 1 : -1;
-        return 0;
+        // Nulls / empty strings always sort last, regardless of direction.
+        const aEmpty = av == null || av === '';
+        const bEmpty = bv == null || bv === '';
+        if (aEmpty && bEmpty) return 0;
+        if (aEmpty) return 1;  // a goes after b
+        if (bEmpty) return -1; // b goes after a
+        // Both non-empty: numeric comparison when both values parse as numbers.
+        const aStr = av!.toString().trim();
+        const bStr = bv!.toString().trim();
+        const aNum = Number(aStr);
+        const bNum = Number(bStr);
+        let cmp: number;
+        if (!isNaN(aNum) && !isNaN(bNum) && aStr !== '' && bStr !== '') {
+          cmp = aNum - bNum;
+        } else {
+          cmp = aStr.localeCompare(bStr, undefined, { sensitivity: 'base' });
+        }
+        return sort.dir === 'asc' ? cmp : -cmp;
       });
     }
 
@@ -1264,17 +1278,31 @@ export function ContactsPage() {
           bulkActions={
             sel.count > 0 ? (
               <>
-                {/* Bulk reassign selected contacts (ALT-291) — needs an active project */}
-                {canReassign && projectId != null && (
-                  <button
-                    onClick={openBulkReassign}
-                    className="inline-flex items-center gap-1.5 border border-zinc-300 hover:border-zinc-400 bg-white hover:bg-zinc-50 text-zinc-700 font-medium rounded-md transition-colors"
-                    style={{ fontSize: 13, padding: '6px 12px', height: 34 }}
-                    title="Assign the selected contacts (in this project) to a salesperson"
-                  >
-                    <UserCheck size={14} />
-                    Reassign ({sel.count})
-                  </button>
+                {/* Bulk reassign selected contacts (ALT-291) — needs an active project.
+                    ALT-435: show disabled + tooltip when no project is selected instead
+                    of silently hiding. */}
+                {canReassign && (
+                  projectId != null ? (
+                    <button
+                      onClick={openBulkReassign}
+                      className="inline-flex items-center gap-1.5 border border-zinc-300 hover:border-zinc-400 bg-white hover:bg-zinc-50 text-zinc-700 font-medium rounded-md transition-colors"
+                      style={{ fontSize: 13, padding: '6px 12px', height: 34 }}
+                      title="Assign the selected contacts (in this project) to a salesperson"
+                    >
+                      <UserCheck size={14} />
+                      Reassign ({sel.count})
+                    </button>
+                  ) : (
+                    <button
+                      disabled
+                      className="inline-flex items-center gap-1.5 border border-zinc-200 bg-zinc-50 text-zinc-400 font-medium rounded-md"
+                      style={{ fontSize: 13, padding: '6px 12px', height: 34, cursor: 'not-allowed' }}
+                      title="Select a project to enable bulk reassign"
+                    >
+                      <UserCheck size={14} />
+                      Reassign ({sel.count})
+                    </button>
+                  )
                 )}
 
                 {/* Bulk add-to-project (ALT-291) */}
@@ -1290,17 +1318,30 @@ export function ContactsPage() {
                   </button>
                 )}
 
-                {/* Bulk set-status (Step E) — per-project, needs an active project */}
-                {canReassign && projectId != null && (
-                  <button
-                    onClick={() => { setSetStatusError(null); setShowSetStatus(true); }}
-                    className="inline-flex items-center gap-1.5 border border-zinc-300 hover:border-zinc-400 bg-white hover:bg-zinc-50 text-zinc-700 font-medium rounded-md transition-colors"
-                    style={{ fontSize: 13, padding: '6px 12px', height: 34 }}
-                    title="Set the contact status of the selected contacts (in this project)"
-                  >
-                    <Tag size={14} />
-                    Set status ({sel.count})
-                  </button>
+                {/* Bulk set-status (Step E) — per-project, needs an active project.
+                    ALT-435: show disabled + tooltip when no project is selected. */}
+                {canReassign && (
+                  projectId != null ? (
+                    <button
+                      onClick={() => { setSetStatusError(null); setShowSetStatus(true); }}
+                      className="inline-flex items-center gap-1.5 border border-zinc-300 hover:border-zinc-400 bg-white hover:bg-zinc-50 text-zinc-700 font-medium rounded-md transition-colors"
+                      style={{ fontSize: 13, padding: '6px 12px', height: 34 }}
+                      title="Set the contact status of the selected contacts (in this project)"
+                    >
+                      <Tag size={14} />
+                      Set status ({sel.count})
+                    </button>
+                  ) : (
+                    <button
+                      disabled
+                      className="inline-flex items-center gap-1.5 border border-zinc-200 bg-zinc-50 text-zinc-400 font-medium rounded-md"
+                      style={{ fontSize: 13, padding: '6px 12px', height: 34, cursor: 'not-allowed' }}
+                      title="Select a project to enable bulk set-status"
+                    >
+                      <Tag size={14} />
+                      Set status ({sel.count})
+                    </button>
+                  )
                 )}
               </>
             ) : undefined

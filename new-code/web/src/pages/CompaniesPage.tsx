@@ -1187,17 +1187,31 @@ export function CompaniesPage() {
           }
           bulkActions={sel.count > 0 ? (
             <>
-              {/* Bulk reassign selected companies (ALT-291) — needs an active project */}
-              {canReassign && projectId != null && (
-                <button
-                  onClick={openBulkReassign}
-                  className="inline-flex items-center gap-1.5 border border-zinc-300 hover:border-zinc-400 bg-white hover:bg-zinc-50 text-zinc-700 font-medium rounded-md transition-colors"
-                  style={{ fontSize: 13, padding: '6px 12px', height: 34 }}
-                  title="Assign the selected companies (in this project) to a salesperson"
-                >
-                  <UserCheck size={14} />
-                  Reassign ({sel.count})
-                </button>
+              {/* Bulk reassign selected companies (ALT-291) — needs an active project.
+                  ALT-435: show disabled + tooltip when no project is selected instead
+                  of silently hiding. */}
+              {canReassign && (
+                projectId != null ? (
+                  <button
+                    onClick={openBulkReassign}
+                    className="inline-flex items-center gap-1.5 border border-zinc-300 hover:border-zinc-400 bg-white hover:bg-zinc-50 text-zinc-700 font-medium rounded-md transition-colors"
+                    style={{ fontSize: 13, padding: '6px 12px', height: 34 }}
+                    title="Assign the selected companies (in this project) to a salesperson"
+                  >
+                    <UserCheck size={14} />
+                    Reassign ({sel.count})
+                  </button>
+                ) : (
+                  <button
+                    disabled
+                    className="inline-flex items-center gap-1.5 border border-zinc-200 bg-zinc-50 text-zinc-400 font-medium rounded-md"
+                    style={{ fontSize: 13, padding: '6px 12px', height: 34, cursor: 'not-allowed' }}
+                    title="Select a project to enable bulk reassign"
+                  >
+                    <UserCheck size={14} />
+                    Reassign ({sel.count})
+                  </button>
+                )
               )}
 
               {/* Bulk add-to-project (ALT-291) */}
@@ -1213,17 +1227,30 @@ export function CompaniesPage() {
                 </button>
               )}
 
-              {/* Bulk set-status (Step E) — per-project, needs an active project */}
-              {canReassign && projectId != null && (
-                <button
-                  onClick={() => { setSetStatusError(null); setShowSetStatus(true); }}
-                  className="inline-flex items-center gap-1.5 border border-zinc-300 hover:border-zinc-400 bg-white hover:bg-zinc-50 text-zinc-700 font-medium rounded-md transition-colors"
-                  style={{ fontSize: 13, padding: '6px 12px', height: 34 }}
-                  title="Set the account status of the selected companies (in this project)"
-                >
-                  <Tag size={14} />
-                  Set status ({sel.count})
-                </button>
+              {/* Bulk set-status (Step E) — per-project, needs an active project.
+                  ALT-435: show disabled + tooltip when no project is selected. */}
+              {canReassign && (
+                projectId != null ? (
+                  <button
+                    onClick={() => { setSetStatusError(null); setShowSetStatus(true); }}
+                    className="inline-flex items-center gap-1.5 border border-zinc-300 hover:border-zinc-400 bg-white hover:bg-zinc-50 text-zinc-700 font-medium rounded-md transition-colors"
+                    style={{ fontSize: 13, padding: '6px 12px', height: 34 }}
+                    title="Set the account status of the selected companies (in this project)"
+                  >
+                    <Tag size={14} />
+                    Set status ({sel.count})
+                  </button>
+                ) : (
+                  <button
+                    disabled
+                    className="inline-flex items-center gap-1.5 border border-zinc-200 bg-zinc-50 text-zinc-400 font-medium rounded-md"
+                    style={{ fontSize: 13, padding: '6px 12px', height: 34, cursor: 'not-allowed' }}
+                    title="Select a project to enable bulk set-status"
+                  >
+                    <Tag size={14} />
+                    Set status ({sel.count})
+                  </button>
+                )
               )}
             </>
           ) : undefined}

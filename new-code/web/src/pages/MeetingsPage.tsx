@@ -84,6 +84,7 @@ const ALL_COLUMNS: ColDef<any>[] = [
   { key: 'company',     header: 'Company / Lead',  defaultVisible: true },
   { key: 'client',      header: 'Client',           defaultVisible: true },
   { key: 'meetingDate', header: 'Meeting',          defaultVisible: true },
+  { key: 'leadStage',   header: 'Lead Stage',       defaultVisible: true },  // ALT-437
   { key: 'mode',        header: 'Mode',             defaultVisible: true },
   { key: 'salesperson', header: 'Salesperson',      defaultVisible: true },
   { key: 'agent',       header: 'Agent',            defaultVisible: true },
@@ -568,6 +569,15 @@ export function MeetingsPage() {
       meetingDate: columnHelper.accessor('meetingDate', {
         id: 'meetingDate',
         header: 'Meeting',
+        // ALT-437: sort chronologically; nulls/empty last regardless of direction.
+        sortingFn: (rowA, rowB) => {
+          const a = rowA.original.meetingDate;
+          const b = rowB.original.meetingDate;
+          if (!a && !b) return 0;
+          if (!a) return 1;
+          if (!b) return -1;
+          return Date.parse(a) - Date.parse(b);
+        },
         cell: (info) => (
           <div className="whitespace-nowrap">
             <p className="text-zinc-700" style={{ fontSize: 13 }}>
@@ -578,6 +588,33 @@ export function MeetingsPage() {
             </p>
           </div>
         ),
+      }),
+      // ALT-437: leadStage is carried on MeetingRow (from lead_report.stage_id) —
+      // surface it as a small badge-style column so the list shows the lead's stage.
+      leadStage: columnHelper.accessor('leadStage', {
+        id: 'leadStage',
+        header: 'Lead Stage',
+        cell: (info) => {
+          const v = info.getValue();
+          return v ? (
+            <span
+              style={{
+                display: 'inline-block',
+                fontSize: 11,
+                fontWeight: 500,
+                background: '#F0F9FF',
+                color: '#0369A1',
+                borderRadius: 4,
+                padding: '2px 7px',
+                whiteSpace: 'nowrap',
+              }}
+            >
+              {v}
+            </span>
+          ) : (
+            <span className="text-zinc-300" style={{ fontSize: 13 }}>—</span>
+          );
+        },
       }),
       mode: columnHelper.accessor('mode', {
         id: 'mode',
@@ -780,6 +817,31 @@ export function MeetingsPage() {
           </p>
         </div>
       ),
+    },
+    // ALT-437: lead stage badge in the grid view (mirrors the table column above).
+    {
+      key: 'leadStage',
+      header: 'Lead Stage',
+      getValue: (r) => r.leadStage ?? '',
+      render: (r) =>
+        r.leadStage ? (
+          <span
+            style={{
+              display: 'inline-block',
+              fontSize: 11,
+              fontWeight: 500,
+              background: '#F0F9FF',
+              color: '#0369A1',
+              borderRadius: 4,
+              padding: '2px 7px',
+              whiteSpace: 'nowrap',
+            }}
+          >
+            {r.leadStage}
+          </span>
+        ) : (
+          <span className="text-zinc-300" style={{ fontSize: 13 }}>—</span>
+        ),
     },
     {
       key: 'mode',

@@ -749,6 +749,15 @@ export function LeadsPage() {
             return columnHelper.accessor('meetingDate', {
               id: 'meetingDate',
               header: 'Meeting Date',
+              // ALT-437: sort chronologically; nulls/empty last regardless of direction.
+              sortingFn: (rowA, rowB) => {
+                const a = rowA.original.meetingDate;
+                const b = rowB.original.meetingDate;
+                if (!a && !b) return 0;
+                if (!a) return 1;
+                if (!b) return -1;
+                return Date.parse(a) - Date.parse(b);
+              },
               cell: (info) => (
                 <span className="text-zinc-500" style={{ fontSize: 13 }}>{info.getValue() ? formatDate(info.getValue()) : <span className="text-zinc-300">—</span>}</span>
               ),
@@ -757,6 +766,15 @@ export function LeadsPage() {
             return columnHelper.accessor('lastUpdated', {
               id: 'lastUpdated',
               header: 'Last Updated',
+              // ALT-437: sort chronologically; nulls/empty last regardless of direction.
+              sortingFn: (rowA, rowB) => {
+                const a = rowA.original.lastUpdated;
+                const b = rowB.original.lastUpdated;
+                if (!a && !b) return 0;
+                if (!a) return 1;
+                if (!b) return -1;
+                return Date.parse(a) - Date.parse(b);
+              },
               cell: (info) => (
                 <span className="text-zinc-400" style={{ fontSize: 13 }}>{info.getValue() ? formatDate(info.getValue()) : <span className="text-zinc-300">—</span>}</span>
               ),
@@ -797,6 +815,15 @@ export function LeadsPage() {
             return columnHelper.accessor('leadGeneratedDate', {
               id: 'leadGeneratedDate',
               header: 'Lead Generated',
+              // ALT-437: sort chronologically; nulls/empty last regardless of direction.
+              sortingFn: (rowA, rowB) => {
+                const a = rowA.original.leadGeneratedDate;
+                const b = rowB.original.leadGeneratedDate;
+                if (!a && !b) return 0;
+                if (!a) return 1;
+                if (!b) return -1;
+                return Date.parse(a) - Date.parse(b);
+              },
               cell: (info) => (
                 <span className="text-zinc-500" style={{ fontSize: 13 }}>{info.getValue() ? formatDate(info.getValue()) : <span className="text-zinc-300">—</span>}</span>
               ),
