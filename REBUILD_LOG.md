@@ -1141,6 +1141,24 @@ Ankit: launch the CRM on the **HungerBox** project first. Will upload **~10k lar
 - **Role walkthroughs + standing QC** (`docs/product/ROLE-WALKTHROUGHS.md`): step-by-step happy path per role (first login → daily job) + repeatable QC checklist, so PM doesn't hand-UAT every user.
 **Orchestration (Sonnet subagents, disjoint file areas / separate build targets to avoid races):** wave-1 = (A) HungerBox companies/contacts domain [sole web-build] · (C) server-side write **gatekeeper** ALT-431 in notify-service · (D) role-walkthroughs+QC docs. Wave-2 (after A) = import write-engine (DEC-14) · DEC-03 owner-resolution flip · automation/event-spine. All new behavior ships **dark** behind flags (`HUNGERBOX_FEATURES`, `USE_WRITE_GATEWAY`) until migrations applied + flipped. Tracker tickets ALT-452..457 added (In Progress). NOT pushed.
 
+### 2026-06-28 (cont. 3) — Full launch program built (orchestrated, ~19 commits) + Ankit role decisions
+Marathon orchestration (Sonnet subagents for build/research, Opus main-loop for orchestration + verification + careful edits). **Everything dark behind flags except the call-logs/DEC-03/access-flag-off fixes.** Built this session:
+- **HungerBox domain** (ALT-452..456): `company_site`/`hb_dnc`/`hb_feasibility` + history (staged migs), DNC+feasibility marking, reddish non-contactable, metro priority, per-site prequalified panel, filters. Flag `HUNGERBOX_FEATURES=false`.
+- **Write gatekeeper** (ALT-431): notify-service `POST /api/write`, JWT-derived actor, role allow-list. Flag `USE_WRITE_GATEWAY`/`VITE_USE_WRITE_GATEWAY=false`.
+- **Import write-engine** (DEC-14): upsert company/contact/lead by record_id|domain|email, batch history + **undo**, 500-row chunks, server-side via gatekeeper. Staged `apply-import-batches.cjs`. Dark behind gateway flag.
+- **Automation event-spine** rails: `event_outbox` + worker skeleton (`ENABLE_OUTBOX_WORKER` off), `eventBus.js`. Staged `apply-event-outbox.cjs`.
+- **DEC-03 ownership** (ALT-433) steps 1–4: createLead seeds `lead_report.user_id`=creator; owner resolution falls back to created_by for legacy; edit-form `created_by` immutable (agent picker read-only in edit mode); staged `apply-dec03-backfill.cjs`. **Step 5 RLS pending throwaway-login validation.**
+- **Role-access model** (ALT-152/458/459/463): staged `apply-access-control-rls.cjs` (assignee-edit; agent denied on company/contact + lead only stage≥4; QC=TL-minus-reassign; sales no master UPDATE) + role-gated UI. Flag `STRICT_ROLE_GATING=false`. useAuth adds isQC/isAgent/canEditCompanyContact. ACCESS-CONTROL-MODEL **Part 9/9A** = locked rules + per-role validation plan.
+- **Call logs FIX** (ALT-462): app read/wrote a non-existent `call_log` table; rerouted to live `interaction` via `LogDispositionModal`+`CallLogPreview`. **LIVE fix (not flagged)** — effective on push.
+- **Advanced filters + saved views** (ALT-460/461): `filterEngine.ts` (exclude/none-of/is-not/between/relative), FilterBuilder+ViewPicker, `savedViews.ts` (per-project-per-user, staged `apply-saved-views.cjs`), 5 list pages wired. Flag `ADVANCED_FILTERS=false`.
+- **Tasks overhaul v1** (ALT-465..468): MyTasks List/Kanban toggle + bulk update; `RecordActivityHub` mounted on lead/contact/company detail; auto-complete (CALL→LogDisposition→task DONE+linked_interaction_id; TODO→CompleteTodoPopup); staged `apply-task-enhancements.cjs` (task: completed_at/linked_interaction_id/outcome_note). Flag `TASKS_V2=false`.
+- **Role walkthroughs + QC** (ALT-457): `ROLE-WALKTHROUGHS.md` (6 roles + 60-assertion QC checklist). GAP-8 AdminPage isAdmin via useAuth.
+- **Ankit role decisions** captured in ACCESS-CONTROL Part 9: edit=assignee not creator; AGENT edits only pre-sales questions + post-Meeting-Scheduled (no company/contact); QC=TL-minus-assign + agent-can-be-QC; SALES read+request-edit+feedback only; prequalified company-vs-site toggle per-project (ALT-464).
+
+**Specs written (repo-remembers):** HUNGERBOX-LAUNCH · WRITE-GATEKEEPER · AUTOMATION-EVENT-SPINE · ADVANCED-FILTERS-SPEC · TASKS-OVERHAUL-SPEC · ROLE-WALKTHROUGHS · DEC-03-OWNERSHIP-PLAN · ACCESS-CONTROL-MODEL Part 9/9A.
+
+**RUNBOOK to ACTIVATE each dark feature** (after push): apply its staged migration(s) → flip its flag → redeploy. Order: gatekeeper flag + import migs → HungerBox migs + `HUNGERBOX_FEATURES` → tasks mig + `TASKS_V2` → saved-views mig + `ADVANCED_FILTERS` → **DEC-03 backfill + access-control RLS validated on throwaway logins THEN apply + `STRICT_ROLE_GATING`**. Push itself only ships code; **migrations are never auto-run** + non-call-log features are flag-off, so push is low-risk.
+
 ---
 ## 2026-06-26 — Amp Intranet planned to share the CRM/Client-Portal stack (new doc)
 Ankit opened `Amp-Intranet/Amp PRD.md` (v1.0 "Amp — Amplior Employee Portal" — mobile-first staff portal: Home/Craft/Culture/Me/Tools+Knowledge) and asked to plan it so it **shares the same DB as the Client Portal**, with **CRM + Client Portal + Intranet all hosted the same way**. Wrote **`docs/product/AMP-INTRANET.md`** — the architecture/integration plan (the PRD stays the product spec).
@@ -1150,3 +1168,33 @@ Ankit opened `Amp-Intranet/Amp PRD.md` (v1.0 "Amp — Amplior Employee Portal" �
 - **KB (owner emphasis):** make the knowledge base first-class (native `amp_kb_*` tables) + **pgvector semantic search** (ties to AI-PGVECTOR-PLAN + VISION's "AI superpower"); share ONE knowledge store between Amp's KB and the Client Portal's internal training mirror.
 - **Phasing:** Phase 0 = infra (amp schema + `amp.amplior.com` Dokploy app + shared-Auth SSO + stats views) → then PRD Phases 1–4. New epic ≈ALT-376 (add to tracker on sign-off).
 - **8 open decisions for the owner** captured in AMP-INTRANET.md §11 (domain `amp.amplior.com`?, Google SSO?, schema name, HR role, KB depth now vs later, stats source-of-truth, backend shape, wellness anonymity). NOTHING BUILT — plan only.
+
+---
+## 2026-06-28 (cont.) — ALT-430 Tasks Module v1 built (clean build, NOT pushed)
+
+**ALT-430 Tasks Overhaul v1** implementation complete. `tsc -b && vite build` passes clean.
+
+**New files:**
+- `new-code/web/src/lib/tasksFlags.ts` — `TASKS_V2 = false` feature flag (flip after migration)
+- `new-code/web/src/components/tasks/CompleteTodoPopup.tsx` — outcome popup for TODO/MEETING tasks
+- `new-code/web/src/components/tasks/TaskKanbanCard.tsx` — kanban card (type icon, subject, assoc, priority, due)
+- `new-code/web/src/components/tasks/TasksKanbanView.tsx` — `GenericKanban<Task>` with OVERDUE/TODAY/UPCOMING/DONE columns
+- `new-code/web/src/components/tasks/RecordActivityHub.tsx` — in-record hub (null until TASKS_V2=true); CALL→LogDisposition→completeTask auto-complete chain
+- `new-code/migration/apply-task-enhancements.cjs` — **STAGED, NOT executed** (ALT-431): adds `completed_at`, `linked_interaction_id`, `outcome_note` + 3 compound indexes to `public.task`
+
+**Modified files:**
+- `data/tasks.ts` — added `listTasksForRecord`, `completeTask`, `bulkUpdateTasks` + bulk interfaces
+- `data/projectStatus.ts` — `appendInteraction` + `logDisposition` now return `{ interactionId, error }`
+- `components/ui/DispositionForm.tsx` — `onLogged` prop now passes `interactionId`
+- `components/calls/LogDispositionModal.tsx` — `onLogged` prop now `(interactionId?) => void`
+- `pages/MyTasksPage.tsx` — kanban toggle (TASKS_V2-gated) + bulk select/action bar + TasksKanbanView
+- `docs/product/TASKS-OVERHAUL-SPEC.md` — "## Implemented v1" section added
+
+**Build fix:** `tsc -b` choked on JSX inside `&&` chains; fixed by pre-computing `kanbanSection: React.ReactNode` before `return`. Also found and replaced Unicode curly-quote chars (U+201C/U+201D) that had crept into JSX attribute strings (Python byte-replace).
+
+**What needs to happen before v1 is live:**
+1. Owner says "push" → `git push altleads clean-main:main`
+2. Run `node new-code/migration/apply-task-enhancements.cjs` (needs PG_CONNECTION_STRING in new-code/migration/.env)
+3. Flip `TASKS_V2 = true` in `new-code/web/src/lib/tasksFlags.ts` + redeploy
+4. Drop `<RecordActivityHub>` into Lead/Contact/Company detail pages (no-op until flag flipped)
+5. Verify RLS (`apply-task-rls.cjs`) on throwaway login before flag flip

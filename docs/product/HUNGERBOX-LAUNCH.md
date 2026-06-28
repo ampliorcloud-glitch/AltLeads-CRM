@@ -115,3 +115,71 @@ No new routes required. The Sites tab lives inside CompanyDetailPage at the exis
 - Write-gatekeeper routing (ALT-431) — all write functions have `// TODO(gatekeeper ALT-431)` markers
 - RLS on the new tables (add a follow-up migration after ALT-431 gatekeeper is built)
 - DNC/feasibility indicators on ContactDetailPage (needs similar component wiring as CompanyDetailPage)
+
+---
+
+## Implementation notes — ALT-464: Prequalified-question granularity toggle (2026-06-28)
+
+### Setting storage
+**Table: `public.project_hb_setting`** (new, staged in `apply-prequalified-granularity.cjs`)
+- PK `project_id bigint` FK → `project_master.project_id` (CASCADE)
+- `prequalified_granularity text NOT NULL DEFAULT 'site' CHECK IN ('company','site')`
+- `updated_by text`, `updated_at timestamptz`
+- One row per project; absent row treated as default `'site'`.
+
+Data layer: `new-code/web/src/data/projectHbSettings.ts`
+- `fetchProjectHbSetting(projectId)` — reads the row, falls back to `{prequalified_granularity: 'site'}` when absent.
+- `upsertProjectHbSetting(projectId, granularity, actorId)` — upserts on `project_id`.
+
+### Admin toggle UI location
+**Admin → "HB Settings" tab** (visible only when `HUNGERBOX_FEATURES = true`)
+- Component: `new-code/web/src/components/admin/HbProjectSettingsTab.tsx`
+- Wired into `AdminPage.tsx` as a new tab key `'hbsettings'` appended to `NAV_ITEMS` behind `HUNGERBOX_FEATURES`.
+- UI: project selector dropdown (same as Project Access tab) + a two-option segmented radio:
+  - **Site-wise** — answers stored per `company_site` row (default, today's behaviour)
+  - **Company-wide** — answers stored in `company_hb_prequal` (one row per company)
+- Save/Reset/dirty-state pattern mirrors `ProjectAccessTab`.
+
+### Company-vs-site answer storage
+**Site-wise (granularity = 'site'):**
+- Existing behaviour unchanged. Answers stored in `company_site` columns
+  (`total_employees`, `commercial_model`, `notes`). History in `hb_site_history`.
+- `CompanySitesPanel` renders one `SiteCard` per site row.
+
+**Company-wide (granularity = 'company'):**
+- **Table: `public.company_hb_prequal`** (new, same staged migration)
+  - PK `company_id bigint` FK → `company_master.company_id` (CASCADE)
+  - `total_employees integer`, `commercial_model text`, `notes text`
+  - `updated_by text`, `updated_at timestamptz`
+  - One row per company. Kept separate from `company_site` so switching back to site-wise leaves site rows untouched.
+- **Why not a sentinel `company_site` row?** `company_site.city_id` is NOT NULL with an FK to `city_master` — no valid sentinel city_id exists. A separate table is the correct approach.
+- History in **`public.hb_company_prequal_history`** (same migration):
+  `history_id, company_id, changed_by, changed_at, field_name, old_value, new_value` — mirrors `hb_site_history`.
+- Data layer: `fetchCompanyHbPrequal`, `fetchCompanyPrequalHistory`, `upsertCompanyHbPrequal` in `projectHbSettings.ts`.
+- `CompanySitesPanel` renders a single `CompanyPrequalForm` (inline component) instead of the site list.
+
+### Panel switching
+`CompanySitesPanel` now accepts a `granularity?: PrequalGranularity` prop (default `'site'`).
+- When `'company'`: renders `CompanyPrequalForm` (company-wide form + inline history).
+- When `'site'`: renders the existing per-site `SiteCard` list (unchanged).
+- Company-level DNC/feasibility action buttons are always rendered regardless of granularity.
+- A small label chip ("Company-wide answers" / "Site-wise answers") shows the active mode.
+
+`CompanyDetailPage` fetches `fetchProjectHbSetting(projectId)` whenever `projectId` changes (effect hook) and passes the result as `granularity` to `CompanySitesPanel`. Defaults to `'site'` while loading or when `HUNGERBOX_FEATURES = false`.
+
+### Staged migration
+`new-code/migration/apply-prequalified-granularity.cjs`
+- Syntax-checked (`node -c` passes).
+- NOT yet executed. Run after `apply-hungerbox-company-sites.cjs` and when `HUNGERBOX_FEATURES` is flipped to `true`.
+- Creates: `project_hb_setting`, `company_hb_prequal`, `hb_company_prequal_history`.
+
+### Feature flag safety
+All new code paths (UI, data fetches, writes) are guarded by `HUNGERBOX_FEATURES`. When `false`:
+- `HbProjectSettingsTab` returns `null`.
+- `fetchProjectHbSetting` returns `{setting: {prequalified_granularity: 'site'}}` with no DB call.
+- `fetchCompanyHbPrequal` / `fetchCompanyPrequalHistory` return empty/null with no DB call.
+- `upsertCompanyHbPrequal` / `upsertProjectHbSetting` return a "not enabled" error string.
+- `CompanySitesPanel` returns `null` (pre-existing gate).
+
+### Write-gatekeeper note
+All writes carry `// TODO(gatekeeper ALT-431)` comments — they go direct to Supabase for now, same as the rest of the HungerBox layer.

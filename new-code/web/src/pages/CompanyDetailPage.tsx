@@ -69,6 +69,7 @@ import { pushRecent } from '../lib/useRecentlyViewed';
 import type { Interaction } from '../data/contacts';
 import { HUNGERBOX_FEATURES } from '../lib/hungerbox';
 import { CompanySitesPanel } from '../components/hungerbox/CompanySitesPanel';
+import { fetchProjectHbSetting, type PrequalGranularity } from '../data/projectHbSettings';
 import { gated } from '../lib/roleGating';
 
 /* ------------------------------------------------------------------
@@ -1276,6 +1277,16 @@ export function CompanyDetailPage() {
     if (selectedProjectId != null) setProjectId(selectedProjectId);
   }, [selectedProjectId]);
 
+  // ALT-464: prequalified-question granularity for the active project (HungerBox only).
+  // Defaults to 'site' while loading or when HUNGERBOX_FEATURES is off.
+  const [hbGranularity, setHbGranularity] = useState<PrequalGranularity>('site');
+  useEffect(() => {
+    if (!HUNGERBOX_FEATURES || projectId == null) { setHbGranularity('site'); return; }
+    fetchProjectHbSetting(projectId).then(({ setting }) => {
+      setHbGranularity(setting.prequalified_granularity);
+    });
+  }, [projectId]);
+
   // Fix #6 — link existing contact
   const [showLinkModal, setShowLinkModal] = useState(false);
 
@@ -1582,7 +1593,7 @@ export function CompanyDetailPage() {
               <ActivityTab companyId={companyId} projectId={projectId} refreshKey={activityRefresh} />
             )}
             {tab === 'sites' && HUNGERBOX_FEATURES && actorId != null && (
-              <CompanySitesPanel companyId={companyId} actorId={actorId} />
+              <CompanySitesPanel companyId={companyId} actorId={actorId} granularity={hbGranularity} />
             )}
           </div>
         </div>

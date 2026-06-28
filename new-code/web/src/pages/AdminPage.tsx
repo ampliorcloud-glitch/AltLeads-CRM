@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Loader2, ShieldAlert, Users, Briefcase, Building2, Tag, Globe, Layout, ListTree, HelpCircle, ShieldCheck, Activity } from 'lucide-react';
+import { Loader2, ShieldAlert, Users, Briefcase, Building2, Tag, Layout, ListTree, HelpCircle, ShieldCheck, Activity, ToggleLeft } from 'lucide-react';
 import { AppShell } from '../components/layout/AppShell';
 import { useAuth } from '../contexts/AuthContext';
 import { fetchLookups, type AdminLookups } from '../data/admin';
@@ -11,10 +11,12 @@ import { DropdownsTab } from '../components/admin/DropdownsTab';
 import { PreSalesQuestionsTab } from '../components/admin/PreSalesQuestionsTab';
 import { ProjectAccessTab } from '../components/admin/ProjectAccessTab';
 import { ActivityTimelineTab } from '../components/admin/ActivityTimelineTab';
+import { HbProjectSettingsTab } from '../components/admin/HbProjectSettingsTab';
+import { HUNGERBOX_FEATURES } from '../lib/hungerbox';
 
-type TabKey = 'users' | 'projects' | 'clients' | 'reference' | 'dropdowns' | 'presales' | 'access' | 'activity';
+type TabKey = 'users' | 'projects' | 'clients' | 'reference' | 'dropdowns' | 'presales' | 'access' | 'activity' | 'hbsettings';
 
-const NAV_ITEMS: { key: TabKey; label: string; icon: React.ReactNode }[] = [
+const BASE_NAV_ITEMS: { key: TabKey; label: string; icon: React.ReactNode }[] = [
   { key: 'users',     label: 'User',              icon: <Users size={15} strokeWidth={1.6} /> },
   { key: 'clients',   label: 'Client',            icon: <Building2 size={15} strokeWidth={1.6} /> },
   { key: 'projects',  label: 'Project',           icon: <Briefcase size={15} strokeWidth={1.6} /> },
@@ -25,15 +27,25 @@ const NAV_ITEMS: { key: TabKey; label: string; icon: React.ReactNode }[] = [
   { key: 'activity',  label: 'Activity',           icon: <Activity size={15} strokeWidth={1.6} /> },
 ];
 
+// HungerBox-specific nav items — only shown when HUNGERBOX_FEATURES is on.
+const HB_NAV_ITEMS: { key: TabKey; label: string; icon: React.ReactNode }[] = [
+  { key: 'hbsettings', label: 'HB Settings', icon: <ToggleLeft size={15} strokeWidth={1.6} /> },
+];
+
+const NAV_ITEMS = HUNGERBOX_FEATURES
+  ? [...BASE_NAV_ITEMS, ...HB_NAV_ITEMS]
+  : BASE_NAV_ITEMS;
+
 const TAB_TITLES: Record<TabKey, string> = {
-  users:     'User',
-  projects:  'Project',
-  clients:   'Client',
-  access:    'Project Access',
-  reference: 'Reference Data',
-  dropdowns: 'Option Lists',
-  presales:  'Pre-Sales Questions',
-  activity:  'Activity',
+  users:      'User',
+  projects:   'Project',
+  clients:    'Client',
+  access:     'Project Access',
+  reference:  'Reference Data',
+  dropdowns:  'Option Lists',
+  presales:   'Pre-Sales Questions',
+  activity:   'Activity',
+  hbsettings: 'HungerBox Settings',
 };
 
 function Restricted() {
@@ -225,14 +237,15 @@ export default function AdminPage() {
             </div>
           ) : (
             <>
-              {tab === 'users'     && <UsersTab     lookups={lookups} actorId={actorId} />}
-              {tab === 'projects'  && <ProjectsTab  lookups={lookups} actorId={actorId} />}
-              {tab === 'clients'   && <ClientsTab   lookups={lookups} actorId={actorId} />}
-              {tab === 'access'    && <ProjectAccessTab actorId={actorId} />}
-              {tab === 'reference' && <ReferenceDataTab actorId={actorId} />}
-              {tab === 'dropdowns' && <DropdownsTab actorId={actorId} />}
-              {tab === 'presales'  && <PreSalesQuestionsTab actorId={actorId} />}
-              {tab === 'activity'  && <ActivityTimelineTab />}
+              {tab === 'users'      && <UsersTab     lookups={lookups} actorId={actorId} />}
+              {tab === 'projects'   && <ProjectsTab  lookups={lookups} actorId={actorId} />}
+              {tab === 'clients'    && <ClientsTab   lookups={lookups} actorId={actorId} />}
+              {tab === 'access'     && <ProjectAccessTab actorId={actorId} />}
+              {tab === 'reference'  && <ReferenceDataTab actorId={actorId} />}
+              {tab === 'dropdowns'  && <DropdownsTab actorId={actorId} />}
+              {tab === 'presales'   && <PreSalesQuestionsTab actorId={actorId} />}
+              {tab === 'activity'   && <ActivityTimelineTab />}
+              {tab === 'hbsettings' && <HbProjectSettingsTab actorId={actorId} />}
             </>
           )}
         </div>
