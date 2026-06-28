@@ -43,6 +43,7 @@ import { EditableGrid, type EditableColumn } from '../components/ui/EditableGrid
 import { SelectAllMatchingBar } from '../components/ui/SelectAllMatchingBar';
 import { useListFilters } from '../lib/listFilters';
 import { useSortPersistence } from '../lib/useSortPersistence';
+import { usePinPersistence } from '../lib/usePinPersistence';
 import { GenericKanban } from '../components/kanban/GenericKanban';
 import {
   KanbanGroupBySelect,
@@ -357,6 +358,8 @@ export function LeadsPage() {
   const [filters, setFilters] = useListFilters<Filters>('leads', defaultFilters);
   // Persisted sort state (ALT-440) — mirrors density key convention: altleads:sort:<entity>:<userId>.
   const [sorting, setSorting] = useSortPersistence('leads', userId);
+  // Persisted column pinning (ALT-440) — key: altleads:pin:leads:<userId>.
+  const [columnPinning, setColumnPinning] = usePinPersistence('leads', userId);
   const [pagination, setPagination] = useState<PaginationState>({ pageIndex: 0, pageSize: 25 });
 
   // Column visibility / order state (seeded from catalogue defaults)
@@ -842,9 +845,10 @@ export function LeadsPage() {
   const table = useReactTable({
     data: filteredData,
     columns,
-    state: { sorting, pagination },
+    state: { sorting, pagination, columnPinning },
     onSortingChange: setSorting,
     onPaginationChange: setPagination,
+    onColumnPinningChange: setColumnPinning,
     getCoreRowModel: getCoreRowModel(),
     getSortedRowModel: getSortedRowModel(),
     getPaginationRowModel: getPaginationRowModel(),
@@ -1084,6 +1088,8 @@ export function LeadsPage() {
               allColumns={ALL_COLUMNS}
               value={columnPrefs}
               onChange={(next) => setColumnPrefs(reconcileColumns(next, ALL_COLUMNS))}
+              columnPinning={columnPinning}
+              onColumnPinningChange={setColumnPinning}
             />
           }
           exportButton={
@@ -1232,9 +1238,17 @@ export function LeadsPage() {
                           // rows can't show through under the sticky header.
                           position: 'sticky',
                           top: 0,
-                          zIndex: 2,
+                          // ALT-440: column pinning — pinned-left columns also stick
+                          // horizontally. zIndex 3 so pinned headers sit above both the
+                          // sticky body cells (zIndex 2) and normal headers (zIndex 2).
+                          ...(header.column.getIsPinned() === 'left'
+                            ? { left: header.column.getStart('left'), zIndex: 3 }
+                            : { zIndex: 2 }),
                           background: 'var(--color-surface)',
                           borderBottom: '1px solid var(--border-color)',
+                          ...(header.column.getIsPinned() === 'left'
+                            ? { boxShadow: '2px 0 4px -1px rgba(0,0,0,0.08)' }
+                            : {}),
                         }}
                         onClick={header.column.getToggleSortingHandler()}
                         onKeyDown={(e) => {
@@ -1358,18 +1372,31 @@ export function LeadsPage() {
                           : '';
                       }}
                     >
-                      {row.getVisibleCells().map((cell) => (
-                        <td
-                          key={cell.id}
-                          className="align-middle whitespace-nowrap"
-                          style={{
-                            padding: `${densityMetrics.cellPaddingY}px ${cell.column.id === '__select' ? 12 : 16}px`,
-                            ...(densityMetrics.fontSize ? { fontSize: densityMetrics.fontSize } : null),
-                          }}
-                        >
-                          {flexRender(cell.column.columnDef.cell, cell.getContext())}
-                        </td>
-                      ))}
+                      {row.getVisibleCells().map((cell) => {
+                        const isPinnedLeft = cell.column.getIsPinned() === 'left';
+                        return (
+                          <td
+                            key={cell.id}
+                            className="align-middle whitespace-nowrap"
+                            style={{
+                              padding: `${densityMetrics.cellPaddingY}px ${cell.column.id === '__select' ? 12 : 16}px`,
+                              ...(densityMetrics.fontSize ? { fontSize: densityMetrics.fontSize } : null),
+                              // ALT-440: sticky left for pinned columns.
+                              ...(isPinnedLeft
+                                ? {
+                                    position: 'sticky',
+                                    left: cell.column.getStart('left'),
+                                    zIndex: 2,
+                                    background: 'inherit',
+                                    boxShadow: '2px 0 4px -1px rgba(0,0,0,0.08)',
+                                  }
+                                : {}),
+                            }}
+                          >
+                            {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                          </td>
+                        );
+                      })}
                     </tr>
                   ))
                 )}

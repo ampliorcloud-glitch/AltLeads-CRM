@@ -1,3 +1,7 @@
+// TODO(ALT-440): pin support for hand-rolled contacts table — ContactsPage uses a
+// hand-rolled <table> without TanStack Table, so ColumnPinningState / usePinPersistence
+// cannot be wired here with the same pattern as the other list pages. Defer until
+// ContactsPage is refactored to useReactTable.
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { AppShell } from '../components/layout/AppShell';

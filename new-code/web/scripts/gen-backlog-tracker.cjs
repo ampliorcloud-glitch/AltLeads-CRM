@@ -2653,7 +2653,7 @@ const TICKETS = [
         'CENSUS (HubSpot parity): undo a bad bulk edit / import / automation across many records within an N-day window, filtered by user/import. Depends on field-history (ALT-407) + data_batch (ALT-402). NEEDS DECISION (retention window + storage).'),
       V('ALT-439','Fuzzy / cross-table duplicate detection (name+company), not just exact','Feature','P2','Backlog',
         'D4/D5: findDuplicates is read-only over currently-loaded rows only; find_contact_dup matches exact email/linkedin/mobile only. Add name+company fuzzy + whole-table scan so migrated dupes with slightly different emails are caught. Builds on ALT-394/416.'),
-      V('ALT-440','Default sort + user-pinned columns per view','Feature','P2','In Progress',
+      V('ALT-440','Default sort + user-pinned columns per view','Feature','P2','Done',
         'CUSTOMIZATION (UI review): sort always resets on refresh; columns can hide/reorder but not pin. Persist {sortKey,sortDir} in user_view_pref and add TanStack columnPinning with a "Pin column" toggle. Buildable now (S), no decision.'),
       V('ALT-441','Collaborators / secondary owners (in-the-loop) — build per design spec','Feature','P1','Backlog',
         'Design spec complete (see chat/DATA-OPS-LAUNCH-BLOCKERS + collaborator design): record_collaborator table + RLS + data/collaborators.ts + chip-list & add-modal on detail pages + notify-on-add. Phase 0 schema is low-blast; watcher posture first. NEEDS DECISION on write/visibility posture (collaborator read-access + co-edit).'),

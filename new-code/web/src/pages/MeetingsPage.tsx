@@ -41,6 +41,7 @@ import { ActiveFilters, type FilterChip } from '../components/ui/ActiveFilters';
 import { SelectAllMatchingBar } from '../components/ui/SelectAllMatchingBar';
 import { useListFilters } from '../lib/listFilters';
 import { useSortPersistence } from '../lib/useSortPersistence';
+import { usePinPersistence } from '../lib/usePinPersistence';
 import { EditableGrid, type EditableColumn } from '../components/ui/EditableGrid';
 import { GenericKanban } from '../components/kanban/GenericKanban';
 import {
@@ -272,6 +273,8 @@ export function MeetingsPage() {
   const [filters, setFilters] = useListFilters<Filters>('meetings', defaultFilters);
   // Persisted sort state (ALT-440) — mirrors density key convention: altleads:sort:<entity>:<userId>.
   const [sorting, setSorting] = useSortPersistence('meetings', userId);
+  // Persisted column pinning (ALT-440) — key: altleads:pin:meetings:<userId>.
+  const [columnPinning, setColumnPinning] = usePinPersistence('meetings', userId);
   const [pageIndex, setPageIndex] = useState(0);
 
   // Column visibility/order — seeded from defaults; ColumnCustomizer loads saved view on mount.
@@ -716,7 +719,7 @@ export function MeetingsPage() {
   const table = useReactTable({
     data: filteredData,
     columns,
-    state: { sorting, pagination: { pageIndex, pageSize: PAGE_SIZE } },
+    state: { sorting, pagination: { pageIndex, pageSize: PAGE_SIZE }, columnPinning },
     onSortingChange: setSorting,
     onPaginationChange: (updater) => {
       const next = typeof updater === 'function'
@@ -724,6 +727,7 @@ export function MeetingsPage() {
         : updater;
       setPageIndex(next.pageIndex);
     },
+    onColumnPinningChange: setColumnPinning,
     getCoreRowModel: getCoreRowModel(),
     getSortedRowModel: getSortedRowModel(),
     getPaginationRowModel: getPaginationRowModel(),
@@ -1051,6 +1055,8 @@ export function MeetingsPage() {
               allColumns={ALL_COLUMNS}
               value={colPrefs}
               onChange={(next) => setColPrefs(reconcileColumns(next, ALL_COLUMNS))}
+              columnPinning={columnPinning}
+              onColumnPinningChange={setColumnPinning}
             />
           }
           exportButton={
@@ -1205,8 +1211,14 @@ export function MeetingsPage() {
                           // rows can't show through under the sticky header.
                           position: 'sticky',
                           top: 0,
-                          zIndex: 2,
+                          // ALT-440: column pinning — pinned-left columns also stick horizontally.
+                          ...(header.column.getIsPinned() === 'left'
+                            ? { left: header.column.getStart('left'), zIndex: 3 }
+                            : { zIndex: 2 }),
                           background: '#FFFFFF',
+                          ...(header.column.getIsPinned() === 'left'
+                            ? { boxShadow: '2px 0 4px -1px rgba(0,0,0,0.08)' }
+                            : {}),
                         }}
                         onClick={header.column.getToggleSortingHandler()}
                         onKeyDown={(e) => {
@@ -1310,18 +1322,31 @@ export function MeetingsPage() {
                           boxShadow: keyNav.focusedId === row.original.id ? 'inset 3px 0 0 0 var(--color-brand, #1A7EE8)' : undefined,
                         }}
                       >
-                        {row.getVisibleCells().map((cell) => (
-                          <td
-                            key={cell.id}
-                            className="align-middle whitespace-nowrap"
-                            style={{
-                              padding: `${densityMetrics.cellPaddingY}px 16px`,
-                              ...(densityMetrics.fontSize ? { fontSize: densityMetrics.fontSize } : null),
-                            }}
-                          >
-                            {flexRender(cell.column.columnDef.cell, cell.getContext())}
-                          </td>
-                        ))}
+                        {row.getVisibleCells().map((cell) => {
+                          const isPinnedLeft = cell.column.getIsPinned() === 'left';
+                          return (
+                            <td
+                              key={cell.id}
+                              className="align-middle whitespace-nowrap"
+                              style={{
+                                padding: `${densityMetrics.cellPaddingY}px 16px`,
+                                ...(densityMetrics.fontSize ? { fontSize: densityMetrics.fontSize } : null),
+                                // ALT-440: sticky left for pinned columns.
+                                ...(isPinnedLeft
+                                  ? {
+                                      position: 'sticky',
+                                      left: cell.column.getStart('left'),
+                                      zIndex: 2,
+                                      background: 'inherit',
+                                      boxShadow: '2px 0 4px -1px rgba(0,0,0,0.08)',
+                                    }
+                                  : {}),
+                              }}
+                            >
+                              {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                            </td>
+                          );
+                        })}
                       </tr>
                     );
                   })

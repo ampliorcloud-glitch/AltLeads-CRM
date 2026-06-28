@@ -31,6 +31,7 @@ import { ActiveFilters, type FilterChip } from '../components/ui/ActiveFilters';
 import { SelectAllMatchingBar } from '../components/ui/SelectAllMatchingBar';
 import { useListFilters } from '../lib/listFilters';
 import { useSortPersistence } from '../lib/useSortPersistence';
+import { usePinPersistence } from '../lib/usePinPersistence';
 import { EditableGrid, type EditableColumn } from '../components/ui/EditableGrid';
 import { CardShell } from '../components/ui/CardGrid';
 import { GenericKanban } from '../components/kanban/GenericKanban';
@@ -233,6 +234,8 @@ export function WishlistPage() {
   const [filters, setFilters] = useListFilters<Filters>('wishlist', defaultFilters);
   // Persisted sort state (ALT-440) — mirrors density key convention: altleads:sort:<entity>:<userId>.
   const [sorting, setSorting] = useSortPersistence('wishlist', userId);
+  // Persisted column pinning (ALT-440) — key: altleads:pin:wishlist:<userId>.
+  const [columnPinning, setColumnPinning] = usePinPersistence('wishlist', userId);
   const [pagination, setPagination] = useState<PaginationState>({ pageIndex: 0, pageSize: PAGE_SIZE });
 
   // Column customizer state — seeded from defaults, overridden by saved view on mount.
@@ -585,9 +588,10 @@ export function WishlistPage() {
   const table = useReactTable({
     data: filteredData,
     columns,
-    state: { sorting, pagination },
+    state: { sorting, pagination, columnPinning },
     onSortingChange: setSorting,
     onPaginationChange: setPagination,
+    onColumnPinningChange: setColumnPinning,
     getCoreRowModel: getCoreRowModel(),
     getSortedRowModel: getSortedRowModel(),
     getFilteredRowModel: getFilteredRowModel(),
@@ -911,6 +915,8 @@ export function WishlistPage() {
               allColumns={ALL_COLUMNS}
               value={columnPrefs}
               onChange={(next) => setColumnPrefs(reconcileColumns(next, ALL_COLUMNS))}
+              columnPinning={columnPinning}
+              onColumnPinningChange={setColumnPinning}
             />
           }
           exportButton={
@@ -1033,8 +1039,14 @@ export function WishlistPage() {
                           // rows can't show through under the sticky header.
                           position: 'sticky',
                           top: 0,
-                          zIndex: 2,
+                          // ALT-440: column pinning — pinned-left columns also stick horizontally.
+                          ...(header.column.getIsPinned() === 'left'
+                            ? { left: header.column.getStart('left'), zIndex: 3 }
+                            : { zIndex: 2 }),
                           background: '#FFFFFF',
+                          ...(header.column.getIsPinned() === 'left'
+                            ? { boxShadow: '2px 0 4px -1px rgba(0,0,0,0.08)' }
+                            : {}),
                         }}
                         onClick={canSort ? header.column.getToggleSortingHandler() : undefined}
                         onKeyDown={(e) => {
@@ -1139,18 +1151,31 @@ export function WishlistPage() {
                           boxShadow: keyNav.focusedId === row.original.id ? 'inset 3px 0 0 0 var(--color-brand, #1A7EE8)' : undefined,
                         }}
                       >
-                        {row.getVisibleCells().map((cell) => (
-                          <td
-                            key={cell.id}
-                            className="align-middle whitespace-nowrap"
-                            style={{
-                              padding: `${densityMetrics.cellPaddingY}px 16px`,
-                              ...(densityMetrics.fontSize ? { fontSize: densityMetrics.fontSize } : null),
-                            }}
-                          >
-                            {flexRender(cell.column.columnDef.cell, cell.getContext())}
-                          </td>
-                        ))}
+                        {row.getVisibleCells().map((cell) => {
+                          const isPinnedLeft = cell.column.getIsPinned() === 'left';
+                          return (
+                            <td
+                              key={cell.id}
+                              className="align-middle whitespace-nowrap"
+                              style={{
+                                padding: `${densityMetrics.cellPaddingY}px 16px`,
+                                ...(densityMetrics.fontSize ? { fontSize: densityMetrics.fontSize } : null),
+                                // ALT-440: sticky left for pinned columns.
+                                ...(isPinnedLeft
+                                  ? {
+                                      position: 'sticky',
+                                      left: cell.column.getStart('left'),
+                                      zIndex: 2,
+                                      background: 'inherit',
+                                      boxShadow: '2px 0 4px -1px rgba(0,0,0,0.08)',
+                                    }
+                                  : {}),
+                              }}
+                            >
+                              {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                            </td>
+                          );
+                        })}
                       </tr>
                     );
                   })

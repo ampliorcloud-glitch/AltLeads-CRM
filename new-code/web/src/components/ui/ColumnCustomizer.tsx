@@ -20,8 +20,9 @@
  */
 
 import React, { useEffect, useRef, useState } from 'react';
-import { Settings2, ChevronUp, ChevronDown, Check, Save, RotateCcw } from 'lucide-react';
+import { Settings2, ChevronUp, ChevronDown, Check, Save, RotateCcw, Pin, PinOff } from 'lucide-react';
 import type { ColumnDef } from './columns';
+import type { ColumnPinningState } from '@tanstack/react-table';
 import {
   getActiveView,
   saveView,
@@ -35,6 +36,10 @@ interface Props {
   allColumns: ColumnDef[];
   value: ColumnPref[];
   onChange: (next: ColumnPref[]) => void;
+  /** Current column pinning state (optional — if absent, pin controls are hidden). */
+  columnPinning?: ColumnPinningState;
+  /** Called when user toggles pin for a column (optional — pair with columnPinning). */
+  onColumnPinningChange?: (pinning: ColumnPinningState) => void;
 }
 
 /** Build the default ColumnPref[] from a column catalogue (in catalogue order). */
@@ -63,7 +68,7 @@ export function reconcileColumns(prefs: ColumnPref[], allColumns: ColumnDef[]): 
   return kept;
 }
 
-export function ColumnCustomizer({ entity, userId, allColumns, value, onChange }: Props) {
+export function ColumnCustomizer({ entity, userId, allColumns, value, onChange, columnPinning, onColumnPinningChange }: Props) {
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState<string | null>(null);
@@ -105,6 +110,17 @@ export function ColumnCustomizer({ entity, userId, allColumns, value, onChange }
     const [item] = next.splice(index, 1);
     next.splice(target, 0, item);
     onChange(next);
+  }
+
+  function togglePin(key: string) {
+    if (!columnPinning || !onColumnPinningChange) return;
+    const isPinned = columnPinning.left?.includes(key) ?? false;
+    onColumnPinningChange({
+      ...columnPinning,
+      left: isPinned
+        ? (columnPinning.left ?? []).filter((k) => k !== key)
+        : [...(columnPinning.left ?? []), key],
+    });
   }
 
   async function handleSave() {
@@ -232,6 +248,25 @@ export function ColumnCustomizer({ entity, userId, allColumns, value, onChange }
                 >
                   {headerByKey.get(col.key) ?? col.key}
                 </span>
+                {columnPinning && onColumnPinningChange && (
+                  (() => {
+                    const isPinned = columnPinning.left?.includes(col.key) ?? false;
+                    return (
+                      <button
+                        type="button"
+                        onClick={() => togglePin(col.key)}
+                        title={isPinned ? 'Unpin column' : 'Pin column to left'}
+                        aria-label={isPinned ? 'Unpin column' : 'Pin column to left'}
+                        style={{
+                          ...iconBtn,
+                          color: isPinned ? '#1A7EE8' : '#9ca3af',
+                        }}
+                      >
+                        {isPinned ? <PinOff size={13} /> : <Pin size={13} />}
+                      </button>
+                    );
+                  })()
+                )}
                 <button
                   type="button"
                   style={{ ...iconBtn, opacity: idx === 0 ? 0.3 : 1 }}
