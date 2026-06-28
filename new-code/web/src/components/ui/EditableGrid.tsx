@@ -156,6 +156,7 @@ function EditableCell<Row>({ row, col }: { row: Row; col: EditableColumn<Row> })
       setTimeout(() => setState('idle'), 1200);
     } else {
       setState('saved');
+      toast.success('Saved');
       if (savedTimer.current) clearTimeout(savedTimer.current);
       savedTimer.current = setTimeout(() => setState('idle'), 1500);
     }

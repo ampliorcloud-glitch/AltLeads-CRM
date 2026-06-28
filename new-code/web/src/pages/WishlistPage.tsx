@@ -12,7 +12,10 @@ import {
   type PaginationState,
 } from '@tanstack/react-table';
 import { AppShell } from '../components/layout/AppShell';
-import { fetchWishlist, fmtLongDate, type WishlistItem } from '../data/wishlist';
+import { fetchWishlist, fmtLongDate, type WishlistItem, assignWishlist } from '../data/wishlist';
+import { fetchAssignableUsers } from '../data/assignment';
+import type { UserOption } from '../data/wishlist';
+import { ReassignModal } from '../components/common/ReassignModal';
 import { useAuth } from '../contexts/AuthContext';
 import { useProjectScope } from '../contexts/ProjectContext';
 import { useRowSelection } from '../components/ui/useRowSelection';
@@ -53,7 +56,9 @@ import {
   Building2,
   RefreshCw,
   AlertCircle,
+  UserCheck,
 } from 'lucide-react';
+import { useToast } from '../components/ui/Toast';
 
 const columnHelper = createColumnHelper<WishlistItem>();
 
@@ -202,7 +207,7 @@ const EXPORT_COLUMNS: ExportColumn<WishlistItem>[] = ALL_COLUMNS.map((c) => ({
 
 export function WishlistPage() {
   const navigate = useNavigate();
-  const { profile } = useAuth();
+  const { profile, canReassign } = useAuth();
   const userId = profile?.user_id ?? null;
 
   // Global project scope (owner ask #8). null = "All projects" (no extra filter).
@@ -249,6 +254,13 @@ export function WishlistPage() {
   // Row selection
   const sel = useRowSelection<string>();
   const searchRef = useRef<HTMLInputElement>(null);
+  const toast = useToast();
+
+  // Bulk reassign (ALT-449) — assign selected wishlist items to an agent.
+  const [showReassign, setShowReassign] = useState(false);
+  const [reassignSaving, setReassignSaving] = useState(false);
+  const [reassignError, setReassignError] = useState<string | null>(null);
+  const [reassignOwners, setReassignOwners] = useState<UserOption[]>([]);
 
   // Table / Grid / Kanban view (persisted per user + entity in localStorage).
   const [view, setView] = useViewMode('wishlist', userId);
@@ -280,6 +292,46 @@ export function WishlistPage() {
     });
     return () => { cancelled = true; };
   }, [reloadKey]);
+
+  const openBulkReassign = async () => {
+    setReassignError(null);
+    setReassignOwners([]);
+    setShowReassign(true);
+    setReassignOwners(await fetchAssignableUsers(null));
+  };
+
+  const handleBulkReassign = async (newAgentId: number) => {
+    const actor = profile?.user_id != null ? String(profile.user_id) : '';
+    const selectedItems = allItems.filter((r) => sel.isSelected(r.id));
+    setReassignSaving(true);
+    setReassignError(null);
+    let ok = 0;
+    let failed = 0;
+    for (const item of selectedItems) {
+      const err = await assignWishlist({
+        wishlistId: item.wishlistId,
+        agentId: newAgentId,
+        teamLeadId: item.assignTlId,
+        actor,
+        company: item.company,
+        isReassign: item.assignAgentId != null,
+      });
+      if (err) { failed++; } else { ok++; }
+    }
+    setReassignSaving(false);
+    if (ok === 0 && failed > 0) {
+      setReassignError(`Reassign failed for all ${failed} item(s).`);
+      return;
+    }
+    setShowReassign(false);
+    sel.clear();
+    setReloadKey((k) => k + 1);
+    toast.success(
+      failed > 0
+        ? `Reassigned ${ok}; ${failed} skipped (error).`
+        : `Reassigned ${ok} wishlist item${ok === 1 ? '' : 's'} — the new agent was notified.`,
+    );
+  };
 
   const setFilter = <K extends keyof Filters>(key: K, value: Filters[K]) => {
     setFilters((prev) => ({ ...prev, [key]: value }));
@@ -832,7 +884,19 @@ export function WishlistPage() {
               )}
             </p>
           }
-          bulkActions={null /* Wishlist has no bulk actions today */}
+          bulkActions={
+            canReassign && sel.count > 0 ? (
+              <button
+                onClick={openBulkReassign}
+                className="inline-flex items-center gap-1.5 border border-zinc-300 hover:border-zinc-400 bg-white hover:bg-zinc-50 text-zinc-700 font-medium rounded-md transition-colors"
+                style={{ fontSize: 13, padding: '6px 12px', height: 34 }}
+                title="Assign the selected wishlist items to an agent"
+              >
+                <UserCheck size={14} />
+                Reassign ({sel.count})
+              </button>
+            ) : null
+          }
           viewSwitcher={
             <>
               <ViewSwitcher value={view} onChange={setView} />
@@ -1141,6 +1205,21 @@ export function WishlistPage() {
         >
           <WishlistPreview wishlistId={previewId} />
         </RecordPreviewPanel>
+      )}
+
+      {/* Bulk Reassign modal (ALT-449). */}
+      {showReassign && (
+        <ReassignModal
+          entityLabel="Wishlist item"
+          ownerLabel="Agent"
+          count={sel.count}
+          currentOwnerId={null}
+          owners={reassignOwners}
+          saving={reassignSaving}
+          error={reassignError}
+          onConfirm={handleBulkReassign}
+          onClose={() => setShowReassign(false)}
+        />
       )}
     </AppShell>
   );
