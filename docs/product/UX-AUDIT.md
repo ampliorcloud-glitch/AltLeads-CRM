@@ -50,15 +50,15 @@ All **effort S** (hours each). These are the "small things missing" you mentione
 | 1 | Add hover tooltips (`title`) to all truncated cells so clipped names/emails are readable | All lists + detail panels | High |
 | 2 | Remove the dev-era "live Supabase data — read-only preview" banners | Leads, Wishlist, Dashboard | Med | — ✅ IMPLEMENTED (grep confirms none remain in codebase)
 | 3 | Wire the notification bell to `/notifications` + add an unread badge (it's a dead button today) | TopBar | High | — ✅ IMPLEMENTED (TopBar.tsx: navigates to /notifications + fetchUnreadNotifCount badge)
-| 4 | Role-gate / hide "New Lead / New Company / New Contact" for outreach roles | All lists + detail | High |
+| 4 | Role-gate / hide "New Lead / New Company / New Contact" for outreach roles | All lists + detail | High | — ✅ IMPLEMENTED (gated by `canCreateData = isAdmin`, AuthContext, on all 5 list pages) |
 | 5 | Restore a global keyboard focus ring (CSS currently strips it from every control) | `index.css` | High | — ✅ IMPLEMENTED (index.css :focus-visible ring, UX-AUDIT #4)
 | 6 | Add a clear (×) button inside every search box | All list search inputs | Med | — ✅ IMPLEMENTED (× clear button present on all 5 list pages: Leads, Companies, Contacts, Meetings, Wishlist)
 | 7 | Make email/phone clickable (`mailto:`/`tel:`) + one-click copy | Detail panels + list cells | Med | — ✅ IMPLEMENTED (CopyButton.tsx in detail/preview panels)
-| 8 | Add `aria-label`s to checkboxes and the bell | Lists, TopBar | Med |
+| 8 | Add `aria-label`s to checkboxes and the bell | Lists, TopBar | Med | — ✅ IMPLEMENTED (row/select-all checkboxes + bell all have aria-labels) |
 | 9 | **Stop swallowing inline status / stage-change / toggle errors** (show the failure) | Contacts inline status, lead stage, admin toggles | High |
-| 10 | Persist banner-dismissal + active tab/project in URL/localStorage | Leads, Wishlist, detail tabs | Med |
+| 10 | Persist banner-dismissal + active tab/project in URL/localStorage | Leads, Wishlist, detail tabs | Med | — 🟡 PARTIAL (project ✅ ProjectContext; Lead/Company detail active tab ✅ localStorage; URL deep-linking still open) |
 | 11 | Distinguish "no data" vs "no filter match" + inline Clear-filters | Leads, Companies, Contacts | Med | — ✅ IMPLEMENTED (hasActiveFilters branches in listFilters.ts + ActiveFilters.tsx)
-| 12 | Add a Retry button to load-error states | All lists/detail/modals | Med |
+| 12 | Add a Retry button to load-error states | All lists/detail/modals | Med | — 🟡 PARTIAL (all 5 list pages have error-state + Retry; some detail/modals still open) |
 | 13 | Fix the Contacts 1000-row cap (fetch single row by id; warn on truncation) | Contacts data layer | High | — 🟡 PARTIAL (cap raised to 50000 + truncation banner ALT-428; true server-side paging still open)
 | 14 | Add Escape-to-close + "discard changes?" backdrop guard to modals | All modals | Med | — ✅ IMPLEMENTED (Modal.tsx: Esc closes; useUnsavedChanges.ts: dirty-state guard)
 

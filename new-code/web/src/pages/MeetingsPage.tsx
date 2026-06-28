@@ -563,11 +563,14 @@ export function MeetingsPage() {
       client: columnHelper.accessor('client', {
         id: 'client',
         header: 'Client',
-        cell: (info) => (
-          <span className="text-zinc-600 truncate" style={{ fontSize: 13 }}>
-            {info.getValue() || <span className="text-zinc-300">—</span>}
-          </span>
-        ),
+        cell: (info) => {
+          const v = info.getValue() ?? '';
+          return (
+            <span className="text-zinc-600 truncate" title={v || undefined} style={{ fontSize: 13 }}>
+              {v || <span className="text-zinc-300">—</span>}
+            </span>
+          );
+        },
       }),
       meetingDate: columnHelper.accessor('meetingDate', {
         id: 'meetingDate',
@@ -789,7 +792,7 @@ export function MeetingsPage() {
               <p className="font-medium text-zinc-900 truncate" style={{ fontSize: 13, maxWidth: 200 }} title={company || undefined}>
                 {company || <span className="text-zinc-400">Unlinked meeting</span>}
               </p>
-              <p className="text-zinc-400 truncate" style={{ fontSize: 11, maxWidth: 200 }}>
+              <p className="text-zinc-400 truncate" title={[r.leadName, r.city].filter(Boolean).join(' · ') || undefined} style={{ fontSize: 11, maxWidth: 200 }}>
                 {[r.leadName, r.city].filter(Boolean).join(' · ')}
               </p>
             </div>
@@ -802,7 +805,7 @@ export function MeetingsPage() {
       header: 'Client',
       getValue: (r) => r.client ?? '',
       render: (r) => (
-        <span className="text-zinc-600 truncate" style={{ fontSize: 13 }}>
+        <span className="text-zinc-600 truncate" title={r.client || undefined} style={{ fontSize: 13 }}>
           {r.client || <span className="text-zinc-300">—</span>}
         </span>
       ),

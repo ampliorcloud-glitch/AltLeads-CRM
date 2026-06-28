@@ -1239,7 +1239,15 @@ export function CompanyDetailPage() {
   const [deals, setDeals] = useState<CompanyDeal[]>([]);
   const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
-  const [tab, setTab] = useState<TabKey>('contacts');
+  const [tab, setTab] = useState<TabKey>(() => {
+    // ALT-UX-10: persist active tab across reloads, per-company.
+    try {
+      const stored = localStorage.getItem(`altleads:tab:company:${id}`);
+      const VALID: TabKey[] = ['contacts', 'leads', 'activity'];
+      if (stored && (VALID as string[]).includes(stored)) return stored as TabKey;
+    } catch { /* localStorage unavailable */ }
+    return 'contacts';
+  });
 
   // Shared project selection — lifted to page level so header + contacts tab stay in sync.
   // Seeded from (and kept in sync with) the GLOBAL top-bar project selector (ALT-273)
@@ -1486,7 +1494,7 @@ export function CompanyDetailPage() {
                   <button
                     key={t.key}
                     type="button"
-                    onClick={() => setTab(t.key)}
+                    onClick={() => { setTab(t.key); try { localStorage.setItem(`altleads:tab:company:${id}`, t.key); } catch { /* ignore */ } }}
                     className="relative font-medium transition-colors"
                     style={{ fontSize: 13, padding: '12px 14px', color: isActive ? '#1A7EE8' : '#6B7280' }}
                     onMouseEnter={(e) => { if (!isActive) (e.currentTarget as HTMLElement).style.color = '#374151'; }}

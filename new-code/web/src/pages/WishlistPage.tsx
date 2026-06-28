@@ -420,7 +420,7 @@ export function WishlistPage() {
             onChange={() => sel.toggleAll(pageIds)}
             onClick={(e) => e.stopPropagation()}
             style={{ cursor: 'pointer', width: 14, height: 14 }}
-            aria-label="Select all on page"
+            aria-label={allSel ? 'Deselect all on page' : 'Select all on page'}
           />
         );
       },
@@ -458,26 +458,32 @@ export function WishlistPage() {
           return columnHelper.accessor('contactName', {
             id: 'contactName',
             header: 'Contact',
-            cell: (info) => (
-              <div>
-                <p className="text-zinc-800" style={{ fontSize: 13 }}>
-                  {info.getValue() || <span className="text-zinc-300">—</span>}
-                </p>
-                {info.row.original.designation && (
-                  <p className="text-zinc-400" style={{ fontSize: 11 }}>{info.row.original.designation}</p>
-                )}
-              </div>
-            ),
+            cell: (info) => {
+              const v = info.getValue() ?? '';
+              return (
+                <div>
+                  <p className="text-zinc-800 truncate" title={v || undefined} style={{ fontSize: 13 }}>
+                    {v || <span className="text-zinc-300">—</span>}
+                  </p>
+                  {info.row.original.designation && (
+                    <p className="text-zinc-400" style={{ fontSize: 11 }}>{info.row.original.designation}</p>
+                  )}
+                </div>
+              );
+            },
           });
         case 'industry':
           return columnHelper.accessor('industry', {
             id: 'industry',
             header: 'Industry',
-            cell: (info) => (
-              <span className="text-zinc-600" style={{ fontSize: 13 }}>
-                {info.getValue() || <span className="text-zinc-300">—</span>}
-              </span>
-            ),
+            cell: (info) => {
+              const v = info.getValue() ?? '';
+              return (
+                <span className="text-zinc-600 truncate" title={v || undefined} style={{ fontSize: 13 }}>
+                  {v || <span className="text-zinc-300">—</span>}
+                </span>
+              );
+            },
           });
         case 'city':
           return columnHelper.accessor('city', {

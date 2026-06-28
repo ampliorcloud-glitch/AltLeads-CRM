@@ -302,7 +302,16 @@ export function LeadDetailPage() {
   const [loadingCompany, setLoadingCompany] = useState(true);
   const [leadError, setLeadError] = useState('');
 
-  const [tab, setTab] = useState<TabKey>('activity');
+  const [tab, setTab] = useState<TabKey>(() => {
+    // ALT-UX-10: persist active tab across reloads. Key is per-record so navigating
+    // between leads restores each one's last-viewed tab independently.
+    try {
+      const stored = localStorage.getItem(`altleads:tab:lead:${id}`);
+      const VALID: TabKey[] = ['activity', 'report', 'meeting'];
+      if (stored && (VALID as string[]).includes(stored)) return stored as TabKey;
+    } catch { /* localStorage unavailable */ }
+    return 'activity';
+  });
   const [stageSaving, setStageSaving] = useState(false);
   const [clinching, setClinching] = useState(false);
   // Bumped after a call is logged so the call-history card re-fetches (ALT-269).
@@ -665,7 +674,7 @@ export function LeadDetailPage() {
                   <button
                     key={t.key}
                     type="button"
-                    onClick={() => setTab(t.key)}
+                    onClick={() => { setTab(t.key); try { localStorage.setItem(`altleads:tab:lead:${id}`, t.key); } catch { /* ignore */ } }}
                     className="relative font-medium transition-colors"
                     style={{
                       fontSize: 13,
