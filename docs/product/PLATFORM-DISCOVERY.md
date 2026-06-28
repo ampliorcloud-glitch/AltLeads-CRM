@@ -2,6 +2,8 @@
 
 > ⚠️ **CORRECTED 2026-06-28 — read `CRM-CAPABILITY-CENSUS.md` alongside this.** A capability census (live HubSpot MCP + competitor inventory + code-grounded audit) found this doc (a) UNDER-RATED import/data-ops (rated MEDIUM-HIGH/Phase 3 → actually CRITICAL/near-term for a bulk-migrated CRM), (b) WRONGLY listed record-merge as MISSING (it exists, ALT-293, but is non-atomic — a live risk, ALT-416), and (c) OMITTED ~12 table-stakes items (import history/rollback, skipped-row file, mapping templates, validation rules, dependent picklists, record types, tags, suppression lists, blueprint/approval engine, background job queue — ALT-416..427). Where the two docs disagree, the census is newer.
 
+> **✅/🟡 status tags added 2026-06-28 — items marked ✅ IMPLEMENTED are DONE (don't re-build); 🟡 PARTIAL = partly done; untagged = still open. Verify against code before acting.**
+
 ## Top takeaways (the punchline)
 
 1. It is a UI over a frozen DB, not a platform. The three things that make software a CRM platform rather than a database-with-a-skin — a configurable data model, an automation/event engine, and an API/integration surface — are each essentially absent. Every new field is a migration; every new behavior is code. Until features are added as DATA (metadata registry) instead of as code, daily shipping stays slow and fragile.
@@ -98,18 +100,19 @@ Counting the 26 capability domains by depth:
 - MISSING: auto-capture from email/calendar/calls, custom activity types, task queues, pinned activities, multi-threaded engagement, @mention collaboration, activity API. **The interaction table is the right shape for an activity spine — but it only holds manually-logged events.**
 
 ### 11. Lists & Segmentation — **HIGH**
-- HAVE: per-user saved views (column sets); Kanban group-by; per-project status filters.
-- PARTIAL: saved "views" are layout prefs, not membership segments.
+- HAVE: per-user saved views (column sets); Kanban group-by; per-project status filters. — ✅ IMPLEMENTED (ColumnCustomizer + user_view_pref + DensityToggle + ViewSwitcher; column-layout + density saved views done)
+- PARTIAL: saved "views" are layout prefs, not membership segments. — 🟡 PARTIAL (layout views ✅ done; filter SEGMENTS still open ALT-404)
 - MISSING: dynamic/static segments, advanced filter logic (AND/OR/nested), suppression, list-triggered automation, association filtering, RFM/scoring, rollups, rolling dates, membership API. A hard blocker for any campaign or targeted outreach.
 
 ### 12. Reporting & Analytics — **HIGH**
 - HAVE: read-only hardcoded dashboard; Excel export; activity timeline as a raw feed.
 - MISSING: report builder, pivots, cross-object reports, dashboard builder, scheduled reports, attribution, predictive forecasting, conversation/intent analytics, audit-log reporting, embedded BI.
 
-### 13. Data Import / Quality — **MEDIUM-HIGH**
+### 13. Data Import / Quality — **MEDIUM-HIGH** (was rated MEDIUM-HIGH → actually CRITICAL per census)
 - HAVE: soft-deletes everywhere; audit columns; exact-match dedup (`findDuplicates.ts`: email/phone/linkedin_clean/domain_clean); migration CLI for bulk data.
 - PARTIAL: dedup is exact-match only; soft-delete exists but no recycle-bin/restore/undo UI.
 - MISSING: import wizard / field mapping, fuzzy/semantic dedup, bulk merge UI, validation-on-import, recycle bin/undo, per-field history, enrichment, bulk-action queue with progress/cancel.
+  - 🟡 PARTIAL — import wizard: FE wizard shipped (ImportPage.tsx ALT-399: validates + preview + cleaned-file download); server-side save endpoint gated (coming soon). Bulk-action queue with progress/cancel: ✅ IMPLEMENTED (BulkProgressBar.tsx + bulkActions.ts ALT-401). Duplicate detection: ✅ IMPLEMENTED (findDuplicates.ts + DuplicatesButton.tsx ALT-394). Record merge: 🟡 PARTIAL (ALT-293 exists but non-atomic — live risk; atomic staged ALT-416).
 
 ### 14. API / Developer Platform — **CRITICAL**
 - HAVE: Supabase PostgREST (RLS-enforced client CRUD); notify-service admin endpoints (user create/reset, login-coverage) gated by `requireAdmin`; PG trigger functions (internal); extension RPCs.
@@ -220,12 +223,12 @@ Generalize the existing `dropdown_option` metadata-as-data pattern to objects an
 7. **No webhook/event system.** Synchronous, tightly coupled. (§15)
 8. **No sequences/cadences.** The outreach team's core motion has no engine. (§6)
 9. **No real pipeline/forecasting.** Stages are free-text strings. (§4)
-10. **No segmentation engine.** Blocks targeting and campaigns. (§11)
+10. **No segmentation engine.** Blocks targeting and campaigns. (§11) — 🟡 PARTIAL (multi-select filters + active-filter chips done; saved filter SEGMENTS still open ALT-404; dynamic/static membership segments not built)
 11. **No reporting/dashboard builder.** Fixed dashboard + Excel only. (§12)
 12. **No conversation spine / unified timeline + no identity resolution.** The interaction table is the right shape but holds only manual entries; nothing resolves the same person/company across channels. (§10, north-star core)
 13. **Schema frozen and brittle by design.** Hardcoded enums/interfaces/migration-only fields ripple through code with no contract/versioning. (cross-cutting)
 14. **No access/read-audit trail + cross-project master-data leakage + unvalidated notify endpoints.** Security debt in our strongest area. (§19)
-15. **No import/dedup/merge tooling + fuzzy matching + no compliance (DPDP/GDPR consent, retention, PII-at-rest).** (§13, governance)
+15. **No import/dedup/merge tooling + fuzzy matching + no compliance (DPDP/GDPR consent, retention, PII-at-rest).** (§13, governance) — 🟡 PARTIAL (import wizard FE ✅ ALT-399 gated; dedup detection ✅ ALT-394; bulk-action queue ✅ ALT-401; merge 🟡 ALT-293 non-atomic/ALT-416; fuzzy dedup + compliance still open)
 
 **Strategic read:** gaps #3, #4, #12 (capture) MUST precede #5 (intelligence) — you cannot derive intent from data you never captured. Gaps #6, #7, #2 are the platform backbone. Gaps #13/#14/#15-compliance are the engineering-discipline gaps the mini-goal explicitly calls out — address them AS each layer is built, not after, or each new layer compounds the fragility.
 
