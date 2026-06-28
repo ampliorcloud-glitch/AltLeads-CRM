@@ -2698,6 +2698,21 @@ const TICKETS = [
         'HUNGERBOX LAUNCH: filters on Companies/Contacts so work queues show only reachable, in-scope, feasible, metro-first targets (combine DNC + feasibility + metro priority + per-site feasibility).'),
       V('ALT-457','Role walkthroughs + standing QC checklist','Chore','P1','In Progress',
         'Written step-by-step happy-path per role (first login to daily job) + repeatable per-role QC checklist so PM does not hand-UAT every user after every change. docs/product/ROLE-WALKTHROUGHS.md. Starts with admin-data + agent for HungerBox launch.'),
+      // ─── Locked role capabilities 2026-06-28 (ACCESS-CONTROL-MODEL Part 9) ───
+      V('ALT-458','Agent edit scope: pre-sales questions + post-Meeting-Scheduled only; no company/contact master','Feature','P1','Backlog',
+        'LOCKED: Agent (role 3) edits ONLY the per-company/site prequalified answers (site employees, commercial model) + lead fields from Meeting-Scheduled stage onward. Agent UPDATE on company_master/contact_master is DENIED. RLS + UI gating. Pre-sales answers seeded from city/site questions. Validate on throwaway login.'),
+      V('ALT-459','QC role = Team-Lead-minus-assignment; Agent can also be QC','Feature','P1','Backlog',
+        'LOCKED: QC (role 6) can edit any record in their project (safe-edit) + approve, but CANNOT assign/reassign. Reads all. An Agent may hold QC too (acts as agent + QC-approves project leads). isApprover already includes QC; add TL-equivalent edit, withhold reassign. RLS + UI.'),
+      V('ALT-463','Sales roles: read + request-edit + feedback only; no master UPDATE (sales-owner = leads only)','Feature','P2','Backlog',
+        'LOCKED: SALES_HEAD/SALES_PERSON are sales-owner of LEADS only (distinct from CRM owner; two owners OK). They cannot edit anything in the CRM - only request an edit or give feedback. RLS denies UPDATE on master tables for sales roles; route to request/feedback path. Sales PORTAL scoping deferred (not in scope now); do not provision sales logins yet.'),
+      V('ALT-464','Prequalified-question granularity toggle (company-wise vs site-wise) — per-project admin setting','Feature','P2','Backlog',
+        'LOCKED: per-site prequalified answers can be answered company-wide OR site-wise; a toggle in admin settings, per project, picks granularity. Extends HungerBox company_site model.'),
+      V('ALT-460','Advanced per-field filters with exclude/NOT (HubSpot-style)','Feature','P1','In Progress',
+        'Per-field operators (is/is-not/contains/not-contains/any-of/none-of/known/unknown/between/date-relative) + AND-OR groups + EXCLUDE (e.g. company NOT in DNC, feasible-only, metro-only). Spec: docs/product/ADVANCED-FILTERS-SPEC.md. Maps to Supabase .in/.not/.or/.gte. Asked by Ankit 2026-06-28.'),
+      V('ALT-461','Saved views — per project, per user','Feature','P1','In Progress',
+        'Save a list view (serialized filter JSON + sort + visible columns + name) keyed per project_id + user_id. Extends data/views.ts. Decision: per-project-per-user (Ankit 2026-06-28). May need a saved_view table.'),
+      V('ALT-462','Call logs not working — fix','Bug','P1','In Progress',
+        'Ankit 2026-06-28: call logs not working. Diagnose root cause (write/display/RLS/schema-mismatch) and fix. callLogs.ts/calls.ts/components/calls + LeadDetail call tab + activityTimeline.'),
     ];
   })()),
 

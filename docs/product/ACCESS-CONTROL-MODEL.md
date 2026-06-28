@@ -759,3 +759,40 @@ if you just say "use the defaults."
 - `interaction` table needs `project_id` + related-object FK columns
   (`contact_id`/`company_id`/`lead_id`) for the RLS in 3.4 to key on; verify these exist or
   add them.
+
+---
+
+## PART 9 — LOCKED ROLE CAPABILITIES (Ankit, 2026-06-28) — build to these exactly
+
+These supersede ambiguity above. They are the rules to implement in RLS + UI gating for the **HungerBox** launch. Validate every UPDATE policy on a throwaway role login before prod.
+
+### Edit = the ASSIGNED OWNER, never the creator (DEC-03)
+- A record's editor-of-record is its **assignee** (`lead_report.user_id`), NOT `created_by`. The assigned owner **must be able to edit** their record. `created_by` is immutable provenance only. (Closes GAP-2 / ALT-152.)
+
+### AGENT (role 3)
+- Edits ONLY: **pre-sales questions** (the per-company/per-site prequalified answers — site employees, commercial model, etc.) AND lead fields **from "Meeting Scheduled" onward** (the outcome/report fields after that stage).
+- Does **NOT** edit **company or contact master** records at all. (So agent UPDATE on `company_master`/`contact_master` is denied; agent edits flow to the prequalified-answers tables + `lead_report`/report fields only.)
+- Pre-sales answers are seeded from the city/site questions (they only come from there). An Agent may also hold the **QC** role (acts as agent + can QC-approve leads for the project).
+
+### QC (role 6) — "like a Team Lead, minus assignment"
+- Can **edit any record** in their project (safe-edit, project-scoped) and **approve** — but **CANNOT assign/reassign** records.
+- **Reads/views all.** (Implementation: QC gets TL-equivalent UPDATE + approve rights, but NO reassign capability; `isApprover` already includes QC.)
+
+### TEAM_LEAD (role 2)
+- **Is an approver** — must be able to **approve** (verify `useAuth().isApprover` → Approve button shows for TL; GAP-6). Can reassign within project.
+
+### SALES roles (SALES_HEAD 4 / SALES_PERSON 5) — separate portal, NOT in scope now
+- They are the **"sales owner"** of **leads only** (never companies/contacts/other modules) — a sales-owner is distinct from the CRM owner, so two owners on a lead is fine and expected.
+- Sales users **cannot edit anything** in the CRM. They may only **request an edit** or **provide feedback**. (RLS: no UPDATE on master tables for sales roles; route to a request/feedback path.)
+- Sales portal scoping (downline RLS) is **deferred** — Ankit is not working on the sales portal right now; do not provision sales logins until that lands.
+
+### Prequalified-question granularity — admin, per-project toggle
+- The per-site prequalified answers can be answered **company-wide OR site-wise**. A **toggle lives in admin settings, per project**, so each project picks its granularity (project power). Extends the HungerBox `company_site` model.
+
+### Related new requirements (tickets added)
+- **Advanced per-field filters with exclude/NOT** (HubSpot-style; e.g. "company NOT in DNC", "city is none of…") — spec in `docs/product/ADVANCED-FILTERS-SPEC.md`. → ALT-460.
+- **Saved views — per project, per user** (serialized filter + sort + columns + name) — extends `data/views.ts`. → ALT-461.
+- **Call logs broken** — fix. → ALT-462.
+
+### Ticket map
+ALT-152/ALT-433 (assignee edit + RLS) · ALT-458 (agent edit scope: pre-sales + post-meeting-scheduled only, no company/contact) · ALT-459 (QC = TL-minus-assign; agent-can-be-QC) · ALT-463 (sales = read+request-edit+feedback only, no master UPDATE) · ALT-464 (prequalified company-vs-site toggle, per-project admin setting) · ALT-460 (advanced filters) · ALT-461 (saved views) · ALT-462 (call logs fix).
