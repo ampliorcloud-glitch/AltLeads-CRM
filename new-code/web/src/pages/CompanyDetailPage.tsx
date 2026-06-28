@@ -66,6 +66,8 @@ import { useToast } from '../components/ui/Toast';
 import { useAuth } from '../contexts/AuthContext';
 import { pushRecent } from '../lib/useRecentlyViewed';
 import type { Interaction } from '../data/contacts';
+import { HUNGERBOX_FEATURES } from '../lib/hungerbox';
+import { CompanySitesPanel } from '../components/hungerbox/CompanySitesPanel';
 
 /* ------------------------------------------------------------------
    Helpers
@@ -82,11 +84,13 @@ function fullUrl(webUrl: string): string {
   return /^https?:\/\//.test(webUrl) ? webUrl : `https://${webUrl}`;
 }
 
-type TabKey = 'contacts' | 'leads' | 'activity';
-const TABS: { key: TabKey; label: string }[] = [
+type TabKey = 'contacts' | 'leads' | 'activity' | 'sites';
+const TABS: { key: TabKey; label: string; hbOnly?: boolean }[] = [
   { key: 'contacts', label: 'Contacts' },
   { key: 'leads', label: 'Leads' },
   { key: 'activity', label: 'Activity' },
+  // Sites tab only shown when HUNGERBOX_FEATURES is enabled (dark-shipped)
+  ...(HUNGERBOX_FEATURES ? [{ key: 'sites' as const, label: 'Sites', hbOnly: true }] : []),
 ];
 
 /* ------------------------------------------------------------------
@@ -1243,7 +1247,7 @@ export function CompanyDetailPage() {
     // ALT-UX-10: persist active tab across reloads, per-company.
     try {
       const stored = localStorage.getItem(`altleads:tab:company:${id}`);
-      const VALID: TabKey[] = ['contacts', 'leads', 'activity'];
+      const VALID: TabKey[] = ['contacts', 'leads', 'activity', 'sites'];
       if (stored && (VALID as string[]).includes(stored)) return stored as TabKey;
     } catch { /* localStorage unavailable */ }
     return 'contacts';
@@ -1559,6 +1563,9 @@ export function CompanyDetailPage() {
             {tab === 'leads' && <DealsTab deals={deals} />}
             {tab === 'activity' && (
               <ActivityTab companyId={companyId} projectId={projectId} refreshKey={activityRefresh} />
+            )}
+            {tab === 'sites' && HUNGERBOX_FEATURES && actorId != null && (
+              <CompanySitesPanel companyId={companyId} actorId={actorId} />
             )}
           </div>
         </div>

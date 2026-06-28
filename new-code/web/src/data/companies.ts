@@ -19,6 +19,7 @@
 
 import { supabase } from '../lib/supabase';
 import { humanizeWriteError } from '../lib/writeError';
+import { isMetroCity } from '../lib/hungerbox';
 
 /* ------------------------------------------------------------------
    Public types
@@ -42,6 +43,8 @@ export interface Company {
   isDemo: boolean;
   owner: string; // always "Unassigned" // TODO ownership
   createdDate: string;
+  /** True when the company's primary city is a Tier-1 Indian metro (derived client-side). */
+  isMetro: boolean;
 }
 
 export interface CompaniesResult {
@@ -203,6 +206,7 @@ export async function fetchCompanies(): Promise<CompaniesResult> {
     isDemo: Boolean(c.is_demo),
     owner: OWNER_UNASSIGNED,
     createdDate: c.created_date ? c.created_date.substring(0, 10) : '',
+    isMetro: isMetroCity(c.city_id != null ? (cityMap.get(c.city_id) ?? '') : ''),
   }));
 
   const uniq = (vals: string[]) => [...new Set(vals.filter(Boolean))].sort();
@@ -273,6 +277,7 @@ export async function fetchCompanyById(companyId: number): Promise<Company | nul
     isDemo: Boolean(c.is_demo),
     owner: OWNER_UNASSIGNED,
     createdDate: c.created_date ? c.created_date.substring(0, 10) : '',
+    isMetro: isMetroCity(city),
   };
 }
 

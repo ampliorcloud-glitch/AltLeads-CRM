@@ -71,6 +71,7 @@ import { addContactsToProject, setContactsStatus } from '../data/bulkActions';
 import type { UserOption } from '../data/wishlist';
 import { RecordPreviewPanel } from '../components/common/RecordPreviewPanel';
 import { ContactPreview } from '../components/contacts/ContactPreview';
+import { HUNGERBOX_FEATURES } from '../lib/hungerbox';
 
 /* ------------------------------------------------------------------ */
 /*  Helpers                                                             */
@@ -151,6 +152,8 @@ interface Filters {
   city: string[];    // multi-value (OR; empty = all)
   hasLinkedin: string; // 'yes' | 'no' | ''
   showDemo: string;    // 'all' | 'real' | 'demo'
+  /** HungerBox: 'metro' to show only metro-city contacts, '' = all */
+  metroOnly: string;
 }
 
 const defaultFilters: Filters = {
@@ -159,6 +162,7 @@ const defaultFilters: Filters = {
   city: [],
   hasLinkedin: '',
   showDemo: 'real',
+  metroOnly: '',
 };
 
 /* ------------------------------------------------------------------ */
@@ -721,6 +725,8 @@ export function ContactsPage() {
       if (filters.city.length && !filters.city.includes(c.city_name ?? '')) return false;
       if (filters.hasLinkedin === 'yes' && !c.linkedin_url) return false;
       if (filters.hasLinkedin === 'no' && c.linkedin_url) return false;
+      // HungerBox: metro-first work queue filter (only when features are on)
+      if (HUNGERBOX_FEATURES && filters.metroOnly === 'metro' && !c.isMetro) return false;
 
       return true;
     });
@@ -837,7 +843,8 @@ export function ContactsPage() {
   });
 
   const hasActiveFilters = filters.search !== '' || filters.company.length > 0 ||
-    filters.city.length > 0 || filters.hasLinkedin !== '' || filters.showDemo !== 'real';
+    filters.city.length > 0 || filters.hasLinkedin !== '' || filters.showDemo !== 'real' ||
+    (HUNGERBOX_FEATURES && filters.metroOnly !== '');
 
   // Removable-chip bar showing exactly what's filtering the list (free-text
   // search is excluded — it has its own clear "×"). Multi-select facets emit one
@@ -879,6 +886,15 @@ export function ContactsPage() {
         key: `showDemo:${filters.showDemo}`,
         label: `Data type: ${filters.showDemo === 'demo' ? 'Demo only' : 'All'}`,
         onRemove: () => setFilter('showDemo', 'real'),
+      });
+    }
+
+    // HungerBox: metro-only chip
+    if (HUNGERBOX_FEATURES && filters.metroOnly === 'metro') {
+      chips.push({
+        key: 'metroOnly:metro',
+        label: 'Metro cities only',
+        onRemove: () => setFilter('metroOnly', ''),
       });
     }
 
@@ -1256,6 +1272,23 @@ export function ContactsPage() {
                 <option value="all">All</option>
               </select>
             </div>
+
+            {/* HungerBox: metro-first work queue filter */}
+            {HUNGERBOX_FEATURES && (
+              <div className="flex flex-col gap-1" style={{ minWidth: 130 }}>
+                <label className="font-medium text-zinc-500" style={{ fontSize: 11 }}>Metro priority</label>
+                <select
+                  value={filters.metroOnly}
+                  onChange={(e) => setFilter('metroOnly', e.target.value)}
+                  style={{ ...inputBase, paddingRight: 24, cursor: 'pointer' }}
+                  onFocus={(e) => { e.currentTarget.style.borderColor = '#1A7EE8'; }}
+                  onBlur={(e) => { e.currentTarget.style.borderColor = 'var(--border-input)'; }}
+                >
+                  <option value="">All cities</option>
+                  <option value="metro">Metro only</option>
+                </select>
+              </div>
+            )}
 
             {/* Project selector (for per-project status columns) */}
             <div className="flex flex-col gap-1">

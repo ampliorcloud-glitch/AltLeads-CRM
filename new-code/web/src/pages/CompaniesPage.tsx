@@ -31,6 +31,7 @@ import { ActiveFilters, type FilterChip } from '../components/ui/ActiveFilters';
 import { SelectAllMatchingBar } from '../components/ui/SelectAllMatchingBar';
 import { useListFilters } from '../lib/listFilters';
 import { useSortPersistence } from '../lib/useSortPersistence';
+import { HUNGERBOX_FEATURES } from '../lib/hungerbox';
 import { usePinPersistence } from '../lib/usePinPersistence';
 import { EditableGrid, type EditableColumn } from '../components/ui/EditableGrid';
 import { GenericKanban } from '../components/kanban/GenericKanban';
@@ -156,9 +157,11 @@ interface Filters {
   search: string;
   industry: string[]; // multi-value (OR; empty = all)
   city: string[];     // multi-value (OR; empty = all)
+  /** HungerBox: filter to Tier-1 metro cities only ('metro' | '' = all). */
+  metroOnly: string;
 }
 
-const defaultFilters: Filters = { search: '', industry: [], city: [] };
+const defaultFilters: Filters = { search: '', industry: [], city: [], metroOnly: '' };
 
 const inputBase: React.CSSProperties = {
   fontSize: 13,
@@ -553,6 +556,13 @@ export function CompaniesPage() {
         onRemove: () => setFilter('city', filters.city.filter((x) => x !== value)),
       });
     }
+    if (HUNGERBOX_FEATURES && filters.metroOnly === 'metro') {
+      chips.push({
+        key: 'metroOnly:metro',
+        label: 'Metro cities only',
+        onRemove: () => setFilter('metroOnly', ''),
+      });
+    }
     return chips;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filters]);
@@ -568,6 +578,8 @@ export function CompaniesPage() {
       }
       if (filters.industry.length && !filters.industry.includes(c.industry)) return false;
       if (filters.city.length && !filters.city.includes(c.city)) return false;
+      // HungerBox: metro-only work queue filter (only active when HUNGERBOX_FEATURES=true)
+      if (HUNGERBOX_FEATURES && filters.metroOnly === 'metro' && !c.isMetro) return false;
       return true;
     });
   }, [filters, allCompanies]);
@@ -1184,6 +1196,21 @@ export function CompaniesPage() {
               onChange={(v) => setFilter('city', v)}
               options={cities}
             />
+
+            {/* HungerBox: metro-first work queue filter (only shown when features are on) */}
+            {HUNGERBOX_FEATURES && (
+              <div className="flex flex-col gap-1">
+                <label className="font-medium text-zinc-500" style={{ fontSize: 11 }}>Metro priority</label>
+                <select
+                  value={filters.metroOnly}
+                  onChange={(e) => setFilter('metroOnly', e.target.value)}
+                  style={{ ...inputBase, width: 140 }}
+                >
+                  <option value="">All cities</option>
+                  <option value="metro">Metro only</option>
+                </select>
+              </div>
+            )}
 
             {/* Project selector for per-project Account Status column */}
             <div className="flex flex-col gap-1">

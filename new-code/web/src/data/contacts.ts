@@ -1,5 +1,6 @@
 import { supabase } from '../lib/supabase';
 import { humanizeWriteError } from '../lib/writeError';
+import { isMetroCity } from '../lib/hungerbox';
 
 export interface Contact {
   contact_id: number;
@@ -18,6 +19,8 @@ export interface Contact {
   // joined
   company_name: string | null;
   city_name: string | null;
+  /** True when the contact's city is a Tier-1 Indian metro (derived client-side). */
+  isMetro: boolean;
 }
 
 export interface Interaction {
@@ -84,6 +87,7 @@ function mapContactRow(row: Record<string, unknown>): Contact {
     created_date: row.created_date as string | null,
     company_name: (row.company_name as string | null) ?? null,
     city_name: (row.city_name as string | null) ?? null,
+    isMetro: isMetroCity((row.city_name as string | null) ?? null),
   };
 }
 
@@ -276,6 +280,7 @@ export async function findDuplicateContact(params: {
     created_date: null,
     company_name: row.company_name ?? null,
     city_name: null,
+    isMetro: false,
   };
 }
 
