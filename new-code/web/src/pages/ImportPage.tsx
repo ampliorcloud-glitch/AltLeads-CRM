@@ -1,26 +1,26 @@
 /**
- * ImportPage — admin-only entry point for the in-app Import Wizard (ALT-399).
+ * ImportPage — admin-only entry point for the in-app Import Wizard (ALT-399 / DEC-14).
  *
- * Role-gating: this page is admin-only. Two layers, matching how /admin is
- * handled elsewhere in the app:
- *   1. App.tsx wraps the route in <AdminRoute> (session + isAdmin) — see App.tsx.
- *   2. The page itself re-checks isAdmin and shows a calm "admins only" notice
- *      if a non-admin somehow lands here (defence in depth).
- * The sidebar nav entry is also flagged adminOnly so non-admins never see it.
+ * Role-gating: this page is admin-only. Two layers:
+ *   1. App.tsx wraps the route in <AdminRoute> (session + isAdmin).
+ *   2. This page re-checks isAdmin as defence in depth.
  *
- * The wizard is FRONTEND-ONLY: no Supabase writes happen anywhere here. The
- * final "Import" action is intentionally disabled until the server-side admin
- * import endpoint exists.
+ * Write flag: VITE_USE_WRITE_GATEWAY (default false).
+ *   OFF  → wizard validates/previews/downloads only; no DB writes.
+ *   ON   → wizard commits real upserts via POST /api/write (gateway, service-role).
+ *          Requires apply-import-batches migration to have been applied first.
  */
 import { useState } from 'react';
-import { Upload, ShieldAlert } from 'lucide-react';
+import { Upload, ShieldAlert, Lock } from 'lucide-react';
 import { AppShell } from '../components/layout/AppShell';
 import { useAuth } from '../contexts/AuthContext';
+import { isWriteGatewayEnabled } from '../lib/writeGateway';
 import { ImportWizard } from '../components/import/ImportWizard';
 
 export function ImportPage() {
   const { isAdmin } = useAuth();
   const [wizardOpen, setWizardOpen] = useState(false);
+  const gatewayEnabled = isWriteGatewayEnabled();
 
   if (!isAdmin) {
     return (
@@ -60,15 +60,28 @@ export function ImportPage() {
               maps your columns to the right fields, validates each row, and shows you
               exactly what will import and what will be skipped — before anything is saved.
             </p>
-            <div
-              style={{
-                fontSize: 12, color: '#1e40af', background: '#EFF6FF',
-                border: '1px solid #BFDBFE', borderRadius: 6, padding: '8px 10px', lineHeight: 1.5,
-              }}
-            >
-              Preview-only for now: the wizard validates and lets you download a cleaned
-              file, but saving records is pending the admin import endpoint (coming soon).
-            </div>
+            {gatewayEnabled ? (
+              <div
+                style={{
+                  fontSize: 12, color: '#15803d', background: '#F0FDF4',
+                  border: '1px solid #BBF7D0', borderRadius: 6, padding: '8px 10px', lineHeight: 1.5,
+                  display: 'flex', alignItems: 'center', gap: 6,
+                }}
+              >
+                <Upload size={13} /> Write gateway is enabled — imports will upsert real records (≤ 500 rows/chunk, with undo).
+              </div>
+            ) : (
+              <div
+                style={{
+                  fontSize: 12, color: '#1e40af', background: '#EFF6FF',
+                  border: '1px solid #BFDBFE', borderRadius: 6, padding: '8px 10px', lineHeight: 1.5,
+                  display: 'flex', alignItems: 'center', gap: 6,
+                }}
+              >
+                <Lock size={13} /> Preview-only: the wizard validates and lets you download a cleaned file, but saving records is
+                disabled (<code>VITE_USE_WRITE_GATEWAY</code> is off). Contact the admin to enable real imports.
+              </div>
+            )}
             <button
               onClick={() => setWizardOpen(true)}
               style={{

@@ -1,20 +1,25 @@
 /**
- * ImportWizard — the in-app, FRONTEND-ONLY Import Wizard (ALT-399).
+ * ImportWizard — the in-app Import Wizard (ALT-399 / DEC-14).
  *
  * Steps: (1) pick entity + upload file → (2) map columns → (3) preview +
  * validation summary (with an expandable skipped-row list, ALT-418) →
- * (4) finish, where the primary "Import" action is DELIBERATELY DISABLED.
+ * (4) finish — Import button enabled when VITE_USE_WRITE_GATEWAY=true.
  *
- * IMPORTANT: this component performs NO database writes and never imports
- * anything. It parses, maps, validates, previews and lets the admin download a
- * cleaned/mapped CSV + a skipped-rows CSV. The actual write is gated on the
- * server-side admin import endpoint, which is a later, decision-gated piece —
- * hence the disabled final button. Reuses the shared ModalShell + Toast.
+ * Write path (DEC-14):
+ *   When VITE_USE_WRITE_GATEWAY is true, the "Import" button calls
+ *   runImportChunked() (importApi.ts) which sends ≤500 rows/chunk to
+ *   POST /api/write via the gateway.  The server upserts, records the batch,
+ *   and returns per-row results.  The UI shows a progress bar + summary +
+ *   per-batch undo buttons.  When the flag is OFF (default), the button shows
+ *   a "coming soon" lock notice — no writes happen.
+ *
+ * Reuses the shared ModalShell + Toast.
+ * Does NOT rewrite importParse / importMapping / importValidate.
  */
 import React, { useMemo, useRef, useState } from 'react';
 import {
   Upload, FileSpreadsheet, ArrowRight, ArrowLeft, CheckCircle2,
-  AlertTriangle, Download, ChevronDown, ChevronRight, Lock,
+  AlertTriangle, Download, ChevronDown, ChevronRight, Lock, RotateCcw, Loader2,
 } from 'lucide-react';
 import { ModalShell } from '../wishlist/AssignModal';
 import { useToast } from '../ui/Toast';
@@ -24,6 +29,11 @@ import {
   type ColumnMapping, type EntityDef,
 } from '../../lib/importMapping';
 import { validateRows, type ValidationResult, type MappedRow } from '../../lib/importValidate';
+import { isWriteGatewayEnabled } from '../../lib/writeGateway';
+import {
+  runImportChunked, undoImportBatch,
+  type ImportEntity, type ImportRunResult,
+} from '../../data/importApi';
 
 type Step = 1 | 2 | 3 | 4;
 
@@ -84,6 +94,15 @@ export function ImportWizard({ onClose }: { onClose: () => void }) {
   const [parsing, setParsing] = useState(false);
   const [mappings, setMappings] = useState<ColumnMapping[]>([]);
   const [skippedOpen, setSkippedOpen] = useState(false);
+
+  // Write-engine state (DEC-14) — only active when gateway flag is ON
+  const [importing, setImporting] = useState(false);
+  const [importProgress, setImportProgress] = useState<{ done: number; total: number } | null>(null);
+  const [importResult, setImportResult] = useState<ImportRunResult | null>(null);
+  const [undoingBatch, setUndoingBatch] = useState<number | null>(null); // batchId being undone
+  const [undoneIds, setUndoneIds] = useState<Set<number>>(new Set());
+
+  const gatewayEnabled = isWriteGatewayEnabled();
 
   const entity: EntityDef = getEntityDef(entityKey) ?? ENTITY_CATALOGS[0];
 
@@ -168,6 +187,54 @@ export function ImportWizard({ onClose }: { onClose: () => void }) {
     ]);
     downloadCsv(`${entity.key}-skipped.csv`, headers, rows);
     toast.success(`Downloaded ${rows.length.toLocaleString()} skipped rows.`);
+  }
+
+  /* ── import commit (DEC-14) ──────────────────────────────────────────── */
+  async function handleCommitImport() {
+    if (!validation || validation.validRows.length === 0) return;
+    setImporting(true);
+    setImportProgress({ done: 0, total: validation.validRows.length });
+    setImportResult(null);
+
+    try {
+      const result = await runImportChunked(
+        entityKey as ImportEntity,
+        validation.validRows as MappedRow[],
+        fileName,
+        (done, total) => setImportProgress({ done, total }),
+      );
+      setImportResult(result);
+      if (result.bypassed) {
+        toast.warning('Write gateway is disabled — no records were saved. Enable VITE_USE_WRITE_GATEWAY to import.');
+      } else if (result.chunkErrors.length > 0) {
+        toast.error(`Import finished with errors: ${result.chunkErrors.join('; ')}`);
+      } else {
+        toast.success(`Import done — ${result.inserted} inserted, ${result.updated} updated, ${result.skipped} skipped.`);
+      }
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : 'Unexpected error';
+      toast.error(`Import failed: ${msg}`);
+    } finally {
+      setImporting(false);
+      setImportProgress(null);
+    }
+  }
+
+  async function handleUndoBatch(batchId: number) {
+    setUndoingBatch(batchId);
+    try {
+      const res = await undoImportBatch(entityKey as ImportEntity, batchId);
+      if (!res.ok) {
+        toast.error(`Undo failed: ${res.error ?? 'unknown error'}`);
+      } else {
+        setUndoneIds((prev) => new Set([...prev, batchId]));
+        toast.success(`Batch #${batchId} undone — ${res.undone} record(s) reverted.`);
+      }
+    } catch (e) {
+      toast.error(`Undo error: ${e instanceof Error ? e.message : String(e)}`);
+    } finally {
+      setUndoingBatch(null);
+    }
   }
 
   /* ── per-step gating ─────────────────────────────────────────────────── */
@@ -374,7 +441,7 @@ export function ImportWizard({ onClose }: { onClose: () => void }) {
         </div>
       )}
 
-      {/* STEP 4 — finish (DISABLED import) */}
+      {/* STEP 4 — finish + commit */}
       {step === 4 && validation && (
         <div className="space-y-4">
           <div style={{ display: 'flex', gap: 10 }}>
@@ -384,17 +451,88 @@ export function ImportWizard({ onClose }: { onClose: () => void }) {
               label="will be skipped" value={validation.skipped.length} />
           </div>
 
-          <div style={{ background: '#EFF6FF', border: '1px solid #BFDBFE', borderRadius: 8, padding: '12px 14px' }}>
-            <p style={{ fontSize: 13, fontWeight: 600, color: '#1D4ED8', display: 'flex', alignItems: 'center', gap: 6 }}>
-              <Lock size={14} /> Writing is not enabled yet
-            </p>
-            <p style={{ fontSize: 12, color: '#1e40af', marginTop: 4, lineHeight: 1.5 }}>
-              This wizard validates and previews your file, but does not yet save records.
-              The actual import is pending the admin import endpoint (server-side, decision-gated).
-              For now you can download the cleaned, mapped data and the skipped rows below.
-            </p>
-          </div>
+          {/* Gateway flag OFF → locked notice (ship dark) */}
+          {!gatewayEnabled && !importResult && (
+            <div style={{ background: '#EFF6FF', border: '1px solid #BFDBFE', borderRadius: 8, padding: '12px 14px' }}>
+              <p style={{ fontSize: 13, fontWeight: 600, color: '#1D4ED8', display: 'flex', alignItems: 'center', gap: 6 }}>
+                <Lock size={14} /> Writing is not enabled yet
+              </p>
+              <p style={{ fontSize: 12, color: '#1e40af', marginTop: 4, lineHeight: 1.5 }}>
+                This wizard validates and previews your file. To enable real imports,
+                set <code>VITE_USE_WRITE_GATEWAY=true</code> at build time and apply
+                the <code>apply-import-batches</code> migration.
+                For now you can download the cleaned, mapped data and the skipped rows below.
+              </p>
+            </div>
+          )}
 
+          {/* Progress bar while importing */}
+          {importing && importProgress && (
+            <div style={{ background: '#F0FDF4', border: '1px solid #BBF7D0', borderRadius: 8, padding: '12px 14px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+                <Loader2 size={14} style={{ color: '#15803d', animation: 'spin 1s linear infinite' }} />
+                <span style={{ fontSize: 13, fontWeight: 600, color: '#15803d' }}>
+                  Importing… {importProgress.done.toLocaleString()} / {importProgress.total.toLocaleString()} rows
+                </span>
+              </div>
+              <div style={{ height: 6, background: '#dcfce7', borderRadius: 4, overflow: 'hidden' }}>
+                <div
+                  style={{
+                    height: '100%', borderRadius: 4, background: '#16a34a',
+                    width: `${Math.round((importProgress.done / importProgress.total) * 100)}%`,
+                    transition: 'width 0.2s ease',
+                  }}
+                />
+              </div>
+            </div>
+          )}
+
+          {/* Results after import */}
+          {importResult && !importResult.bypassed && (
+            <div style={{ border: '1px solid #e5e7eb', borderRadius: 8, overflow: 'hidden' }}>
+              <div style={{ background: '#f9fafb', padding: '10px 14px', borderBottom: '1px solid #e5e7eb', display: 'flex', gap: 16 }}>
+                <ResultCount label="Inserted" value={importResult.inserted} color="#15803d" />
+                <ResultCount label="Updated"  value={importResult.updated}  color="#1d4ed8" />
+                <ResultCount label="Skipped"  value={importResult.skipped}  color="#b45309" />
+                <ResultCount label="Errors"   value={importResult.error}    color="#b91c1c" />
+              </div>
+
+              {importResult.chunkErrors.length > 0 && (
+                <div style={{ padding: '8px 14px', fontSize: 12, color: '#b91c1c', background: '#fef2f2', borderBottom: '1px solid #e5e7eb' }}>
+                  <AlertTriangle size={12} style={{ display: 'inline', verticalAlign: '-1px', marginRight: 4 }} />
+                  {importResult.chunkErrors.join(' | ')}
+                </div>
+              )}
+
+              {/* Undo buttons — one per batch chunk */}
+              {importResult.batchIds.length > 0 && (
+                <div style={{ padding: '10px 14px', display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                  <span style={{ fontSize: 12, color: '#6b7280', alignSelf: 'center' }}>Undo:</span>
+                  {importResult.batchIds.map((batchId) => (
+                    <button
+                      key={batchId}
+                      onClick={() => void handleUndoBatch(batchId)}
+                      disabled={undoingBatch === batchId || undoneIds.has(batchId)}
+                      style={{
+                        ...ghostBtn,
+                        fontSize: 12, height: 28, padding: '4px 10px',
+                        opacity: undoneIds.has(batchId) ? 0.5 : 1,
+                        cursor: undoneIds.has(batchId) ? 'not-allowed' : 'pointer',
+                        textDecoration: undoneIds.has(batchId) ? 'line-through' : 'none',
+                      }}
+                    >
+                      {undoingBatch === batchId
+                        ? <><Loader2 size={12} /> Undoing…</>
+                        : <><RotateCcw size={12} /> {undoneIds.has(batchId) ? `Batch #${batchId} undone` : `Undo batch #${batchId}`}</>
+                      }
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Download buttons */}
           <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
             <button style={ghostBtn} onClick={downloadCleaned} disabled={validation.validRows.length === 0}>
               <Download size={14} /> Download cleaned data ({validation.validRows.length})
@@ -425,14 +563,31 @@ export function ImportWizard({ onClose }: { onClose: () => void }) {
             >
               Next <ArrowRight size={14} />
             </button>
+          ) : gatewayEnabled ? (
+            // Gateway ON — real import button
+            <button
+              style={{
+                ...primaryBtn,
+                opacity: (importing || (validation?.validRows.length ?? 0) === 0 || importResult != null) ? 0.5 : 1,
+                cursor:  (importing || (validation?.validRows.length ?? 0) === 0 || importResult != null) ? 'not-allowed' : 'pointer',
+              }}
+              disabled={importing || (validation?.validRows.length ?? 0) === 0 || importResult != null}
+              onClick={() => void handleCommitImport()}
+              title={importResult != null ? 'Import already run — close and re-open to import again' : undefined}
+            >
+              {importing
+                ? <><Loader2 size={13} style={{ animation: 'spin 1s linear infinite' }} /> Importing…</>
+                : <><Upload size={13} /> Import {(validation?.validRows.length ?? 0).toLocaleString()} records</>
+              }
+            </button>
           ) : (
-            // DELIBERATELY DISABLED — server import endpoint is a later piece.
+            // Gateway OFF (default) — locked notice
             <button
               style={{ ...primaryBtn, opacity: 0.5, cursor: 'not-allowed' }}
               disabled
-              title="Server import is coming soon — writing is pending the admin import endpoint."
+              title="Set VITE_USE_WRITE_GATEWAY=true to enable real imports."
             >
-              <Lock size={13} /> Import (server import coming soon)
+              <Lock size={13} /> Import (write gateway disabled)
             </button>
           )}
         </div>
@@ -481,6 +636,15 @@ function SummaryPill({ label, value, color, bg, border }: { label: string; value
     <div style={{ flex: 1, background: bg, border: `1px solid ${border}`, borderRadius: 8, padding: '10px 12px' }}>
       <div style={{ fontSize: 22, fontWeight: 700, color }}>{value.toLocaleString()}</div>
       <div style={{ fontSize: 12, color }}>{label}</div>
+    </div>
+  );
+}
+
+function ResultCount({ label, value, color }: { label: string; value: number; color: string }) {
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', minWidth: 60 }}>
+      <span style={{ fontSize: 18, fontWeight: 700, color }}>{value.toLocaleString()}</span>
+      <span style={{ fontSize: 11, color: '#6b7280' }}>{label}</span>
     </div>
   );
 }

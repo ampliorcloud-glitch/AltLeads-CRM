@@ -3,6 +3,10 @@
 /**
  * writeGateway.js — server-side write gatekeeper (ALT-431)
  *
+ * Import write-engine (DEC-14) implemented 2026-06-28:
+ *   company.import, contact.import, lead.import  — real upsert via importEngine.js
+ *   company.importUndo, contact.importUndo, lead.importUndo — batch undo
+ *
  * Mounts on the Express app as a router under POST /api/write.
  * Verifies the caller's Supabase JWT → resolves the actor's profiles row
  * (user_id + role) server-side → validates action against the per-role
@@ -35,6 +39,9 @@
  *   503:     { ok: false, error: string }   (Supabase env vars not set)
  */
 
+/* ── Import engine (DEC-14) ──────────────────────────────────────── */
+const { runImport, undoBatch } = require('./importEngine');
+
 /* ── Role constants (mirrors role_master in DB) ──────────────────── */
 const ROLES = {
   ADMIN:        'ADMIN',       // role_id 1
@@ -60,11 +67,15 @@ const ROLE_ALLOW_LIST = {
   'record.markDnc':      [ROLES.ADMIN, ROLES.TEAM_LEAD, ROLES.AGENT, ROLES.QC],
   'record.setFeasibility': [ROLES.ADMIN, ROLES.TEAM_LEAD, ROLES.QC],
 
-  // ── Planned / placeholder actions (not yet implemented — stubs below) ──
-  // Register the name + role gate here before the handler exists so the
-  // allow-list is the single source of truth.  Handlers return { ok: true,
-  // stubbed: true } until a real implementation is wired in.
-  'lead.import':         [ROLES.ADMIN],                           // ALT-import-agent
+  // ── Import write-engine (DEC-14) — all ADMIN only ───────────────────────
+  'company.import':      [ROLES.ADMIN],
+  'contact.import':      [ROLES.ADMIN],
+  'lead.import':         [ROLES.ADMIN],
+  'company.importUndo':  [ROLES.ADMIN],
+  'contact.importUndo':  [ROLES.ADMIN],
+  'lead.importUndo':     [ROLES.ADMIN],
+
+  // ── Other planned / placeholder actions ──────────────────────────────────
   'lead.export':         [ROLES.ADMIN, ROLES.TEAM_LEAD],          // ALT-import-agent
   'contact.markDnc':     [ROLES.ADMIN, ROLES.TEAM_LEAD, ROLES.AGENT, ROLES.QC],
   'ownership.reassign':  [ROLES.ADMIN],                           // bulk ownership fix
@@ -192,14 +203,72 @@ const ACTION_HANDLERS = {
     return { updated: true, lead_id, feasibility };
   },
 
-  /* ── Stubbed / placeholder handlers ─────────────────────────────── */
-  // These exist so the allow-list entry above doesn't orphan.
-  // Replace the stub body with a real implementation when the agent arrives.
-
-  async 'lead.import'(_admin, _actor, _payload) {
-    // TODO (import agent — ALT-import): implement bulk lead import via service role.
-    return { ok: true, stubbed: true, message: 'lead.import handler not yet implemented' };
+  /* ── Import write-engine handlers (DEC-14) ──────────────────────── */
+  /**
+   * company.import / contact.import / lead.import
+   *
+   * Payload: {
+   *   entity:   'company' | 'contact' | 'lead',
+   *   rows:     MappedRow[],  // ≤ 500 rows per call; target-field keys
+   *   filename: string?,
+   * }
+   * Response: { ok: true, batchId, total, inserted, updated, skipped, error, rowResults[] }
+   *
+   * importEngine throws with e.name='GatewayValidationError' for payload errors
+   * (entity unknown, rows empty/too-large).  Re-wrap those as real
+   * GatewayValidationError so the gateway returns 400 instead of 500.
+   */
+  async 'company.import'(admin, actor, payload) {
+    try { return await runImport(admin, actor, { ...payload, entity: 'company' }); }
+    catch (e) { if (e.name === 'GatewayValidationError') throw new GatewayValidationError(e.message); throw e; }
   },
+
+  async 'contact.import'(admin, actor, payload) {
+    try { return await runImport(admin, actor, { ...payload, entity: 'contact' }); }
+    catch (e) { if (e.name === 'GatewayValidationError') throw new GatewayValidationError(e.message); throw e; }
+  },
+
+  async 'lead.import'(admin, actor, payload) {
+    try { return await runImport(admin, actor, { ...payload, entity: 'lead' }); }
+    catch (e) { if (e.name === 'GatewayValidationError') throw new GatewayValidationError(e.message); throw e; }
+  },
+
+  /**
+   * company.importUndo / contact.importUndo / lead.importUndo
+   *
+   * Payload: { batchId: number }
+   * Response: { ok: true, batchId, undone, failed, errors[] }
+   *
+   * Reverses every inserted + updated row in the batch:
+   *   inserted → soft-deleted (deleted_date set)
+   *   updated  → prior column values restored from import_row.undo_payload
+   */
+  async 'company.importUndo'(admin, actor, payload) {
+    const { batchId } = payload || {};
+    if (!batchId || typeof batchId !== 'number') {
+      throw new GatewayValidationError('payload.batchId must be a number');
+    }
+    return undoBatch(admin, batchId, actor);
+  },
+
+  async 'contact.importUndo'(admin, actor, payload) {
+    const { batchId } = payload || {};
+    if (!batchId || typeof batchId !== 'number') {
+      throw new GatewayValidationError('payload.batchId must be a number');
+    }
+    return undoBatch(admin, batchId, actor);
+  },
+
+  async 'lead.importUndo'(admin, actor, payload) {
+    const { batchId } = payload || {};
+    if (!batchId || typeof batchId !== 'number') {
+      throw new GatewayValidationError('payload.batchId must be a number');
+    }
+    return undoBatch(admin, batchId, actor);
+  },
+
+  /* ── Other stubbed / placeholder handlers ────────────────────────── */
+  // These exist so the allow-list entry above doesn't orphan.
 
   async 'lead.export'(_admin, _actor, _payload) {
     // TODO (import agent — ALT-import): implement export-grant logic.
