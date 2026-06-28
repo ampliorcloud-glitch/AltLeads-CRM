@@ -28,7 +28,7 @@ import { reassignContact, fetchAssignableUsers, fetchUserLabel } from '../data/a
 import { humanizeWriteError } from '../lib/writeError';
 import type { UserOption } from '../data/wishlist';
 import { CreateTaskModal, type TaskAssociation } from '../components/tasks/CreateTaskModal';
-import { LogCallModal, type CallAssociation } from '../components/calls/LogCallModal';
+import { LogDispositionModal } from '../components/calls/LogDispositionModal';
 import type { TaskType } from '../data/tasks';
 import {
   fetchContactById,
@@ -151,11 +151,15 @@ function InfoRow({ icon, label, value, href, copyValue }: {
 
 function QuickTaskActions({
   association,
-  callAssociation,
+  contactId,
+  ownerUserId,
+  actorId,
   recordName,
 }: {
   association: TaskAssociation;
-  callAssociation: CallAssociation;
+  contactId: number;
+  ownerUserId: number | null;
+  actorId: string | null;
   recordName: string;
 }) {
   const [modal, setModal] = useState<{ type: TaskType; subject: string } | null>(null);
@@ -212,10 +216,14 @@ function QuickTaskActions({
         initialSubject={modal?.subject}
       />
 
-      <LogCallModal
+      <LogDispositionModal
         open={logOpen}
         onClose={() => setLogOpen(false)}
-        association={callAssociation}
+        recordType="contact"
+        recordId={contactId}
+        projectId={null}
+        ownerUserId={ownerUserId}
+        actorId={actorId}
       />
     </>
   );
@@ -652,12 +660,9 @@ export function ContactDetailPage() {
                       assocLabel: contact.full_name,
                       assocPhone: contact.mobile_no || contact.alt_mobile_no || null,
                     }}
-                    callAssociation={{
-                      contactId: contact.contact_id,
-                      companyId: contact.company_id ?? null,
-                      assocLabel: contact.full_name,
-                      assocPhone: contact.mobile_no || contact.alt_mobile_no || null,
-                    }}
+                    contactId={contact.contact_id}
+                    ownerUserId={ownerUserId}
+                    actorId={actorId}
                     recordName={contact.full_name}
                   />
                 )}

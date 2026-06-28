@@ -34,7 +34,7 @@ import type { UserOption } from '../data/wishlist';
 import { StageBadge } from '../components/ui/Badge';
 import { CopyButton } from '../components/ui/CopyButton';
 import { CreateTaskModal, type TaskAssociation } from '../components/tasks/CreateTaskModal';
-import { LogCallModal, type CallAssociation } from '../components/calls/LogCallModal';
+import { LogDispositionModal } from '../components/calls/LogDispositionModal';
 import type { TaskType } from '../data/tasks';
 import { StatusBadge } from '../components/ui/StatusBadge';
 import { ProjectSelect } from '../components/ui/ProjectSelect';
@@ -1134,11 +1134,17 @@ function ActivityTab({ companyId, projectId, refreshKey }: ActivityTabProps) {
 ------------------------------------------------------------------ */
 function QuickTaskActions({
   association,
-  callAssociation,
+  companyId,
+  projectId: logProjectId,
+  ownerUserId,
+  actorId,
   recordName,
 }: {
   association: TaskAssociation;
-  callAssociation: CallAssociation;
+  companyId: number;
+  projectId?: number | null;
+  ownerUserId: number | null;
+  actorId: string | null;
   recordName: string;
 }) {
   const [modal, setModal] = useState<{ type: TaskType; subject: string } | null>(null);
@@ -1216,10 +1222,14 @@ function QuickTaskActions({
         initialSubject={modal?.subject}
       />
 
-      <LogCallModal
+      <LogDispositionModal
         open={logOpen}
         onClose={() => setLogOpen(false)}
-        association={callAssociation}
+        recordType="company"
+        recordId={companyId}
+        projectId={logProjectId ?? null}
+        ownerUserId={ownerUserId}
+        actorId={actorId}
       />
     </>
   );
@@ -1403,11 +1413,10 @@ export function CompanyDetailPage() {
                     assocLabel: company.name,
                     assocPhone: null,
                   }}
-                  callAssociation={{
-                    companyId: companyId,
-                    assocLabel: company.name,
-                    assocPhone: null,
-                  }}
+                  companyId={companyId}
+                  projectId={projectId}
+                  ownerUserId={ownerUserId}
+                  actorId={actorId}
                   recordName={company.name}
                 />
               )}

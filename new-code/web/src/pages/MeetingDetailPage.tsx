@@ -6,7 +6,7 @@ import { MeetingStatusBadge } from '../components/meeting/MeetingStatusBadge';
 import { UpdateMeetingModal } from '../components/meeting/UpdateMeetingModal';
 import { EditMeetingModal } from '../components/meeting/EditMeetingModal';
 import { CreateTaskModal, type TaskAssociation } from '../components/tasks/CreateTaskModal';
-import { LogCallModal, type CallAssociation } from '../components/calls/LogCallModal';
+import { LogDispositionModal } from '../components/calls/LogDispositionModal';
 import type { TaskType } from '../data/tasks';
 import {
   fetchMeetingDetail,
@@ -209,11 +209,15 @@ function modeIcon(mode: string) {
  */
 function QuickTaskActions({
   association,
-  callAssociation,
+  meetingId,
+  ownerUserId,
+  actorId,
   recordName,
 }: {
   association: TaskAssociation;
-  callAssociation: CallAssociation;
+  meetingId: number;
+  ownerUserId: number | null;
+  actorId: string | null;
   recordName: string;
 }) {
   const [modal, setModal] = useState<{ type: TaskType; subject: string } | null>(null);
@@ -291,10 +295,14 @@ function QuickTaskActions({
         initialSubject={modal?.subject}
       />
 
-      <LogCallModal
+      <LogDispositionModal
         open={logOpen}
         onClose={() => setLogOpen(false)}
-        association={callAssociation}
+        recordType="meeting"
+        recordId={meetingId}
+        projectId={null}
+        ownerUserId={ownerUserId}
+        actorId={actorId}
       />
     </>
   );
@@ -532,13 +540,9 @@ export function MeetingDetailPage() {
                         meeting.company || meeting.leadName || meeting.name || 'Meeting',
                       assocPhone: meeting.leadMobile || null,
                     }}
-                    callAssociation={{
-                      meetingId: Number(meeting.id),
-                      leadId: meeting.leadId ? Number(meeting.leadId) : null,
-                      assocLabel:
-                        meeting.company || meeting.leadName || meeting.name || 'Meeting',
-                      assocPhone: meeting.leadMobile || null,
-                    }}
+                    meetingId={Number(meeting.id)}
+                    ownerUserId={profile?.user_id ?? null}
+                    actorId={actor || null}
                     recordName={meeting.company || meeting.leadName || meeting.name || ''}
                   />
                 </div>

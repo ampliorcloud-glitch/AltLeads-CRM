@@ -19,8 +19,8 @@ import { AppShell } from '../components/layout/AppShell';
 import { StageBadge } from '../components/ui/Badge';
 import { CopyButton } from '../components/ui/CopyButton';
 import { CreateTaskModal, type TaskAssociation } from '../components/tasks/CreateTaskModal';
-import { LogCallModal, type CallAssociation } from '../components/calls/LogCallModal';
-import { CallHistoryCard } from '../components/calls/CallHistoryCard';
+import { LogDispositionModal } from '../components/calls/LogDispositionModal';
+import { CallLogPreview } from '../components/calls/CallLogPreview';
 import type { TaskType } from '../data/tasks';
 import {
   fetchLeadDetail,
@@ -181,17 +181,23 @@ const TABS: { key: TabKey; label: string }[] = [
 /**
  * QuickTaskActions — one-click buttons that open the shared CreateTaskModal
  * (Call back / Schedule meeting / Add task — SCHEDULING) plus a "Log call" button
- * that opens LogCallModal (RECORD a call that already happened — ALT-269).
- * Reuses both shared modals; no task/call logic duplicated.
+ * that opens LogDispositionModal (RECORD a call that already happened — ALT-269).
+ * Writes to the live `interaction` table via DispositionForm / logDisposition().
+ * LogCallModal / logCall() was removed: call_log table was never migrated to prod.
  */
 function QuickTaskActions({
   association,
-  callAssociation,
+  leadId,
+  ownerUserId,
+  actorId,
   recordName,
   onCallLogged,
 }: {
   association: TaskAssociation;
-  callAssociation: CallAssociation;
+  /** Lead id used as the record_id for the interaction row. */
+  leadId: number;
+  ownerUserId: number | null;
+  actorId: string | null;
   recordName: string;
   onCallLogged?: () => void;
 }) {
@@ -270,10 +276,14 @@ function QuickTaskActions({
         initialSubject={modal?.subject}
       />
 
-      <LogCallModal
+      <LogDispositionModal
         open={logOpen}
         onClose={() => setLogOpen(false)}
-        association={callAssociation}
+        recordType="lead"
+        recordId={leadId}
+        projectId={null}
+        ownerUserId={ownerUserId}
+        actorId={actorId}
         onLogged={onCallLogged}
       />
     </>
@@ -612,11 +622,9 @@ export function LeadDetailPage() {
                   assocLabel: company?.client_name || lead.company_name || lead.lead_name,
                   assocPhone: lead.mobile_no || lead.alt_mobile_no || null,
                 }}
-                callAssociation={{
-                  leadId: lead.lead_id,
-                  assocLabel: company?.client_name || lead.company_name || lead.lead_name,
-                  assocPhone: lead.mobile_no || lead.alt_mobile_no || null,
-                }}
+                leadId={lead.lead_id}
+                ownerUserId={profile?.user_id ?? null}
+                actorId={actor || null}
                 recordName={company?.client_name || lead.company_name || lead.lead_name}
                 onCallLogged={() => setCallsRefresh((n) => n + 1)}
               />
@@ -734,7 +742,12 @@ export function LeadDetailPage() {
           {/* Right column: info panel + recent logged calls (ALT-269) */}
           <div className="flex flex-col gap-4 min-w-0">
             <LeadInfoPanel lead={lead} company={company} loadingCompany={loadingCompany} />
-            <CallHistoryCard recordRef={{ leadId: lead.lead_id }} refreshKey={callsRefresh} />
+            <CallLogPreview
+              entity="lead"
+              id={lead.lead_id}
+              refreshSignal={callsRefresh}
+              title="Call history"
+            />
           </div>
         </div>
 
