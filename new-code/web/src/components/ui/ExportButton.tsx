@@ -36,6 +36,15 @@ interface Props<Row extends Record<string, unknown>> {
    */
   idHeader?: string;
   disabled?: boolean;
+  /**
+   * Optional async hook called BEFORE building the export matrix. When
+   * provided it must return the full (enriched) row set to export — this
+   * supersedes the `rows` prop so callers can lazily load missing data
+   * (e.g. per-project status for off-page rows) right before the download.
+   * The button shows a brief loading state while awaiting. Returning `null`
+   * aborts the export silently.
+   */
+  getRows?: () => Promise<Row[] | null>;
 }
 
 function cellValue<Row extends Record<string, unknown>>(row: Row, col: ExportColumn<Row>): unknown {
@@ -105,8 +114,10 @@ export function ExportButton<Row extends Record<string, unknown>>({
   idKey = 'id',
   idHeader = 'Record ID',
   disabled = false,
+  getRows,
 }: Props<Row>) {
   const [open, setOpen] = useState(false);
+  const [exporting, setExporting] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
   const toast = useToast();
 
@@ -128,9 +139,13 @@ export function ExportButton<Row extends Record<string, unknown>>({
     return () => document.removeEventListener('mousedown', handler);
   }, []);
 
-  function exportExcel() {
+  async function exportExcel() {
+    setOpen(false);
     try {
-      const data = pickRows(rows, selectedIds, idKey);
+      setExporting(true);
+      const source = getRows ? (await getRows()) : rows;
+      if (source === null) return; // caller aborted
+      const data = pickRows(source, selectedIds, idKey);
       const matrix = toMatrix(data, exportColumns);
       const ws = XLSX.utils.aoa_to_sheet(matrix);
       const wb = XLSX.utils.book_new();
@@ -140,13 +155,17 @@ export function ExportButton<Row extends Record<string, unknown>>({
     } catch {
       toast.error('Export failed — please try again.');
     } finally {
-      setOpen(false);
+      setExporting(false);
     }
   }
 
-  function exportCsv() {
+  async function exportCsv() {
+    setOpen(false);
     try {
-      const data = pickRows(rows, selectedIds, idKey);
+      setExporting(true);
+      const source = getRows ? (await getRows()) : rows;
+      if (source === null) return; // caller aborted
+      const data = pickRows(source, selectedIds, idKey);
       const matrix = toMatrix(data, exportColumns);
       const csv = matrix
         .map((line) =>
@@ -163,12 +182,13 @@ export function ExportButton<Row extends Record<string, unknown>>({
     } catch {
       toast.error('Export failed — please try again.');
     } finally {
-      setOpen(false);
+      setExporting(false);
     }
   }
 
   const selectedCount = selectedIds?.size ?? 0;
-  const label = selectedCount > 0 ? `Export (${selectedCount})` : 'Export';
+  const isDisabled = disabled || exporting;
+  const label = exporting ? 'Exporting…' : (selectedCount > 0 ? `Export (${selectedCount})` : 'Export');
 
   const btnStyle: React.CSSProperties = {
     display: 'inline-flex',
@@ -181,8 +201,9 @@ export function ExportButton<Row extends Record<string, unknown>>({
     borderRadius: 6,
     background: '#fff',
     color: '#374151',
-    cursor: disabled ? 'not-allowed' : 'pointer',
+    cursor: isDisabled ? 'not-allowed' : 'pointer',
     height: 32,
+    opacity: exporting ? 0.7 : 1,
   };
 
   const itemStyle: React.CSSProperties = {
@@ -201,8 +222,8 @@ export function ExportButton<Row extends Record<string, unknown>>({
       <button
         type="button"
         style={btnStyle}
-        disabled={disabled}
-        onClick={() => setOpen((o) => !o)}
+        disabled={isDisabled}
+        onClick={() => !exporting && setOpen((o) => !o)}
       >
         <Download size={14} />
         {label}

@@ -567,14 +567,39 @@ export function CompaniesPage() {
     });
   }, [filters, allCompanies]);
 
-  /* ---- augmented rows with accountStatus for export ---- */
-  const exportRows = useMemo(
-    () => filteredData.map((c) => ({
+  /* ---- on-demand export rows: loads status for the FULL filtered set (ALT-429) ----
+     Called by ExportButton's getRows prop right before the download. When a project
+     is selected we ensure statusMap covers every row in filteredData (not just the
+     current page) by fetching missing ids in chunks via fetchCompanyStatuses, then
+     merge them into statusMap so the inline display also benefits. When no project
+     is selected, account_status / owner are per-project and therefore N/A for the
+     export (they'd be blank anyway), so we skip the load.
+     TODO(ALT-429): sort/filter on Account Status / Owner columns still operate only
+     over the currently-loaded page subset; a full-set sort/filter would require
+     either server-side sorting or upfront loading — deferred to a future ticket. */
+  const getExportRows = useCallback(async (): Promise<ExportRow[] | null> => {
+    const allIds = filteredData.map((c) => Number(c.id));
+    if (projectId != null && allIds.length > 0) {
+      const missing = allIds.filter((id) => !(id in statusMap));
+      if (missing.length > 0) {
+        // Fetch the missing statuses directly (don't use loadStatuses so we
+        // don't clobber the reqId token that guards the page-level loader).
+        const result = await fetchCompanyStatuses(projectId, missing);
+        setStatusMap((prev) => ({ ...prev, ...result }));
+        // Build export rows from the merged map so the downloaded file is complete.
+        const merged = { ...statusMap, ...result };
+        return filteredData.map((c) => ({
+          ...c,
+          accountStatus: merged[Number(c.id)]?.account_status ?? null,
+        }));
+      }
+    }
+    // All statuses already in map (or no project → status N/A): use current map.
+    return filteredData.map((c) => ({
       ...c,
       accountStatus: statusMap[Number(c.id)]?.account_status ?? null,
-    })),
-    [filteredData, statusMap],
-  );
+    }));
+  }, [filteredData, projectId, statusMap]);
 
   /* ---- batch-load statuses for the CURRENT PAGE rows when project changes ---- */
   const pageCompanyIds = useMemo(() => {
@@ -1286,7 +1311,8 @@ export function CompaniesPage() {
                 entityLabel="companies"
               />
               <ExportButton
-                rows={exportRows as unknown as Record<string, unknown>[]}
+                rows={[] as unknown as Record<string, unknown>[]}
+                getRows={getExportRows as unknown as () => Promise<Record<string, unknown>[] | null>}
                 columns={activeExportColumns as unknown as ExportColumn<Record<string, unknown>>[]}
                 filename="amplior-crm-companies"
                 selectedIds={sel.selectedIds}
