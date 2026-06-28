@@ -68,6 +68,7 @@ import { pushRecent } from '../lib/useRecentlyViewed';
 import type { Interaction } from '../data/contacts';
 import { HUNGERBOX_FEATURES } from '../lib/hungerbox';
 import { CompanySitesPanel } from '../components/hungerbox/CompanySitesPanel';
+import { gated } from '../lib/roleGating';
 
 /* ------------------------------------------------------------------
    Helpers
@@ -1241,7 +1242,7 @@ function QuickTaskActions({
 export function CompanyDetailPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const { profile, canCreateData } = useAuth();
+  const { profile, canCreateData, canEditCompanyContact } = useAuth();
   const companyId = Number(id);
 
   // actorId is the acting user's user_id as text
@@ -1523,6 +1524,9 @@ export function CompanyDetailPage() {
             </div>
             {tab === 'contacts' && (
               <div className="flex items-center gap-2" style={{ paddingRight: 6 }}>
+                {/* STRICT_ROLE_GATING (ALT-458): "Link existing contact" writes to
+                    contact_master (updates company_id) — only Admin/TL/QC when strict. */}
+                {gated(canEditCompanyContact, true) && (
                 <button
                   onClick={() => setShowLinkModal(true)}
                   className="inline-flex items-center gap-1.5 text-zinc-600 hover:text-zinc-800 font-medium transition-colors"
@@ -1531,6 +1535,7 @@ export function CompanyDetailPage() {
                   <UserPlus size={13} />
                   Link existing contact
                 </button>
+                )}
                 {canCreateData && (
                   <button
                     onClick={() => navigate(`/contacts/new?company=${company.id}`)}

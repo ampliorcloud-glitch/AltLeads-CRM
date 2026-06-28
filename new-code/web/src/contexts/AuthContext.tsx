@@ -34,16 +34,40 @@ interface AuthContextType {
   /** True when the user holds the SALES_HEAD role. */
   isSalesHead: boolean;
   /**
+   * True when the user holds the QC role (role 6).
+   * QC can edit any record in their project + approve, but CANNOT reassign.
+   * An Agent may also hold QC (Part 9 / ALT-459).
+   */
+  isQC: boolean;
+  /**
+   * True when the user holds the AGENT role (role 3).
+   * Agents may edit pre-sales questions + lead_report fields from
+   * "Meeting Scheduled" (stage_id ≥ 4) onward.  They may NOT edit
+   * company_master or contact_master (Part 9 / ALT-458).
+   */
+  isAgent: boolean;
+  /**
    * Whether this user may access the Lead Report Approvals queue. Admins and
    * Team Leads review reports; QC (role 6) mirrors the Team Lead's approvals
    * access since QC has no other screen today (AMBIG B1/A5).
+   * Confirmed includes QC (Part 9 / ALT-459).
    */
   isApprover: boolean;
   /**
+   * Whether this user may edit company_master / contact_master records directly.
+   * Granted to ADMIN, TEAM_LEAD, and QC only.
+   * Agents and Sales users are denied (Part 9 / ALT-458 / ALT-463).
+   * UI gating is behind STRICT_ROLE_GATING in roleGating.ts.
+   */
+  canEditCompanyContact: boolean;
+  /**
    * Whether this user may reassign / change the owner of a record (lead,
-   * company, contact, meeting). Admin or any manager (Team Lead / Sales Head).
-   * Plain agents and sales persons cannot reassign (ALT-288 OD-4). Sales-side
-   * reassignment is additionally downline-scoped once that migration lands.
+   * company, contact, meeting). Admin or Team Lead only in the internal CRM.
+   * QC is explicitly EXCLUDED (Part 9 / ALT-459 "QC — like TL minus assign").
+   * isSalesHead still included for the /sales shell (sales-portal downline
+   * reassignment is deferred; evaluated separately there).
+   * Note: prior to Part 9 this also included isSalesHead for the CRM shell —
+   * that is unchanged because sales users don't access the CRM shell.
    */
   canReassign: boolean;
   /**
@@ -173,7 +197,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const isAdmin = roles.includes('ADMIN');
   const isTeamLead = roles.includes('TEAM_LEAD');
   const isSalesHead = roles.includes('SALES_HEAD');
-  const isApprover = isAdmin || isTeamLead || roles.includes('QC');
+  // Part 9 (2026-06-28): QC and Agent flags added for locked role model.
+  const isQC = roles.includes('QC');
+  const isAgent = roles.includes('AGENT');
+  // isApprover: Admin | TL | QC — confirmed includes QC (Part 9 / ALT-459).
+  const isApprover = isAdmin || isTeamLead || isQC;
+  // canEditCompanyContact: admin/TL/QC only; agents + sales denied (Part 9 / ALT-458).
+  // UI gate behind STRICT_ROLE_GATING in roleGating.ts; value always correct here.
+  const canEditCompanyContact = isAdmin || isTeamLead || isQC;
+  // canReassign for the internal CRM: Admin + TL only.
+  // QC explicitly excluded (Part 9: "QC — like TL minus assign").
+  // isSalesHead kept for the /sales shell where sales-portal TL equivalent is needed.
+  // TODO(gatekeeper ALT-431): when the gatekeeper lands, route reassign through it.
   const canReassign = isAdmin || isTeamLead || isSalesHead;
   const canCreateData = isAdmin;
 
@@ -188,7 +223,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       isAdmin,
       isTeamLead,
       isSalesHead,
+      isQC,
+      isAgent,
       isApprover,
+      canEditCompanyContact,
       canReassign,
       canCreateData,
       loading,

@@ -48,6 +48,12 @@ import { useIsSalesShell } from '../contexts/SalesShellContext';
 import { useConfirm } from '../components/ui/ConfirmDialog';
 import { useToast } from '../components/ui/Toast';
 import { pushRecent } from '../lib/useRecentlyViewed';
+// roleGating: STRICT_ROLE_GATING guards the agent edit-scope rule (ALT-458).
+// When true, the stage selector + report tab writes are additionally scoped to
+// stage_id >= 4 for AGENT role. RLS (apply-access-control-rls.cjs) enforces this
+// server-side; the UI just surfaces a cleaner experience when the flag is on.
+// The canReassign flag already excludes QC (Part 9 / ALT-459).
+import { gated, agentCanEditLeadReport } from '../lib/roleGating';
 
 /* ── Progress stepper: Pre-Sales → Meeting → Closing ─────────────────────── */
 
@@ -296,7 +302,7 @@ export function LeadDetailPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const location = useLocation();
-  const { profile, canReassign } = useAuth();
+  const { profile, canReassign, isAgent, isQC, isAdmin, isTeamLead, isSalesUser } = useAuth();
   // When reused inside the Sales Portal, keep "back to Leads" within /sales/*.
   const isSalesShell = useIsSalesShell();
   const confirm = useConfirm();
@@ -596,7 +602,20 @@ export function LeadDetailPage() {
                 <StageSelect
                   currentStageId={lead.stage_id}
                   stages={stages}
-                  disabled={lead.is_closed || !hasActor}
+                  disabled={
+                    lead.is_closed ||
+                    !hasActor ||
+                    // STRICT_ROLE_GATING (ALT-458): agents may only update stage from
+                    // "Meeting Scheduled" (stage_id 4) onward. RLS enforces server-side;
+                    // this disables the selector to give early feedback in the UI.
+                    gated(
+                      !agentCanEditLeadReport(
+                        { isAdmin, isTeamLead, isQC, isAgent, isSalesUser, canReassign },
+                        lead.stage_id,
+                      ),
+                      false,
+                    )
+                  }
                   saving={stageSaving}
                   onChange={handleStageChange}
                 />

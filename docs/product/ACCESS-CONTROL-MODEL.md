@@ -796,3 +796,89 @@ These supersede ambiguity above. They are the rules to implement in RLS + UI gat
 
 ### Ticket map
 ALT-152/ALT-433 (assignee edit + RLS) · ALT-458 (agent edit scope: pre-sales + post-meeting-scheduled only, no company/contact) · ALT-459 (QC = TL-minus-assign; agent-can-be-QC) · ALT-463 (sales = read+request-edit+feedback only, no master UPDATE) · ALT-464 (prequalified company-vs-site toggle, per-project admin setting) · ALT-460 (advanced filters) · ALT-461 (saved views) · ALT-462 (call logs fix).
+
+---
+
+## PART 9A — IMPLEMENTATION (2026-06-28) — what was built
+
+### Helper functions reused (DB — all SECURITY DEFINER, already existed)
+| Function | Used for |
+|---|---|
+| `is_admin()` | Admin bypass on all UPDATE/DELETE policies |
+| `is_qc()` | QC = TL-equivalent UPDATE access |
+| `current_user_id()` | Resolves `auth.uid()` → `profiles.user_id` (bigint) |
+| `is_member(pid)` | Project membership check (used in existing lead_master SELECT) |
+| `manages_project(pid)` | TL can edit any lead in their project |
+
+Note: `manages_user()` is a DB stub (always returns false) — downline hierarchy not built. `assigned_to()` / `downline_ids()` do not exist; assignee-check uses `lead_report.user_id = current_user_id()` directly.
+
+### Staged RLS migration — `new-code/migration/apply-access-control-rls.cjs`
+**Status: STAGED — `node -c` syntax-checked only. NOT executed against any DB.**
+
+| Table | Policy | Rule |
+|---|---|---|
+| `lead_report` | `lead_report_select_all_authenticated` | SELECT: all authenticated users |
+| `lead_report` | `lead_report_update_role_scoped` | UPDATE: Admin (always) · QC (any row) · TL (any row) · Agent (own `user_id` + `stage_id >= 4` only) · Sales: DENIED |
+| `lead_report` | `lead_report_insert_admin_tl` | INSERT: Admin + TL only |
+| `lead_report` | `lead_report_delete_admin_only` | DELETE: Admin only |
+| `lead_master` | `lead_master_deny_agent_update` | RESTRICTIVE: blocks pure-agent UPDATE on lead_master (agents write to lead_report, not lead_master) |
+| `lead_master` | `lead_master_deny_sales_update` | RESTRICTIVE: blocks pure-sales UPDATE on lead_master (ALT-463) |
+| `company_master` | `company_master_update_internal_managers` | UPDATE: Admin + QC + TL; agents/sales DENIED; removes legacy created_by owner-edit (DEC-03) |
+| `company_master` | `company_master_delete_admin_only` | DELETE: Admin only |
+| `contact_master` | `contact_master_update_internal_managers` | UPDATE: Admin + QC + TL; agents/sales DENIED |
+| `contact_master` | `contact_master_delete_admin_only` | DELETE: Admin only |
+
+Drops/replaces: `lead_report.authenticated_full_access` (was wide-open), `company_master_update_owner_or_admin`, `contact_master_update_owner_or_admin` (both now superseded by manager-scoped versions).
+
+### New `useAuth()` flags — `new-code/web/src/contexts/AuthContext.tsx`
+| Flag | Value | Notes |
+|---|---|---|
+| `isQC` | `roles.includes('QC')` | NEW — QC = TL-minus-assign |
+| `isAgent` | `roles.includes('AGENT')` | NEW — agent edit scope gating |
+| `isApprover` | `isAdmin \|\| isTeamLead \|\| isQC` | CONFIRMED includes QC (was already correct) |
+| `canEditCompanyContact` | `isAdmin \|\| isTeamLead \|\| isQC` | NEW — Admin/TL/QC only; agents/sales denied |
+| `canReassign` | `isAdmin \|\| isTeamLead \|\| isSalesHead` | UNCHANGED — QC excluded by design (Part 9) |
+
+### Feature flag — `new-code/web/src/lib/roleGating.ts`
+```
+STRICT_ROLE_GATING = false   // flip to true after throwaway-login RLS validation
+```
+All new UI restrictions (`canEditCompanyContact` gate on Edit/Link buttons, `agentCanEditLeadReport()` gate on StageSelect) are wrapped in `gated(strictValue, legacyValue)`. When false, prod behaviour is identical to before.
+
+### UI gating applied (all behind `STRICT_ROLE_GATING`)
+| Location | What is gated | Strict rule |
+|---|---|---|
+| `ContactDetailPage.tsx` | "Edit" pencil button (contact_master) | `canEditCompanyContact` (Admin/TL/QC only) |
+| `CompanyDetailPage.tsx` | "Link existing contact" button (writes `contact_master.company_id`) | `canEditCompanyContact` |
+| `LeadDetailPage.tsx` | StageSelect `disabled` prop | Agent: `agentCanEditLeadReport()` — disabled if `stage_id < 4` |
+| `CompanyDetailPage.tsx` | "Change owner / Assign owner" already gated on `canReassign` (excludes QC) | no change needed |
+| `LeadDetailPage.tsx` | "Change salesperson" already gated on `canReassign` (excludes QC) | no change needed |
+| `CompanyDetailPage.tsx` | "Add new contact", "New lead" already gated on `canCreateData` (admin only) | no change needed |
+
+### VALIDATION PLAN (throwaway-login checks before flipping STRICT_ROLE_GATING=true and applying RLS)
+See the full plan in `new-code/migration/apply-access-control-rls.cjs` (top of file).
+
+Summary per role:
+
+**AGENT** (role 3, assigned to TEST_LEAD):
+- UPDATE lead_report where user_id=self AND stage_id>=4 → must succeed
+- UPDATE lead_report where stage_id<4 → must fail (RLS blocks)
+- UPDATE lead_report where lead not assigned to self → must fail
+- UPDATE company_master / contact_master → must fail
+- UI: Edit button hidden, Link-contact hidden, StageSelect disabled for pre-Meeting-Scheduled
+
+**QC** (role 6):
+- UPDATE lead_report any row → must succeed
+- UPDATE company_master / contact_master → must succeed
+- UI: Edit button visible, Approve button visible, Reassign button hidden (canReassign=false)
+
+**TEAM_LEAD** (role 2):
+- UPDATE lead_report / company_master / contact_master → must succeed
+- UI: Edit visible, Approve visible, Reassign visible
+
+**SALES** (role 4/5):
+- UPDATE lead_master / lead_report / company_master / contact_master → all must fail
+- SELECT lead_master → must succeed (read still open)
+
+**ADMIN** (role 1):
+- All UPDATE/DELETE/INSERT → must succeed (unchanged)

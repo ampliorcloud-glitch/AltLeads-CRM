@@ -63,6 +63,7 @@ import { StatusBadge } from '../components/ui/StatusBadge';
 import type { Interaction } from '../data/contacts';
 import { formatDate } from '../data/account';
 import { pushRecent } from '../lib/useRecentlyViewed';
+import { gated } from '../lib/roleGating';
 
 /* ------------------------------------------------------------------ */
 /*  Helpers                                                             */
@@ -236,7 +237,7 @@ function QuickTaskActions({
 export function ContactDetailPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const { profile, canCreateData, canReassign } = useAuth();
+  const { profile, canCreateData, canReassign, canEditCompanyContact } = useAuth();
 
   const contactId = id ? Number(id) : null;
 
@@ -687,6 +688,9 @@ export function ContactDetailPage() {
                   <Plus size={13} /> New Lead
                 </button>
                 )}
+                {/* STRICT_ROLE_GATING (ALT-458): when enabled, only Admin/TL/QC may
+                    edit contact_master. When flag is false, legacy open-edit preserved. */}
+                {gated(canEditCompanyContact, true) && (
                 <button
                   type="button"
                   onClick={startEdit}
@@ -700,6 +704,7 @@ export function ContactDetailPage() {
                 >
                   <Pencil size={13} /> Edit
                 </button>
+                )}
               </>
             ) : (
               <>
