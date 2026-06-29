@@ -49,6 +49,7 @@ import { ViewPicker } from '../components/filters/ViewPicker';
 import type { SavedViewRecord } from '../data/savedViews';
 import { useSortPersistence } from '../lib/useSortPersistence';
 import { usePinPersistence } from '../lib/usePinPersistence';
+import { isForeignRecord, maskContact, foreignRowStyle } from '../lib/safeView';
 import { GenericKanban } from '../components/kanban/GenericKanban';
 import {
   KanbanGroupBySelect,
@@ -264,6 +265,10 @@ const EDITABLE_COLUMNS: EditableColumn<RealLead>[] = [
     getValue: (r) => (r.lastUpdated ? formatDate(r.lastUpdated) : ''),
   },
   { key: 'leadNumber',   header: 'Lead #',         getValue: (r) => r.leadNumber },
+  // SAFE_VIEW (ALT-492): getValue used for grid display — masking applied at render
+  // time inside the column cell. Since EditableGrid uses getValue() as the display value
+  // when no render() is provided, we supply a render() instead so masking is applied.
+  // (Masking is presentational only; server-side redaction is a future RLS step.)
   { key: 'contactEmail', header: 'Email',          getValue: (r) => r.contactEmail },
   { key: 'contactPhone', header: 'Phone',          getValue: (r) => r.contactPhone },
   { key: 'industry',     header: 'Industry',       getValue: (r) => r.industry },
@@ -338,8 +343,10 @@ const PAGE_SIZE_OPTIONS = [25, 50, 100];
 
 export function LeadsPage() {
   const navigate = useNavigate();
-  const { profile, canCreateData, canReassign } = useAuth();
+  const { profile, canCreateData, canReassign, isAdmin, isTeamLead, isQC } = useAuth();
   const userId = profile?.user_id ?? null;
+  // SAFE_VIEW: admin / TL / QC always see everything; agents + salespeople get the safe view.
+  const safeViewExempt = isAdmin || isTeamLead || isQC;
   const toast = useToast();
   // When reused inside the Sales Portal, keep navigation within /sales/*.
   const isSalesShell = useIsSalesShell();
@@ -833,17 +840,35 @@ export function LeadsPage() {
             return columnHelper.accessor('contactEmail', {
               id: 'contactEmail',
               header: 'Email',
-              cell: (info) => (
-                <span className="text-zinc-600" style={{ fontSize: 13 }}>{info.getValue() || '—'}</span>
-              ),
+              cell: (info) => {
+                // SAFE_VIEW (ALT-492): mask email for non-owned records when flag is on.
+                // Presentational only — true server-side field redaction is a future RLS step.
+                const row = info.row.original;
+                const foreign = isForeignRecord(row.salespersonUserId, userId, safeViewExempt);
+                const display = foreign
+                  ? maskContact(info.getValue(), 'email')
+                  : (info.getValue() || '—');
+                return (
+                  <span className="text-zinc-600" style={{ fontSize: 13 }}>{display || '—'}</span>
+                );
+              },
             });
           case 'contactPhone':
             return columnHelper.accessor('contactPhone', {
               id: 'contactPhone',
               header: 'Phone',
-              cell: (info) => (
-                <span className="text-zinc-600" style={{ fontSize: 13 }}>{info.getValue() || '—'}</span>
-              ),
+              cell: (info) => {
+                // SAFE_VIEW (ALT-492): mask phone for non-owned records when flag is on.
+                // Presentational only — true server-side field redaction is a future RLS step.
+                const row = info.row.original;
+                const foreign = isForeignRecord(row.salespersonUserId, userId, safeViewExempt);
+                const display = foreign
+                  ? maskContact(info.getValue(), 'phone')
+                  : (info.getValue() || '—');
+                return (
+                  <span className="text-zinc-600" style={{ fontSize: 13 }}>{display || '—'}</span>
+                );
+              },
             });
           case 'industry':
             return columnHelper.accessor('industry', {
@@ -879,7 +904,7 @@ export function LeadsPage() {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     return [checkboxCol, ...dataCols] as any[];
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [visibleKeys, sel.selectedIds]);
+  }, [visibleKeys, sel.selectedIds, userId, safeViewExempt]);
 
   const table = useReactTable({
     data: filteredData,
@@ -909,12 +934,38 @@ export function LeadsPage() {
   }, [visibleKeys]);
 
   // Grid (EditableGrid) columns — same visible keys + display order as the Table.
+  // SAFE_VIEW (ALT-492): email + phone columns get a masking render() when the flag is on.
+  // (Presentational only; server-side field redaction is a future RLS step.)
   const gridColumns = useMemo<EditableColumn<RealLead>[]>(() => {
     const colMap = new Map(EDITABLE_COLUMNS.map((c) => [c.key, c]));
     return visibleKeys
-      .map((k) => colMap.get(k))
+      .map((k) => {
+        const col = colMap.get(k);
+        if (!col) return undefined;
+        if (k === 'contactEmail') {
+          return {
+            ...col,
+            render: (r: RealLead) => {
+              const foreign = isForeignRecord(r.salespersonUserId, userId, safeViewExempt);
+              const val = foreign ? maskContact(r.contactEmail, 'email') : (r.contactEmail || '');
+              return <span>{val || '—'}</span>;
+            },
+          };
+        }
+        if (k === 'contactPhone') {
+          return {
+            ...col,
+            render: (r: RealLead) => {
+              const foreign = isForeignRecord(r.salespersonUserId, userId, safeViewExempt);
+              const val = foreign ? maskContact(r.contactPhone, 'phone') : (r.contactPhone || '');
+              return <span>{val || '—'}</span>;
+            },
+          };
+        }
+        return col;
+      })
       .filter((c): c is EditableColumn<RealLead> => c != null);
-  }, [visibleKeys]);
+  }, [visibleKeys, userId, safeViewExempt]);
 
   // The leads visible on the current page (drives the Grid's select-all state).
   const gridRows = useMemo(
@@ -1404,7 +1455,10 @@ export function LeadsPage() {
                     </td>
                   </tr>
                 ) : (
-                  table.getRowModel().rows.map((row) => (
+                  table.getRowModel().rows.map((row) => {
+                    // SAFE_VIEW (ALT-493): grey out rows owned by another rep.
+                    const leadForeign = isForeignRecord(row.original.salespersonUserId, userId, safeViewExempt);
+                    return (
                     <tr
                       key={row.id}
                       role="button"
@@ -1429,6 +1483,8 @@ export function LeadsPage() {
                           keyNav.focusedId === row.original.id
                             ? 'inset 3px 0 0 0 var(--color-brand, #1A7EE8)'
                             : undefined,
+                        // SAFE_VIEW (ALT-493): muted styling for foreign records.
+                        ...foreignRowStyle(leadForeign),
                       }}
                       onMouseEnter={(e) => {
                         if (!sel.isSelected(row.original.id)) {
@@ -1467,7 +1523,8 @@ export function LeadsPage() {
                         );
                       })}
                     </tr>
-                  ))
+                    );
+                  })
                 )}
               </tbody>
             </table>

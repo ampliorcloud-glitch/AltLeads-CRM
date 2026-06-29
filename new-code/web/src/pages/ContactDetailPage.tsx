@@ -66,6 +66,7 @@ import type { Interaction } from '../data/contacts';
 import { formatDate } from '../data/account';
 import { pushRecent } from '../lib/useRecentlyViewed';
 import { gated } from '../lib/roleGating';
+import { isForeignRecord, maskContact } from '../lib/safeView';
 import { COLLAB_ASSOC } from '../lib/collabAssoc';
 import { CollaboratorsCard } from '../components/collab/CollaboratorsCard';
 import { AssociationsPanel } from '../components/collab/AssociationsPanel';
@@ -243,7 +244,7 @@ function QuickTaskActions({
 export function ContactDetailPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const { profile, canCreateData, canReassign, canEditCompanyContact } = useAuth();
+  const { profile, canCreateData, canReassign, canEditCompanyContact, isAdmin, isTeamLead, isQC } = useAuth();
 
   const contactId = id ? Number(id) : null;
 

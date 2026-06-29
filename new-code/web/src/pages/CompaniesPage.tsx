@@ -32,6 +32,7 @@ import { SelectAllMatchingBar } from '../components/ui/SelectAllMatchingBar';
 import { useListFilters } from '../lib/listFilters';
 import { useSortPersistence } from '../lib/useSortPersistence';
 import { HUNGERBOX_FEATURES } from '../lib/hungerbox';
+import { isForeignRecord, foreignRowStyle } from '../lib/safeView';
 import { ADVANCED_FILTERS, COMPANIES_FIELDS, EMPTY_FILTER_STATE, evalFilterState, type AdvancedFilterState } from '../lib/filterEngine';
 import { FilterBuilderButton, FilterBuilderPanel } from '../components/filters/FilterBuilder';
 import { ViewPicker } from '../components/filters/ViewPicker';
@@ -312,10 +313,12 @@ const EXPORT_COLUMNS: ExportColumn<ExportRow>[] = [
 
 export function CompaniesPage() {
   const navigate = useNavigate();
-  const { profile, canCreateData, canReassign } = useAuth();
+  const { profile, canCreateData, canReassign, isAdmin, isTeamLead, isQC } = useAuth();
   const userId = profile?.user_id ?? null;
   // actorId is the numeric user_id as text for audit columns / status writes.
   const actorId = userId != null ? String(userId) : null;
+  // SAFE_VIEW: admin / TL / QC always see everything.
+  const safeViewExempt = isAdmin || isTeamLead || isQC;
   const toast = useToast();
   const confirm = useConfirm();
 
@@ -1681,6 +1684,14 @@ export function CompaniesPage() {
                 ) : (
                   table.getRowModel().rows.map((row) => {
                     const isSelected = sel.isSelected(row.original.id);
+                    // SAFE_VIEW (ALT-493): grey out rows owned by another rep.
+                    // company_project_status.owner_user_id is already in statusMap (CompanyStatusLite).
+                    // When no project selected, statusMap is empty → isForeignRecord returns false.
+                    const companyForeign = isForeignRecord(
+                      statusMap[Number(row.original.id)]?.owner_user_id ?? null,
+                      userId,
+                      safeViewExempt,
+                    );
                     return (
                       <tr
                         key={row.id}
@@ -1706,6 +1717,8 @@ export function CompaniesPage() {
                             keyNav.focusedId === row.original.id
                               ? 'inset 3px 0 0 0 var(--color-brand, #1A7EE8)'
                               : undefined,
+                          // SAFE_VIEW (ALT-493): muted styling for foreign records.
+                          ...foreignRowStyle(companyForeign),
                         }}
                         onMouseEnter={(e) => {
                           if (!isSelected) (e.currentTarget as HTMLElement).style.background = 'var(--color-gray-50)';

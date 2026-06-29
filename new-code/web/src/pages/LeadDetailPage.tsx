@@ -56,6 +56,7 @@ import { pushRecent } from '../lib/useRecentlyViewed';
 // server-side; the UI just surfaces a cleaner experience when the flag is on.
 // The canReassign flag already excludes QC (Part 9 / ALT-459).
 import { gated, agentCanEditLeadReport } from '../lib/roleGating';
+import { isForeignRecord, maskContact } from '../lib/safeView';
 import { COLLAB_ASSOC } from '../lib/collabAssoc';
 import { CollaboratorsCard } from '../components/collab/CollaboratorsCard';
 import { AssociationsPanel } from '../components/collab/AssociationsPanel';
@@ -804,7 +805,48 @@ export function LeadDetailPage() {
 
           {/* Right column: info panel + recent logged calls (ALT-269) */}
           <div className="flex flex-col gap-4 min-w-0">
-            <LeadInfoPanel lead={lead} company={company} loadingCompany={loadingCompany} />
+            {/*
+              SAFE_VIEW (ALT-492): when viewing a record owned by another rep, mask
+              email + phone before passing to the info panel. Presentational only —
+              the full data is still fetched from Supabase; server-side field redaction
+              via RLS column grants is a future step. Admin / TL / QC are exempt.
+            */}
+            {(() => {
+              const safeViewExempt = isAdmin || isTeamLead || isQC;
+              const isForeign = isForeignRecord(
+                lead.salesperson_user_id,
+                profile?.user_id ?? null,
+                safeViewExempt,
+              );
+              const safeViewLead = isForeign
+                ? {
+                    ...lead,
+                    email: maskContact(lead.email, 'email'),
+                    mobile_no: maskContact(lead.mobile_no, 'phone'),
+                    alt_mobile_no: maskContact(lead.alt_mobile_no, 'phone'),
+                  }
+                : lead;
+              return (
+                <>
+                  {isForeign && (
+                    <div
+                      role="note"
+                      style={{
+                        fontSize: 12,
+                        color: 'var(--color-gray-400, #9ca3af)',
+                        background: 'var(--color-gray-50, #f9fafb)',
+                        border: '1px solid var(--border-color)',
+                        borderRadius: 6,
+                        padding: '6px 10px',
+                      }}
+                    >
+                      Viewing another rep's record — contact details are masked.
+                    </div>
+                  )}
+                  <LeadInfoPanel lead={safeViewLead} company={company} loadingCompany={loadingCompany} />
+                </>
+              );
+            })()}
             <CallLogPreview
               entity="lead"
               id={lead.lead_id}

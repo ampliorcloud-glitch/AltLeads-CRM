@@ -73,6 +73,7 @@ import type { UserOption } from '../data/wishlist';
 import { RecordPreviewPanel } from '../components/common/RecordPreviewPanel';
 import { ContactPreview } from '../components/contacts/ContactPreview';
 import { HUNGERBOX_FEATURES } from '../lib/hungerbox';
+import { isForeignRecord, maskContact, foreignRowStyle } from '../lib/safeView';
 import { ADVANCED_FILTERS, CONTACTS_FIELDS, EMPTY_FILTER_STATE, evalFilterState, type AdvancedFilterState } from '../lib/filterEngine';
 import { FilterBuilderButton, FilterBuilderPanel } from '../components/filters/FilterBuilder';
 import { ViewPicker } from '../components/filters/ViewPicker';
@@ -317,8 +318,10 @@ interface SortState { key: SortKey; dir: 'asc' | 'desc' }
 
 export function ContactsPage() {
   const navigate = useNavigate();
-  const { profile, canCreateData, canReassign } = useAuth();
+  const { profile, canCreateData, canReassign, isAdmin, isTeamLead, isQC } = useAuth();
   const userId = profile?.user_id ?? null;
+  // SAFE_VIEW: admin / TL / QC always see everything.
+  const safeViewExempt = isAdmin || isTeamLead || isQC;
   const toast = useToast();
   const confirm = useConfirm();
   // actorId is numeric user_id as text for audit columns
@@ -519,6 +522,9 @@ export function ContactsPage() {
   // ALT-296 step B. Lives separately from statusMap because the shared
   // fetchContactStatuses() helper doesn't return owner_user_id.
   const [ownerMap, setOwnerMap] = useState<Record<number, string>>({});
+  // SAFE_VIEW (ALT-492): per-project numeric owner_user_id per contact.
+  // Parallel to ownerMap (which stores display names). Used by isForeignRecord.
+  const [ownerIdMap, setOwnerIdMap] = useState<Record<number, number | null>>({});
   // contact_status dropdown options
   const [statusOptions, setStatusOptions] = useState<DropdownOption[]>([]);
 
@@ -636,12 +642,22 @@ export function ContactsPage() {
       }
       return next;
     });
+    // SAFE_VIEW (ALT-492): store the numeric owner_user_id per contact so
+    // isForeignRecord() can compare against the current user's numeric id.
+    setOwnerIdMap((prev) => {
+      const next = { ...prev };
+      for (const [cid, uid] of Object.entries(ownerByContact)) {
+        next[Number(cid)] = uid ?? null;
+      }
+      return next;
+    });
   }, []);
 
   // Load per-project OWNER names whenever project or contacts change.
   useEffect(() => {
     if (!projectId || allContacts.length === 0) {
       setOwnerMap({});
+      setOwnerIdMap({});
       return;
     }
     let cancelled = false;
@@ -1064,7 +1080,18 @@ export function ContactsPage() {
     { key: 'company_name', header: 'Company', getValue: (r) => r.company_name ?? '' },
     { key: 'city_name', header: 'City', getValue: (r) => r.city_name ?? '' },
     // Email / phone / LinkedIn are sensitive — display as-is, NOT editable.
-    { key: 'email', header: 'Email', getValue: (r) => r.email ?? '' },
+    // SAFE_VIEW (ALT-492): email/phone are masked for non-owned rows via render().
+    // Presentational only; server-side redaction is a future RLS step.
+    {
+      key: 'email',
+      header: 'Email',
+      getValue: (r) => r.email ?? '',
+      render: (r: ContactRow) => {
+        const foreign = isForeignRecord(ownerIdMap[r.contact_id] ?? null, userId, safeViewExempt);
+        const val = foreign ? maskContact(r.email, 'email') : (r.email ?? '');
+        return <span>{val || '—'}</span>;
+      },
+    },
     {
       key: 'linkedin_url',
       header: 'LinkedIn',
@@ -1091,6 +1118,20 @@ export function ContactsPage() {
       key: 'phone_combined',
       header: 'Phone',
       getValue: (r) => r.mobile_no ?? r.alt_mobile_no ?? '',
+      render: (r: ContactRow) => {
+        // SAFE_VIEW (ALT-492): mask phone for non-owned contacts in grid view.
+        // Presentational only; server-side redaction is a future RLS step.
+        const foreign = isForeignRecord(ownerIdMap[r.contact_id] ?? null, userId, safeViewExempt);
+        const primary = r.mobile_no || r.alt_mobile_no;
+        if (!primary) return <span style={{ color: '#d1d5db' }}>—</span>;
+        if (foreign) return <span style={{ color: 'var(--color-gray-400)' }}>{maskContact(primary, 'phone')}</span>;
+        return (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+            {r.mobile_no && <span style={{ fontSize: 13 }}>{r.mobile_no}</span>}
+            {r.alt_mobile_no && <span style={{ fontSize: 11, color: '#9ca3af' }}>{r.alt_mobile_no}</span>}
+          </div>
+        );
+      },
     },
     {
       key: 'contact_status',
@@ -1181,7 +1222,7 @@ export function ContactsPage() {
     },
     { key: 'designation', header: 'Designation', getValue: (r) => r.designation ?? '' },
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  ], [statusOptions, projectId, actorId, statusLoading, resolveProjectFor, contactProjects]);
+  ], [statusOptions, projectId, actorId, statusLoading, resolveProjectFor, contactProjects, ownerIdMap, userId, safeViewExempt]);
 
   /* -------------------------------------------------------- render -- */
 
@@ -1770,6 +1811,10 @@ export function ContactsPage() {
                 ) : (
                   pageRows.map((row) => {
                     const isSelected = sel.isSelected(row.contact_id);
+                    // SAFE_VIEW (ALT-493): grey out rows owned by another rep.
+                    // ownerIdMap holds numeric owner_user_id per contact (loaded alongside ownerMap).
+                    // When no project is selected, ownerIdMap is empty → isForeignRecord returns false.
+                    const contactForeign = isForeignRecord(ownerIdMap[row.contact_id] ?? null, userId, safeViewExempt);
                     return (
                       <tr
                         key={row.contact_id}
@@ -1791,6 +1836,8 @@ export function ContactsPage() {
                           transition: 'background 0.1s, height 0.15s ease',
                           background: isSelected ? '#EBF4FD' : undefined,
                           boxShadow: keyNav.focusedId === row.contact_id ? 'inset 3px 0 0 0 var(--color-brand, #1A7EE8)' : undefined,
+                          // SAFE_VIEW (ALT-493): muted styling for foreign records.
+                          ...foreignRowStyle(contactForeign),
                         }}
                         onMouseEnter={(e) => {
                           if (!isSelected) (e.currentTarget as HTMLElement).style.background = 'var(--color-gray-50)';
@@ -1849,12 +1896,18 @@ export function ContactsPage() {
                                 </td>
                               );
 
-                            case 'email':
+                            case 'email': {
+                              // SAFE_VIEW (ALT-492): mask email for non-owned contacts.
+                              // Presentational only; server-side redaction is a future RLS step.
+                              const emailDisplay = contactForeign
+                                ? maskContact(row.email, 'email')
+                                : row.email;
                               return (
                                 <td key={p.key} style={{ ...tdStyle, maxWidth: 220 }}>
-                                  {row.email || <span style={{ color: '#d1d5db' }}>—</span>}
+                                  {emailDisplay || <span style={{ color: '#d1d5db' }}>—</span>}
                                 </td>
                               );
+                            }
 
                             case 'linkedin_url': {
                               const url = row.linkedin_url;
@@ -1877,7 +1930,19 @@ export function ContactsPage() {
                               );
                             }
 
-                            case 'phone_combined':
+                            case 'phone_combined': {
+                              // SAFE_VIEW (ALT-492): mask phone for non-owned contacts.
+                              // Presentational only; server-side redaction is a future RLS step.
+                              if (contactForeign) {
+                                const primary = row.mobile_no || row.alt_mobile_no;
+                                return (
+                                  <td key={p.key} style={{ ...tdStyle, maxWidth: 160 }}>
+                                    {primary
+                                      ? <span style={{ fontSize: 13, color: 'var(--color-gray-400)' }}>{maskContact(primary, 'phone')}</span>
+                                      : <span style={{ color: '#d1d5db' }}>—</span>}
+                                  </td>
+                                );
+                              }
                               return (
                                 <td key={p.key} style={{ ...tdStyle, maxWidth: 160 }}>
                                   <div style={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
@@ -1893,6 +1958,7 @@ export function ContactsPage() {
                                   </div>
                                 </td>
                               );
+                            }
 
                             case 'contact_status': {
                               // Resolve the edit project: global scope, else the
