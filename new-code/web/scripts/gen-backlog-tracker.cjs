@@ -2770,9 +2770,9 @@ const TICKETS = [
         'SHIPPED 2026-06-29: import wizard step 2 match-key selector (default email for contact/lead, record_id for company); step 3 shows N new / M will-update (matched by KEY) / K in-file-duplicates as expandable pills via lib/importDedup (in-file grouping) + data/importDedup.fetchExistingKeys (chunked read-only .in(), safe with gateway off) + classifyRows. Additive; existing validation/skip/mapping/run unchanged.'),
       V('ALT-491','AltLeads API hardening + MCP server (control the CRM from an AI agent)','Feature','P2','Backlog',
         'Ankit 2026-06-29: we already have an API (Supabase PostgREST + notify-service). Harden a token-secured external layer + build a Node/TS MCP server exposing tools (search/get/create/update for company/contact/lead/meeting/task, log activity, run report, admin/config). Connect as a session MCP so the agent can operate + customize the CRM. MVP ~1 session (8-12 read+write tools, scoped token, safe-by-default); production ~2-4 sessions (full coverage, per-tool perms, acts-as-user RLS, audit, deploy on Dokploy). Slot AFTER launch gates (RLS + gateway).'),
-      V('ALT-492','Safe view — mask sensitive contact info on records the user does NOT own','Feature','P1','Planned',
+      V('ALT-492','Safe view — mask sensitive contact info on records the user does NOT own','Feature','P1','In Progress',
         'INTERNAL-LAUNCH (Ankit FLAG-1 2026-06-29): within a project all members see all records (rows), but records you do not own show a SAFE VIEW with contact info (email/phone) masked. Extends existing partial-mask + click-reveal. Ownership = lead_report.user_id / company_project_status.owner_user_id / contact_project_status.owner_user_id. Admin/TL/QC bypass. Pairs with ALT-493.'),
-      V('ALT-493','Grey/dull non-owned records in lists + detail (focus UX)','Feature','P2','Planned',
+      V('ALT-493','Grey/dull non-owned records in lists + detail (focus UX)','Feature','P2','In Progress',
         'INTERNAL-LAUNCH UX (Ankit FLAG-1 2026-06-29): render records the user does not own in a dull/grey style across list + detail so reps focus on their own. Pairs with ALT-492 (safe-view masking).'),
     ];
   })()),
