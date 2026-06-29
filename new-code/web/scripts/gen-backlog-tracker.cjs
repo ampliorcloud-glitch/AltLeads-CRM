@@ -2659,8 +2659,8 @@ const TICKETS = [
         'V1 BUILT DARK 2026-06-29 behind COLLAB_ASSOC (flag off=prod unchanged): record_collaborator staged migration + data/collaborators.ts CRUD + CollaboratorsCard (chip-list + add-modal, viewer/editor role) on all 4 detail pages + admin CollaboratorAccessTab (per-object View / View+Edit, staged collaborator_access_setting). Posture decision RESOLVED (admin view/edit setting). REMAINING before launch: apply migrations + RLS (deferred post-DEC-03 validation) + notify-on-add + flip flag.'),
       V('ALT-442','Associations across modules (link extra company/contact/lead/meeting)','Feature','P1','In Progress',
         'V1 BUILT DARK 2026-06-29 behind COLLAB_ASSOC: record_association staged migration (canonical-ordered, label CHECK, is_primary, no-self) + data/associations.ts CRUD + AssociationsPanel (list + associate-picker + set-primary) on all 4 detail pages. REMAINING before launch: apply migration + RLS (post-DEC-03) + merge direct-FK relations into the panel + flip flag.'),
-      V('ALT-443','Bulk-assign owner + "max per company" distribution cap + departure reassignment','Feature','P2','Backlog',
-        'Apollo/HubSpot parity: bulk owner assignment across a selection (partly have via reassign), a max-per-company cap for fair distribution, and a one-action "reassign everything owned by a leaving user". Buildable now (extends bulkActions/assignment).'),
+      V('ALT-443','Bulk-assign owner + "max per company" distribution cap + departure reassignment','Feature','P2','Done',
+        'SHIPPED 2026-06-29 (live, additive): BulkReassignModal (multi-owner + max-per-company cap via distributeRecords round-robin) on Leads/Companies/Contacts/Meetings; assignment.ts countOwnedRecords + fetchOwned helpers; DepartingUserReassignTab admin tool (pick leaver -> per-module counts -> multi-owner+cap -> reassign all with progress+abort). Admin/canReassign gated; TODO gatekeeper on writes.'),
       V('ALT-444','Data-health dashboard + scheduled enrichment + job-change tracking','Feature','P3','Backlog',
         'Apollo/HubSpot parity (post-launch): % accurate/missing emails & phones, fill-rate, dup-volume; scheduled/ongoing enrichment to keep bulk-migrated data fresh. Larger; later.'),
       V('ALT-445','Per-view column sets ("Sales view" vs "Ops view")','Feature','P2','Backlog',
@@ -2764,6 +2764,10 @@ const TICKETS = [
         'Supabase Storage bucket for CRM attachments. attachment table (entity_type, entity_id, storage_path, filename, mime_type, size, uploaded_by). File list in record detail, download via signed URL. CENSUS (SuiteCRM Documents module; EspoCRM attachmentMultiple field; Vtiger senotesrel). Source: reference-blueprints synthesis.'),
       V('ALT-488','Multi-currency support (currency lookup + FX rates + base-currency amounts on Deals)','Feature','P3','Backlog',
         'currency table (code, name, symbol, fx_rate_to_inr). Deal amounts stored in native + base currency. Manual or API FX rate update. Depends on ALT-386 (Deals). CENSUS (SuiteCRM amount+amount_usdollar+currency_id; ERPNext opportunity_amount+conversion_rate+base_opportunity_amount). Source: reference-blueprints synthesis.'),
+      V('ALT-489','In-app Notification Center (bell + unread count + event feed)','Feature','P1','Planned',
+        'INTERNAL-LAUNCH UX gap (Ankit 2026-06-29): only transient toasts exist; no persistent notifications. Build app_notification table + bell/dropdown with unread count, fed on key events: assigned-to-you, reassigned, collaborator-added, task due/overdue, @mention. Rides the automation event-spine rails. Phase 2 = browser/OS web-push (service worker + permission). Reference: Odoo mail.activity/mail.message + Espo Stream notifications.'),
+      V('ALT-490','Import dedup QC — match-key + new/update/in-file-duplicate preview (HubSpot/Zoho parity)','Bug','P1','Planned',
+        'INTERNAL-LAUNCH gap (Ankit 2026-06-29): import upserts but does not clearly surface dedup. Add: user-chosen dedup key per entity (Record-ID/email/domain/phone), a pre-commit preview "N new / M will update existing matched by KEY / K in-file duplicates" with expandable lists, in-file duplicate detection, per-row outcome (created/updated/skipped-dup). Reuses findDuplicates/merge primitives. Matches Zoho/HubSpot/Odoo import dedup UX.'),
     ];
   })()),
 
