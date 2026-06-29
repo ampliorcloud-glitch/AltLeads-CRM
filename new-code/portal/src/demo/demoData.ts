@@ -185,3 +185,71 @@ export const demoNotifications: PortalNotification[] = [
 export function getDemoMeeting(id: number): PortalMeeting | undefined {
   return demoMeetings.find((m) => m.meeting_id === id)
 }
+
+/* ---- Lead Reports (live-from-CRM surface, demo) ---- */
+export interface DemoLeadReport {
+  id: number; company: string; contact: string; designation: string
+  city: string; industry: string; stage: string; rep: string
+  value: string; updated: string
+}
+export const demoLeadReports: DemoLeadReport[] = demoMeetings.map((m, i) => ({
+  id: 7000 + i,
+  company: m.company_name ?? '—',
+  contact: m.lead_name ?? '—',
+  designation: m.lead_designation ?? '—',
+  city: m.company_city ?? '—',
+  industry: m.company_industry ?? '—',
+  stage:
+    m.meeting_status === 'Completed' ? 'Meeting done'
+    : m.meeting_status === 'Cancelled' ? 'Dropped'
+    : m.meeting_status === 'Missed' ? 'Follow-up'
+    : 'Meeting scheduled',
+  rep: m.assigned_rep_name ?? '—',
+  value: m.opportunity_value ?? '—',
+  updated: m.meeting_date ?? TODAY,
+}))
+
+/* ---- Governance / review meetings ---- */
+export interface DemoGovernance {
+  id: number; title: string; date: string; time: string
+  attendees: string; agenda: string; status: 'Upcoming' | 'Completed'; joinUrl?: string
+}
+export const demoGovernance: DemoGovernance[] = [
+  { id: 1, title: 'Monthly Business Review — June', date: shift(5), time: '16:00', attendees: 'Amplior (TL, Manager) · Ravi Menon (HungerBox)', agenda: 'June funnel review, pipeline health, July targets, coverage gaps.', status: 'Upcoming', joinUrl: 'https://meet.google.com/demo-gov' },
+  { id: 2, title: 'Quarterly Partnership Review — Q1', date: shift(-25), time: '15:00', attendees: 'Amplior leadership · HungerBox leadership', agenda: 'Q1 outcomes, enterprise wins, vertical expansion, renewals.', status: 'Completed' },
+  { id: 3, title: 'Monthly Business Review — May', date: shift(-30), time: '16:00', attendees: 'Amplior (TL) · Ravi Menon', agenda: 'May funnel, dial quality, ICP refinement.', status: 'Completed' },
+]
+
+/* ---- Documents / ICP / decks ---- */
+export interface DemoDoc {
+  id: number; name: string; category: 'ICP & Criteria' | 'Proposals & Decks' | 'Process' | 'Reports'
+  type: 'PDF' | 'PPT' | 'DOC' | 'XLS'; updated: string; size: string
+}
+export const demoDocuments: DemoDoc[] = [
+  { id: 1, name: 'HungerBox — Ideal Customer Profile (ICP)', category: 'ICP & Criteria', type: 'PDF', updated: shift(-12), size: '1.2 MB' },
+  { id: 2, name: 'Targeting Criteria & Exclusions', category: 'ICP & Criteria', type: 'DOC', updated: shift(-12), size: '320 KB' },
+  { id: 3, name: 'Amplior × HungerBox — Engagement Proposal', category: 'Proposals & Decks', type: 'PDF', updated: shift(-40), size: '3.4 MB' },
+  { id: 4, name: 'Implementation & Onboarding Plan', category: 'Process', type: 'PDF', updated: shift(-38), size: '900 KB' },
+  { id: 5, name: 'Sample Outreach Messaging Pack', category: 'Process', type: 'DOC', updated: shift(-20), size: '210 KB' },
+  { id: 6, name: 'Q1 Partnership Review Deck', category: 'Reports', type: 'PPT', updated: shift(-25), size: '5.1 MB' },
+]
+
+/* ---- Invoices ---- */
+export interface DemoInvoice {
+  id: number; number: string; period: string; amount: string
+  status: 'Paid' | 'Due' | 'Overdue'; date: string
+}
+export const demoInvoices: DemoInvoice[] = [
+  { id: 1, number: 'AMP-2026-006', period: 'Jun 2026', amount: '₹3,50,000', status: 'Due', date: shift(-2) },
+  { id: 2, number: 'AMP-2026-005', period: 'May 2026', amount: '₹3,50,000', status: 'Paid', date: shift(-32) },
+  { id: 3, number: 'AMP-2026-004', period: 'Apr 2026', amount: '₹3,50,000', status: 'Paid', date: shift(-62) },
+  { id: 4, number: 'AMP-2026-003', period: 'Mar 2026', amount: '₹3,20,000', status: 'Paid', date: shift(-92) },
+]
+
+/* ---- Updates / communication log ---- */
+export interface DemoUpdate { id: number; date: string; author: string; title: string; body: string }
+export const demoUpdates: DemoUpdate[] = [
+  { id: 1, date: new Date().toISOString(), author: 'Amplior Desk', title: '8 new meetings booked this week', body: 'Strong week across IT/ITES and BFSI — Infosys and HDFC Bank moved to commercial discussions.' },
+  { id: 2, date: new Date(Date.now() - 2 * 86_400_000).toISOString(), author: 'Team Lead — Amplior', title: 'ICP refreshed for South region', body: 'Updated targeting criteria to focus on 2,000+ headcount campuses. See Documents → ICP & Criteria.' },
+  { id: 3, date: new Date(Date.now() - 6 * 86_400_000).toISOString(), author: 'Amplior Desk', title: 'Q1 review deck shared', body: 'The Q1 partnership review deck is available under Documents → Reports.' },
+]

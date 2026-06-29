@@ -1,32 +1,35 @@
 import { useState } from 'react'
 import { NavLink, Outlet, useNavigate } from 'react-router-dom'
 import {
-  Home,
-  LayoutDashboard,
-  Calendar,
-  Bell,
-  User,
-  ListPlus,
-  LogOut,
-  Menu,
-  X,
+  Home, LayoutDashboard, Calendar, FileText, ListPlus, CalendarCheck,
+  FolderOpen, Megaphone, Receipt, Bell, User, LogOut, Menu, X,
 } from 'lucide-react'
 import { usePortalAuth } from '../hooks/usePortalAuth'
 import { DEMO, demoClient } from '../demo/demoData'
 
-interface NavItem {
-  label: string
-  to: string
-  icon: React.ReactNode
-}
+interface NavItem { label: string; to: string; icon: React.ReactNode }
+interface NavSection { heading?: string; items: NavItem[] }
 
-const navItems: NavItem[] = [
-  { label: 'Home', to: '/', icon: <Home size={18} /> },
-  { label: 'Dashboard', to: '/dashboard', icon: <LayoutDashboard size={18} /> },
-  { label: 'Meetings', to: '/meetings', icon: <Calendar size={18} /> },
-  { label: 'Notifications', to: '/notifications', icon: <Bell size={18} /> },
-  { label: 'Wishlist', to: '/wishlist', icon: <ListPlus size={18} /> },
-  { label: 'Profile', to: '/profile', icon: <User size={18} /> },
+const sections: NavSection[] = [
+  { items: [
+    { label: 'Overview', to: '/', icon: <Home size={17} /> },
+    { label: 'Dashboard', to: '/dashboard', icon: <LayoutDashboard size={17} /> },
+  ] },
+  { heading: 'Engagement', items: [
+    { label: 'Meetings', to: '/meetings', icon: <Calendar size={17} /> },
+    { label: 'Lead Reports', to: '/lead-reports', icon: <FileText size={17} /> },
+    { label: 'Wishlist', to: '/wishlist', icon: <ListPlus size={17} /> },
+  ] },
+  { heading: 'Governance', items: [
+    { label: 'Review Meetings', to: '/governance', icon: <CalendarCheck size={17} /> },
+    { label: 'Documents', to: '/documents', icon: <FolderOpen size={17} /> },
+    { label: 'Updates', to: '/updates', icon: <Megaphone size={17} /> },
+    { label: 'Invoices', to: '/invoices', icon: <Receipt size={17} /> },
+  ] },
+  { heading: 'Account', items: [
+    { label: 'Notifications', to: '/notifications', icon: <Bell size={17} /> },
+    { label: 'Profile', to: '/profile', icon: <User size={17} /> },
+  ] },
 ]
 
 function roleBadgeLabel(role: string) {
@@ -48,85 +51,92 @@ export default function PortalLayout() {
     navigate('/login', { replace: true })
   }
 
+  const displayName = DEMO ? demoClient.adminName : `${portalUser?.auth_uid.slice(0, 8)}…`
+  const displaySub = DEMO ? demoClient.companyName : roleBadgeLabel(portalUser?.portal_role ?? '')
+  const initials = displayName.split(' ').map((w) => w[0]).join('').slice(0, 2).toUpperCase()
+
   const SidebarContent = () => (
-    <div className="flex flex-col h-full">
-      {/* Logo */}
-      <div className="px-6 py-5 border-b border-slate-700">
-        <div className="flex items-center gap-2">
-          <span className="text-white font-bold text-xl tracking-tight">Amplior</span>
-          <span className="w-2 h-2 rounded-full bg-primary flex-shrink-0" />
+    <div className="flex flex-col h-full bg-surface">
+      {/* Brand */}
+      <div className="px-5 h-16 flex items-center border-b border-line flex-shrink-0">
+        <div className="flex items-center gap-2.5">
+          <div className="w-8 h-8 rounded-lg bg-primary flex items-center justify-center text-white font-extrabold text-sm">A</div>
+          <div>
+            <p className="font-extrabold text-ink leading-none tracking-tight">Amplior</p>
+            <p className="text-[10px] text-ink-faint uppercase tracking-widest mt-0.5">Client Portal</p>
+          </div>
         </div>
-        <p className="text-slate-400 text-xs mt-1">Client Portal</p>
       </div>
 
       {/* Nav */}
-      <nav className="flex-1 px-3 py-4 overflow-y-auto scrollbar-hide">
-        <ul className="space-y-1">
-          {navItems.map((item) => (
-            <li key={item.to}>
-              <NavLink
-                to={item.to}
-                end={item.to === '/'}
-                onClick={() => setSidebarOpen(false)}
-                className={({ isActive }) =>
-                  [
-                    'flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors',
-                    isActive
-                      ? 'bg-primary text-white'
-                      : 'text-slate-400 hover:text-white hover:bg-slate-700',
-                  ].join(' ')
-                }
-              >
-                {item.icon}
-                {item.label}
-              </NavLink>
-            </li>
-          ))}
-        </ul>
+      <nav className="flex-1 px-3 py-4 overflow-y-auto scrollbar-thin">
+        {sections.map((sec, si) => (
+          <div key={si} className={si > 0 ? 'mt-5' : ''}>
+            {sec.heading && (
+              <p className="px-3 mb-1.5 text-[10px] font-semibold text-ink-faint uppercase tracking-widest">{sec.heading}</p>
+            )}
+            <ul className="space-y-0.5">
+              {sec.items.map((item) => (
+                <li key={item.to}>
+                  <NavLink
+                    to={item.to}
+                    end={item.to === '/'}
+                    onClick={() => setSidebarOpen(false)}
+                    className={({ isActive }) =>
+                      [
+                        'flex items-center gap-3 pl-3 pr-3 py-2 rounded-lg text-sm font-medium transition-colors relative',
+                        isActive
+                          ? 'bg-primary-light text-primary'
+                          : 'text-ink-mute hover:text-ink hover:bg-mist',
+                      ].join(' ')
+                    }
+                  >
+                    {({ isActive }) => (
+                      <>
+                        {isActive && <span className="absolute left-0 top-1.5 bottom-1.5 w-1 rounded-full bg-primary" />}
+                        {item.icon}
+                        {item.label}
+                      </>
+                    )}
+                  </NavLink>
+                </li>
+              ))}
+            </ul>
+          </div>
+        ))}
       </nav>
 
-      {/* User + Logout */}
-      <div className="px-4 py-4 border-t border-slate-700">
-        {portalUser && (
-          <div className="mb-3">
-            <p className="text-white text-sm font-medium truncate">
-              {DEMO ? demoClient.adminName : `${portalUser.auth_uid.slice(0, 8)}…`}
-            </p>
-            <p className="text-slate-400 text-xs mt-0.5">
-              {DEMO ? `${demoClient.companyName} · ${demoClient.adminRole}` : roleBadgeLabel(portalUser.portal_role)}
-            </p>
+      {/* User */}
+      <div className="px-3 py-3 border-t border-line flex-shrink-0">
+        <div className="flex items-center gap-3 px-2 py-2">
+          <div className="w-9 h-9 rounded-full bg-primary text-white flex items-center justify-center text-xs font-bold flex-shrink-0">
+            {initials}
           </div>
-        )}
-        <button
-          onClick={handleSignOut}
-          className="flex items-center gap-2 w-full px-3 py-2 text-slate-400 hover:text-white hover:bg-slate-700 rounded-lg text-sm transition-colors"
-        >
-          <LogOut size={16} />
-          Sign Out
-        </button>
+          <div className="min-w-0 flex-1">
+            <p className="text-sm font-semibold text-ink truncate">{displayName}</p>
+            <p className="text-xs text-ink-faint truncate">{displaySub}</p>
+          </div>
+          <button onClick={handleSignOut} title="Sign out" className="text-ink-faint hover:text-red-500 transition-colors flex-shrink-0">
+            <LogOut size={17} />
+          </button>
+        </div>
       </div>
     </div>
   )
 
   return (
-    <div className="flex h-screen overflow-hidden bg-[#EEF2FF]">
+    <div className="flex h-screen overflow-hidden bg-canvas">
       {/* Desktop sidebar */}
-      <aside className="hidden md:flex flex-col w-60 flex-shrink-0 bg-[#0F172A] h-full">
+      <aside className="hidden md:flex flex-col w-64 flex-shrink-0 border-r border-line">
         <SidebarContent />
       </aside>
 
-      {/* Mobile sidebar overlay */}
+      {/* Mobile drawer */}
       {sidebarOpen && (
         <div className="fixed inset-0 z-40 flex md:hidden">
-          <div
-            className="fixed inset-0 bg-black/50"
-            onClick={() => setSidebarOpen(false)}
-          />
-          <aside className="relative z-50 flex flex-col w-64 bg-[#0F172A] h-full shadow-xl">
-            <button
-              onClick={() => setSidebarOpen(false)}
-              className="absolute top-4 right-4 text-slate-400 hover:text-white"
-            >
+          <div className="fixed inset-0 bg-black/40" onClick={() => setSidebarOpen(false)} />
+          <aside className="relative z-50 flex flex-col w-72 h-full shadow-pop">
+            <button onClick={() => setSidebarOpen(false)} className="absolute top-4 right-4 text-ink-faint hover:text-ink z-10">
               <X size={20} />
             </button>
             <SidebarContent />
@@ -134,24 +144,16 @@ export default function PortalLayout() {
         </div>
       )}
 
-      {/* Main area */}
+      {/* Main */}
       <div className="flex-1 flex flex-col overflow-hidden">
         {/* Mobile topbar */}
-        <header className="md:hidden flex items-center justify-between px-4 py-3 bg-white border-b border-gray-200 shadow-sm">
-          <button
-            onClick={() => setSidebarOpen(true)}
-            className="text-gray-600 hover:text-gray-900"
-          >
-            <Menu size={22} />
-          </button>
-          <span className="font-bold text-gray-800 text-base">Amplior</span>
-          <NavLink to="/notifications" className="text-gray-600 hover:text-primary">
-            <Bell size={22} />
-          </NavLink>
+        <header className="md:hidden flex items-center justify-between px-4 h-14 bg-surface border-b border-line flex-shrink-0">
+          <button onClick={() => setSidebarOpen(true)} className="text-ink-soft"><Menu size={22} /></button>
+          <span className="font-extrabold text-ink">Amplior</span>
+          <NavLink to="/notifications" className="text-ink-soft"><Bell size={20} /></NavLink>
         </header>
 
-        {/* Page content */}
-        <main className="flex-1 overflow-y-auto">
+        <main className="flex-1 overflow-y-auto scrollbar-thin">
           <Outlet />
         </main>
       </div>

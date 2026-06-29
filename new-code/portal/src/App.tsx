@@ -10,6 +10,11 @@ import Notifications from './pages/Notifications'
 import Profile from './pages/Profile'
 import Feedback from './pages/Feedback'
 import Wishlist from './pages/Wishlist'
+import LeadReports from './pages/LeadReports'
+import Governance from './pages/Governance'
+import Documents from './pages/Documents'
+import Invoices from './pages/Invoices'
+import Updates from './pages/Updates'
 
 export default function App() {
   return (
@@ -25,6 +30,11 @@ export default function App() {
             <Route path="meetings" element={<Meetings />} />
             <Route path="meetings/:meetingId" element={<MeetingDetail />} />
             <Route path="meetings/:meetingId/feedback" element={<Feedback />} />
+            <Route path="lead-reports" element={<LeadReports />} />
+            <Route path="governance" element={<Governance />} />
+            <Route path="documents" element={<Documents />} />
+            <Route path="invoices" element={<Invoices />} />
+            <Route path="updates" element={<Updates />} />
             <Route path="notifications" element={<Notifications />} />
             <Route path="profile" element={<Profile />} />
             <Route path="wishlist" element={<Wishlist />} />

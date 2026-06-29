@@ -5,6 +5,7 @@ import { supabase } from '../lib/supabase'
 import { usePortalAuth } from '../hooks/usePortalAuth'
 import { PortalMeeting } from '../types/portal'
 import MeetingCard from '../components/MeetingCard'
+import { PageHeader, PageBody } from '../components/ui'
 import { DEMO, demoMeetings } from '../demo/demoData'
 
 const STATUS_TABS = ['All', 'Scheduled', 'Completed', 'Rescheduled', 'Dropped', 'Missed'] as const
@@ -117,9 +118,9 @@ export default function Meetings() {
   }, [meetings, activeTab, searchQuery, dateFrom, dateTo])
 
   return (
-    <div className="min-h-screen bg-[#EEF2FF] p-4 sm:p-6 pb-24">
-      <h1 className="text-2xl font-bold text-gray-800 mb-4">Meetings</h1>
-
+    <>
+      <PageHeader breadcrumb={['Engagement', 'Meetings']} title="Meetings" subtitle="Meetings Amplior has booked for you." />
+      <PageBody>
       {/* Search bar */}
       <div className="relative mb-4">
         <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
@@ -128,7 +129,7 @@ export default function Meetings() {
           placeholder="Search by company, meeting name, lead..."
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
-          className="w-full border border-gray-300 rounded-lg pl-9 pr-4 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 outline-none bg-white"
+          className="w-full border border-gray-300 rounded-lg pl-9 pr-4 py-2.5 text-sm focus:ring-2 focus:ring-primary/30 focus:border-primary outline-none bg-surface"
         />
       </div>
 
@@ -140,7 +141,7 @@ export default function Meetings() {
             type="date"
             value={dateFrom}
             onChange={(e) => setDateFrom(e.target.value)}
-            className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none bg-white"
+            className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-primary/30 focus:border-primary outline-none bg-surface"
           />
         </div>
         <div className="flex-1">
@@ -149,7 +150,7 @@ export default function Meetings() {
             type="date"
             value={dateTo}
             onChange={(e) => setDateTo(e.target.value)}
-            className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none bg-white"
+            className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-primary/30 focus:border-primary outline-none bg-surface"
           />
         </div>
         {(dateFrom || dateTo) && (
@@ -172,8 +173,8 @@ export default function Meetings() {
             onClick={() => handleTabChange(tab)}
             className={`flex-shrink-0 px-3 py-1.5 rounded-full text-sm font-medium transition-colors border ${
               activeTab === tab
-                ? 'bg-blue-500 text-white border-blue-500'
-                : 'bg-white text-gray-600 border-gray-200 hover:border-blue-300 hover:text-blue-600'
+                ? 'bg-primary text-white border-primary'
+                : 'bg-surface text-ink-mute border-line hover:border-primary/40 hover:text-primary'
             }`}
           >
             {tab}
@@ -211,6 +212,7 @@ export default function Meetings() {
           ))}
         </div>
       )}
-    </div>
+      </PageBody>
+    </>
   )
 }
