@@ -3,6 +3,8 @@ import { Bell } from 'lucide-react';
 import { useLocation, useParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import { fetchUnreadNotifCount } from '../../data/account';
+import { NOTIFICATIONS } from '../../lib/notificationsFlag';
+import { NotificationBell } from '../notifications/NotificationBell';
 import { ProjectSwitcher } from './ProjectSwitcher';
 import { GlobalSearchBar } from '../ui/GlobalSearchBar';
 
@@ -151,45 +153,51 @@ export function TopBar({ title }: TopBarProps) {
            still works via its own ⌘K/Ctrl-K listener). Internal users only. */}
         {isInternalUser && <GlobalSearchBar />}
 
-        {/* Bell notification icon → opens /notifications, with unread-count badge */}
-        <button
-          onClick={() => navigate('/notifications')}
-          style={{
-            position: 'relative',
-            width: 32,
-            height: 32,
-            borderRadius: '50%',
-            border: '1px solid var(--border-color)',
-            background: 'var(--color-surface)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            cursor: 'pointer',
-            color: 'var(--color-gray-500)',
-            transition: 'background 0.12s',
-          }}
-          aria-label={unread > 0 ? `Notifications (${unread} unread)` : 'Notifications'}
-          title={unread > 0 ? `${unread} unread notification${unread === 1 ? '' : 's'}` : 'Notifications'}
-          onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = 'var(--color-gray-100)'; }}
-          onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = 'var(--color-surface)'; }}
-        >
-          <Bell size={15} strokeWidth={1.75} />
-          {unread > 0 && (
-            <span
-              aria-hidden="true"
-              style={{
-                position: 'absolute', top: -3, right: -3,
-                minWidth: 16, height: 16, padding: '0 4px',
-                borderRadius: 999, background: 'var(--color-danger)',
-                color: '#fff', fontSize: 10, fontWeight: 700,
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                border: '2px solid var(--color-surface)', lineHeight: 1,
-              }}
-            >
-              {unread > 99 ? '99+' : unread}
-            </span>
-          )}
-        </button>
+        {/* Bell notification icon.
+            NOTIFICATIONS=true  → NotificationBell dropdown (ALT-489, in-app center).
+            NOTIFICATIONS=false → plain nav to /notifications page (prod default). */}
+        {NOTIFICATIONS ? (
+          <NotificationBell />
+        ) : (
+          <button
+            onClick={() => navigate('/notifications')}
+            style={{
+              position: 'relative',
+              width: 32,
+              height: 32,
+              borderRadius: '50%',
+              border: '1px solid var(--border-color)',
+              background: 'var(--color-surface)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              cursor: 'pointer',
+              color: 'var(--color-gray-500)',
+              transition: 'background 0.12s',
+            }}
+            aria-label={unread > 0 ? `Notifications (${unread} unread)` : 'Notifications'}
+            title={unread > 0 ? `${unread} unread notification${unread === 1 ? '' : 's'}` : 'Notifications'}
+            onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = 'var(--color-gray-100)'; }}
+            onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = 'var(--color-surface)'; }}
+          >
+            <Bell size={15} strokeWidth={1.75} />
+            {unread > 0 && (
+              <span
+                aria-hidden="true"
+                style={{
+                  position: 'absolute', top: -3, right: -3,
+                  minWidth: 16, height: 16, padding: '0 4px',
+                  borderRadius: 999, background: 'var(--color-danger)',
+                  color: '#fff', fontSize: 10, fontWeight: 700,
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  border: '2px solid var(--color-surface)', lineHeight: 1,
+                }}
+              >
+                {unread > 99 ? '99+' : unread}
+              </span>
+            )}
+          </button>
+        )}
 
         {/* User section: avatar + name + role */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>

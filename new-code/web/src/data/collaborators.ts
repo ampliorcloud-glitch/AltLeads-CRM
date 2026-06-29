@@ -15,6 +15,7 @@
 
 import { supabase } from '../lib/supabase';
 import { COLLAB_ASSOC, type Collaborator, type CollaboratorRole, type RecordType } from '../lib/collabAssoc';
+import { createNotification } from './notifications';
 
 const TABLE = 'record_collaborator';
 
@@ -80,6 +81,18 @@ export async function addCollaborator(params: {
     created_by: params.actorId,
     created_date: new Date().toISOString(),
   });
+
+  if (!error) {
+    // Fire-and-forget in-app notification to the added collaborator (ALT-489).
+    // createNotification is a no-op when NOTIFICATIONS=false.
+    void createNotification({
+      recipientUserId: params.userId,
+      type: 'Added as Collaborator',
+      title: `You were added as a collaborator (${params.role}) on a ${params.recordType} record`,
+      route: `/${params.recordType}s/${params.recordId}`,
+      actor: params.actorId,
+    });
+  }
 
   return { error: error?.message ?? null };
 }
