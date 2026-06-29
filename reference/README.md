@@ -1,13 +1,19 @@
-# `reference/` — open-source CRM/ERP study references (READ-ONLY, gitignored)
+# Open-source CRM/ERP study references (READ-ONLY)
 
-This folder holds **open-source codebases we study for inspiration** while building our own CRM. It is **gitignored** (only this README is tracked) — these are large, third-party, and **not part of our product**. We read them for **data models, workflow engines, and feature breadth** — we do **NOT** copy code (different stacks; respect their licenses).
+> **Location: the source trees live OFF-REPO at `E:\reference code for crm\`** (NOT inside this repo — kept off C:/OneDrive/git to save ~2 GB of disk and avoid OneDrive sync). Read/Grep them by absolute path, e.g. `E:\reference code for crm\odoo\addons\mail`. This in-repo `reference/` folder is just the tracked pointer/README.
+
+These are **open-source codebases we study for inspiration** while building our own CRM. They are third-party and **not part of our product**. We read them for **data models, workflow engines, and feature breadth** — we do **NOT** copy code (different stacks; respect their licenses).
+
+Cloned as **shallow** (`git clone --depth 1`, latest snapshot, no history) since we only ever read current source.
 
 > Why open-source refs: unlike closed HubSpot/Zoho (which we can only reverse-engineer from behavior), here we can read the actual implementation. Cheaper + deeper than web research — **research subagents should grep these first** before going to the web.
 
-## Drop the source into these subfolders (Ankit pastes them)
-- `reference/odoo/` — **Odoo** (Python + own ORM + OWL/QWeb JS, Postgres). LGPLv3 Community.
-- `reference/suitecrm/` — **SuiteCRM** (PHP, fork of SugarCRM). AGPLv3.
-- `reference/erpnext/` — **ERPNext / Frappe** (Python + Frappe framework, MariaDB). GPLv3.
+## The trees (under `E:\reference code for crm\`)
+- `odoo/` — **Odoo** (Python + own ORM + OWL/QWeb JS, Postgres). LGPLv3 Community.
+- `suitecrm/` — **SuiteCRM** (PHP, fork of SugarCRM). AGPLv3.
+- `erpnext/` — **ERPNext / Frappe** (Python + Frappe framework, MariaDB). GPLv3.
+- `espocrm/` — **EspoCRM** (PHP; flexible layouts + reporting). GPLv3.
+- `vtigercrm/` — **Vtiger CRM** (PHP). VPL/Vtiger Public License.
 
 ## What to mine in each (map to our roadmap)
 | We're building | Best reference |
