@@ -3,6 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { usePortalAuth } from '../hooks/usePortalAuth'
 import { PortalMeeting } from '../types/portal'
+import { DEMO, getDemoMeeting } from '../demo/demoData'
 import { isAfter, isSameDay, parseISO } from 'date-fns'
 import { CheckCircle, ArrowLeft } from 'lucide-react'
 
@@ -34,6 +35,21 @@ export default function Feedback() {
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
+    const gate = (m: PortalMeeting | null) => {
+      setMeeting(m)
+      if (m?.started_at) {
+        const start = parseISO(m.started_at)
+        const now = new Date()
+        if (!isAfter(now, start) && !isSameDay(now, start)) setBlocked(true)
+      } else {
+        setBlocked(true)
+      }
+      setLoading(false)
+    }
+    if (DEMO) {
+      gate(meetingId ? getDemoMeeting(Number(meetingId)) ?? null : null)
+      return
+    }
     if (!portalUser || !meetingId) return
     supabase
       .schema('portal')
@@ -42,18 +58,7 @@ export default function Feedback() {
       .eq('meeting_id', Number(meetingId))
       .eq('client_assoc_id', portalUser.client_assoc_id)
       .single()
-      .then(({ data }) => {
-        const m = data as PortalMeeting | null
-        setMeeting(m)
-        if (m?.started_at) {
-          const start = parseISO(m.started_at)
-          const now = new Date()
-          if (!isAfter(now, start) && !isSameDay(now, start)) setBlocked(true)
-        } else {
-          setBlocked(true)
-        }
-        setLoading(false)
-      })
+      .then(({ data }) => gate(data as PortalMeeting | null))
   }, [meetingId, portalUser])
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -61,6 +66,8 @@ export default function Feedback() {
     if (!overallRating) { setError('Please give an overall rating.'); return }
     setError(null)
     setSubmitting(true)
+
+    if (DEMO) { setSubmitting(false); setSubmitted(true); return }
 
     const payload = {
       meeting_id: Number(meetingId),

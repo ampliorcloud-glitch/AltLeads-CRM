@@ -2,11 +2,12 @@ import { useEffect, useState } from 'react'
 import { Session } from '@supabase/supabase-js'
 import { supabase } from '../lib/supabase'
 import { PortalUser } from '../types/portal'
+import { DEMO, demoSession, demoPortalUser } from '../demo/demoData'
 
 export function usePortalAuth() {
-  const [session, setSession] = useState<Session | null>(null)
-  const [portalUser, setPortalUser] = useState<PortalUser | null>(null)
-  const [loading, setLoading] = useState(true)
+  const [session, setSession] = useState<Session | null>(DEMO ? demoSession : null)
+  const [portalUser, setPortalUser] = useState<PortalUser | null>(DEMO ? demoPortalUser : null)
+  const [loading, setLoading] = useState(!DEMO)
   const [error, setError] = useState<string | null>(null)
 
   const fetchPortalUser = async (userId: string) => {
@@ -28,6 +29,7 @@ export function usePortalAuth() {
   }
 
   useEffect(() => {
+    if (DEMO) return // demo mode: no Supabase, session/portalUser are pre-seeded
     supabase.auth.getSession().then(async ({ data: { session } }) => {
       setSession(session)
       if (session?.user) {

@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { usePortalAuth } from '../hooks/usePortalAuth'
 import { PortalNotification } from '../types/portal'
+import { DEMO, demoNotifications } from '../demo/demoData'
 import { format, parseISO, isToday, isYesterday } from 'date-fns'
 import { Bell, BellOff } from 'lucide-react'
 
@@ -23,6 +24,11 @@ export default function Notifications() {
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
+    if (DEMO) {
+      setNotifications(demoNotifications)
+      setLoading(false)
+      return
+    }
     if (!session || !portalUser) return
     supabase
       .schema('portal')

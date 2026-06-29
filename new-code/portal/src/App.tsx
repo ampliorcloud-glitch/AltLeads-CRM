@@ -3,6 +3,7 @@ import ProtectedRoute from './components/ProtectedRoute'
 import PortalLayout from './components/PortalLayout'
 import Login from './pages/Login'
 import Home from './pages/Home'
+import Dashboard from './pages/Dashboard'
 import Meetings from './pages/Meetings'
 import MeetingDetail from './pages/MeetingDetail'
 import Notifications from './pages/Notifications'
@@ -20,6 +21,7 @@ export default function App() {
         <Route element={<ProtectedRoute />}>
           <Route element={<PortalLayout />}>
             <Route index element={<Home />} />
+            <Route path="dashboard" element={<Dashboard />} />
             <Route path="meetings" element={<Meetings />} />
             <Route path="meetings/:meetingId" element={<MeetingDetail />} />
             <Route path="meetings/:meetingId/feedback" element={<Feedback />} />

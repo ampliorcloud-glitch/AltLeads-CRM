@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { NavLink, Outlet, useNavigate } from 'react-router-dom'
 import {
   Home,
+  LayoutDashboard,
   Calendar,
   Bell,
   User,
@@ -11,6 +12,7 @@ import {
   X,
 } from 'lucide-react'
 import { usePortalAuth } from '../hooks/usePortalAuth'
+import { DEMO, demoClient } from '../demo/demoData'
 
 interface NavItem {
   label: string
@@ -20,6 +22,7 @@ interface NavItem {
 
 const navItems: NavItem[] = [
   { label: 'Home', to: '/', icon: <Home size={18} /> },
+  { label: 'Dashboard', to: '/dashboard', icon: <LayoutDashboard size={18} /> },
   { label: 'Meetings', to: '/meetings', icon: <Calendar size={18} /> },
   { label: 'Notifications', to: '/notifications', icon: <Bell size={18} /> },
   { label: 'Wishlist', to: '/wishlist', icon: <ListPlus size={18} /> },
@@ -87,10 +90,10 @@ export default function PortalLayout() {
         {portalUser && (
           <div className="mb-3">
             <p className="text-white text-sm font-medium truncate">
-              {portalUser.auth_uid.slice(0, 8)}…
+              {DEMO ? demoClient.adminName : `${portalUser.auth_uid.slice(0, 8)}…`}
             </p>
             <p className="text-slate-400 text-xs mt-0.5">
-              {roleBadgeLabel(portalUser.portal_role)}
+              {DEMO ? `${demoClient.companyName} · ${demoClient.adminRole}` : roleBadgeLabel(portalUser.portal_role)}
             </p>
           </div>
         )}

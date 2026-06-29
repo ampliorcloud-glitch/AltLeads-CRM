@@ -5,6 +5,7 @@ import { supabase } from '../lib/supabase'
 import { usePortalAuth } from '../hooks/usePortalAuth'
 import { PortalMeeting } from '../types/portal'
 import MeetingCard from '../components/MeetingCard'
+import { DEMO, demoMeetings } from '../demo/demoData'
 
 const STATUS_TABS = ['All', 'Scheduled', 'Completed', 'Rescheduled', 'Dropped', 'Missed'] as const
 type TabLabel = (typeof STATUS_TABS)[number]
@@ -52,6 +53,11 @@ export default function Meetings() {
   const [dateTo, setDateTo] = useState('')
 
   useEffect(() => {
+    if (DEMO) {
+      setMeetings(demoMeetings)
+      setLoading(false)
+      return
+    }
     if (!portalUser) return
     async function fetchMeetings() {
       setLoading(true)

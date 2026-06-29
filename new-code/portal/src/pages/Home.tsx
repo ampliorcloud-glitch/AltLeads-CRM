@@ -4,6 +4,7 @@ import { supabase } from '../lib/supabase'
 import { usePortalAuth } from '../hooks/usePortalAuth'
 import { PortalMeeting, DashboardMetrics } from '../types/portal'
 import MeetingCard from '../components/MeetingCard'
+import { DEMO, demoMetrics, demoMeetings } from '../demo/demoData'
 
 interface SummedMetrics {
   scheduled: number
@@ -70,6 +71,14 @@ export default function Home() {
     ?? 'there'
 
   useEffect(() => {
+    if (DEMO) {
+      setMetrics(demoMetrics)
+      const today = todayISO()
+      setTodayMeetings(demoMeetings.filter((m) => m.meeting_date === today))
+      setLoadingMetrics(false)
+      setLoadingToday(false)
+      return
+    }
     if (!portalUser) return
 
     async function fetchMetrics() {

@@ -3,6 +3,7 @@ import { useParams, useNavigate, Link } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { usePortalAuth } from '../hooks/usePortalAuth'
 import { PortalMeeting, STATUS_COLORS, PreSalesQA } from '../types/portal'
+import { DEMO, getDemoMeeting } from '../demo/demoData'
 import { format, parseISO, isAfter, isSameDay } from 'date-fns'
 import {
   ChevronDown, ChevronUp, ArrowLeft, Building2, User, CalendarDays,
@@ -57,6 +58,13 @@ export default function MeetingDetail() {
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
+    if (DEMO) {
+      const m = meetingId ? getDemoMeeting(Number(meetingId)) : undefined
+      if (m) setMeeting(m)
+      else setError('Meeting not found.')
+      setLoading(false)
+      return
+    }
     if (!portalUser || !meetingId) return
     supabase
       .schema('portal')

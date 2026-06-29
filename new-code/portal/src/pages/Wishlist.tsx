@@ -3,6 +3,7 @@ import { supabase } from '../lib/supabase'
 import { usePortalAuth } from '../hooks/usePortalAuth'
 import { PlusCircle, CheckCircle, Clock, X } from 'lucide-react'
 import { format, parseISO } from 'date-fns'
+import { DEMO } from '../demo/demoData'
 
 interface WishlistItem {
   wishlist_id: number
@@ -33,6 +34,14 @@ export default function Wishlist() {
   const [success, setSuccess] = useState(false)
 
   const loadItems = () => {
+    if (DEMO) {
+      setItems([
+        { wishlist_id: 1, client_assoc_id: 501, auth_uid: 'demo', company_name: 'Adani Group', notes: 'Large facilities footprint — worth targeting.', status: 'In Review', created_at: new Date(Date.now() - 4 * 86_400_000).toISOString() },
+        { wishlist_id: 2, client_assoc_id: 501, auth_uid: 'demo', company_name: 'Zomato', notes: 'Tech HQ, big cafeteria.', status: 'Added', created_at: new Date(Date.now() - 9 * 86_400_000).toISOString() },
+      ])
+      setLoading(false)
+      return
+    }
     if (!portalUser) return
     supabase
       .schema('portal')
@@ -53,6 +62,16 @@ export default function Wishlist() {
     if (!companyName.trim()) return
     setSubmitError(null)
     setSubmitting(true)
+
+    if (DEMO) {
+      setItems((prev) => [
+        { wishlist_id: Date.now(), client_assoc_id: 501, auth_uid: 'demo', company_name: companyName.trim(), notes: notes.trim() || null, status: 'Pending', created_at: new Date().toISOString() },
+        ...prev,
+      ])
+      setSubmitting(false); setCompanyName(''); setNotes(''); setShowForm(false); setSuccess(true)
+      setTimeout(() => setSuccess(false), 3000)
+      return
+    }
 
     const { error } = await supabase
       .schema('portal')

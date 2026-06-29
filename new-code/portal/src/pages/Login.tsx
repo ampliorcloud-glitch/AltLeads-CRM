@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
+import { DEMO } from '../demo/demoData';
 
 interface LoginProps {
   authError?: string | null;
@@ -13,8 +14,9 @@ export default function Login({ authError }: LoginProps) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // If already logged in, redirect away
+  // If already logged in, redirect away. In DEMO mode, skip login entirely.
   useEffect(() => {
+    if (DEMO) { navigate('/', { replace: true }); return; }
     supabase.auth.getSession().then(({ data: { session } }) => {
       if (session) navigate('/', { replace: true });
     });
