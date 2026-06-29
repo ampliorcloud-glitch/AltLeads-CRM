@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { supabase } from '../lib/supabase'
 import { usePortalAuth } from '../hooks/usePortalAuth'
-import { PortalMeeting, DashboardMetrics } from '../types/portal'
+import { PortalMeeting } from '../types/portal'
+import { fetchRealMeetings, metricsFromMeetings } from '../data/crm'
 import MeetingCard from '../components/MeetingCard'
 import { PageHeader, PageBody, Card } from '../components/ui'
 import { ArrowRight, CalendarDays } from 'lucide-react'
@@ -27,7 +27,7 @@ const STATUS_META = [
 ]
 
 export default function Home() {
-  const { portalUser, session } = usePortalAuth()
+  const { account, scope } = usePortalAuth()
   const navigate = useNavigate()
   const [metrics, setMetrics] = useState<SummedMetrics | null>(null)
   const [todayMeetings, setTodayMeetings] = useState<PortalMeeting[]>([])
@@ -35,7 +35,7 @@ export default function Home() {
 
   const firstName = DEMO
     ? demoClient.adminName.split(' ')[0]
-    : session?.user?.user_metadata?.full_name?.split(' ')[0] ?? session?.user?.email?.split('@')[0] ?? 'there'
+    : account?.fullName?.split(' ')[0] ?? 'there'
 
   useEffect(() => {
     if (DEMO) {
@@ -44,30 +44,19 @@ export default function Home() {
       setLoading(false)
       return
     }
-    if (!portalUser) return
-    Promise.all([
-      supabase.schema('portal').from('portal_dashboard_metrics').select('*'),
-      supabase.schema('portal').from('portal_meetings').select('*').eq('meeting_date', todayISO()).order('meeting_time', { ascending: true }).limit(5),
-    ]).then(([m, t]) => {
-      if (m.data) {
-        const rows = m.data as DashboardMetrics[]
-        setMetrics({
-          scheduled: rows.reduce((s, r) => s + (r.scheduled_count ?? 0), 0),
-          completed: rows.reduce((s, r) => s + (r.completed_count ?? 0), 0),
-          rescheduled: rows.reduce((s, r) => s + (r.rescheduled_count ?? 0), 0),
-          dropped: rows.reduce((s, r) => s + (r.dropped_count ?? 0), 0),
-          missed: rows.reduce((s, r) => s + (r.missed_count ?? 0), 0),
-        })
-      }
-      if (t.data) setTodayMeetings(t.data as PortalMeeting[])
+    if (!account) return
+    fetchRealMeetings(scope).then((ms) => {
+      setMetrics(metricsFromMeetings(ms))
+      const today = todayISO()
+      setTodayMeetings(ms.filter((m) => m.meeting_date === today).slice(0, 6))
       setLoading(false)
     })
-  }, [portalUser])
+  }, [account])
 
   return (
     <>
       <PageHeader
-        breadcrumb={[demoClient.companyName, 'Overview']}
+        breadcrumb={[DEMO ? demoClient.companyName : 'Amplior', 'Overview']}
         title={`${getGreeting()}, ${firstName}`}
         subtitle={new Date().toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
       />

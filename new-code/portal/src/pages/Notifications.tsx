@@ -1,11 +1,9 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { supabase } from '../lib/supabase'
-import { usePortalAuth } from '../hooks/usePortalAuth'
 import { PortalNotification } from '../types/portal'
 import { DEMO, demoNotifications } from '../demo/demoData'
 import { format, parseISO, isToday, isYesterday } from 'date-fns'
-import { Bell, BellOff } from 'lucide-react'
+import { BellOff } from 'lucide-react'
 
 function groupByDate(notifications: PortalNotification[]) {
   const groups: Record<string, PortalNotification[]> = {}
@@ -18,49 +16,23 @@ function groupByDate(notifications: PortalNotification[]) {
 }
 
 export default function Notifications() {
-  const { session, portalUser } = usePortalAuth()
   const navigate = useNavigate()
   const [notifications, setNotifications] = useState<PortalNotification[]>([])
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    if (DEMO) {
-      setNotifications(demoNotifications)
-      setLoading(false)
-      return
-    }
-    if (!session || !portalUser) return
-    supabase
-      .schema('portal')
-      .from('portal_notifications')
-      .select('*')
-      .eq('recipient_auth_uid', session.user.id)
-      .order('created_date', { ascending: false })
-      .limit(100)
-      .then(({ data }) => {
-        setNotifications((data ?? []) as PortalNotification[])
-        setLoading(false)
-      })
-  }, [session, portalUser])
+    // Demo seeds sample notifications; real notifications are a portal-owned feature
+    // not yet wired to the CRM, so real mode shows an (honest) empty feed.
+    setNotifications(DEMO ? demoNotifications : [])
+    setLoading(false)
+  }, [])
 
-  const markRead = async (id: number) => {
+  const markRead = (id: number) => {
     setNotifications(prev => prev.map(n => n.notification_id === id ? { ...n, is_read: true } : n))
-    await supabase
-      .schema('portal')
-      .from('portal_notifications')
-      .update({ is_read: true, read_at: new Date().toISOString() })
-      .eq('notification_id', id)
   }
 
-  const markAllRead = async () => {
-    const unread = notifications.filter(n => !n.is_read).map(n => n.notification_id)
-    if (!unread.length) return
+  const markAllRead = () => {
     setNotifications(prev => prev.map(n => ({ ...n, is_read: true })))
-    await supabase
-      .schema('portal')
-      .from('portal_notifications')
-      .update({ is_read: true, read_at: new Date().toISOString() })
-      .in('notification_id', unread)
   }
 
   const handleClick = (n: PortalNotification) => {

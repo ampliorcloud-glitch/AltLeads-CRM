@@ -5,7 +5,7 @@ import { usePortalAuth } from '../hooks/usePortalAuth'
 import { User, Mail, Shield, LogOut, KeyRound, CheckCircle, AlertCircle } from 'lucide-react'
 
 export default function Profile() {
-  const { session, portalUser, signOut } = usePortalAuth()
+  const { session, account, signOut } = usePortalAuth()
   const navigate = useNavigate()
   const [showPwForm, setShowPwForm] = useState(false)
   const [currentPw, setCurrentPw] = useState('')
@@ -42,16 +42,11 @@ export default function Profile() {
     }
   }
 
-  const roleLabel: Record<string, string> = {
-    COMPANY_ADMIN: 'Company Admin',
-    SALES_HEAD: 'Sales Head',
-    SALES_PERSON: 'Sales Representative',
-  }
+  const displayName = account?.fullName || session?.user?.email || 'Portal User'
+  const displayEmail = account?.email || session?.user?.email || ''
+  const displayRole = account?.roleLabel || '—'
 
-  const initials = () => {
-    const name = session?.user?.user_metadata?.full_name || session?.user?.email || ''
-    return name.split(' ').map((w: string) => w[0]).join('').toUpperCase().slice(0, 2)
-  }
+  const initials = () => displayName.split(' ').map((w: string) => w[0]).join('').toUpperCase().slice(0, 2)
 
   return (
     <div className="max-w-lg mx-auto px-4 py-8 space-y-5">
@@ -63,15 +58,11 @@ export default function Profile() {
           {initials()}
         </div>
         <div>
-          <p className="text-lg font-bold text-gray-900">
-            {session?.user?.user_metadata?.full_name || 'Portal User'}
-          </p>
-          <p className="text-sm text-gray-500">{session?.user?.email}</p>
-          {portalUser?.portal_role && (
-            <span className="mt-1.5 inline-block text-xs font-semibold bg-blue-100 text-blue-700 px-2.5 py-0.5 rounded-full">
-              {roleLabel[portalUser.portal_role] ?? portalUser.portal_role}
-            </span>
-          )}
+          <p className="text-lg font-bold text-gray-900">{displayName}</p>
+          <p className="text-sm text-gray-500">{displayEmail}</p>
+          <span className="mt-1.5 inline-block text-xs font-semibold bg-blue-100 text-blue-700 px-2.5 py-0.5 rounded-full">
+            {displayRole}
+          </span>
         </div>
       </div>
 
@@ -81,23 +72,21 @@ export default function Profile() {
           <Mail size={18} className="text-gray-400" />
           <div>
             <p className="text-xs text-gray-400 uppercase tracking-wide font-medium">Email</p>
-            <p className="text-sm text-gray-800">{session?.user?.email}</p>
+            <p className="text-sm text-gray-800">{displayEmail}</p>
           </div>
         </div>
         <div className="flex items-center gap-3 px-5 py-4">
           <Shield size={18} className="text-gray-400" />
           <div>
             <p className="text-xs text-gray-400 uppercase tracking-wide font-medium">Access Role</p>
-            <p className="text-sm text-gray-800">{portalUser ? (roleLabel[portalUser.portal_role] ?? portalUser.portal_role) : '—'}</p>
+            <p className="text-sm text-gray-800">{displayRole}</p>
           </div>
         </div>
         <div className="flex items-center gap-3 px-5 py-4">
           <User size={18} className="text-gray-400" />
           <div>
             <p className="text-xs text-gray-400 uppercase tracking-wide font-medium">Portal Status</p>
-            <p className={`text-sm font-medium ${portalUser?.enabled ? 'text-green-600' : 'text-red-500'}`}>
-              {portalUser?.enabled ? 'Active' : 'Disabled'}
-            </p>
+            <p className="text-sm font-medium text-green-600">Active</p>
           </div>
         </div>
       </div>

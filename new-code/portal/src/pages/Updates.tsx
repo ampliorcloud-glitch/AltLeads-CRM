@@ -1,9 +1,15 @@
-import { PageHeader, PageBody, Card } from '../components/ui'
-import { demoUpdates } from '../demo/demoData'
+import { PageHeader, PageBody, Card, EmptyState } from '../components/ui'
+import { DEMO, demoUpdates } from '../demo/demoData'
 import { Megaphone } from 'lucide-react'
 import { format, parseISO } from 'date-fns'
 
 export default function Updates() {
+  if (!DEMO) return (
+    <>
+      <PageHeader breadcrumb={['Governance', 'Updates']} title="Updates" subtitle="What Amplior has been doing for you — one running log." />
+      <PageBody><EmptyState icon={<Megaphone size={36} strokeWidth={1.5} />} title="No updates yet" sub="Amplior will post engagement updates here." /></PageBody>
+    </>
+  )
   return (
     <>
       <PageHeader

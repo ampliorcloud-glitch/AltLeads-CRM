@@ -1,6 +1,6 @@
-import { PageHeader, PageBody, Btn } from '../components/ui'
-import { demoDocuments, DemoDoc } from '../demo/demoData'
-import { FileText, FileSpreadsheet, Presentation, File, Download } from 'lucide-react'
+import { PageHeader, PageBody, Btn, EmptyState } from '../components/ui'
+import { DEMO, demoDocuments, DemoDoc } from '../demo/demoData'
+import { FileText, FileSpreadsheet, Presentation, File, Download, FolderOpen } from 'lucide-react'
 import { format, parseISO } from 'date-fns'
 
 const CATEGORIES: DemoDoc['category'][] = ['ICP & Criteria', 'Proposals & Decks', 'Process', 'Reports']
@@ -13,6 +13,12 @@ function typeIcon(t: DemoDoc['type']) {
 }
 
 export default function Documents() {
+  if (!DEMO) return (
+    <>
+      <PageHeader breadcrumb={['Governance', 'Documents']} title="Documents & Criteria" subtitle="ICP, proposals, process docs and review decks shared by Amplior." />
+      <PageBody><EmptyState icon={<FolderOpen size={36} strokeWidth={1.5} />} title="No documents shared yet" sub="ICP, proposals and decks Amplior publishes for you will appear here." /></PageBody>
+    </>
+  )
   return (
     <>
       <PageHeader

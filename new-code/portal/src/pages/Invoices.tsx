@@ -1,9 +1,15 @@
-import { PageHeader, PageBody, Table, Pill, Btn, StatTile } from '../components/ui'
-import { demoInvoices } from '../demo/demoData'
-import { Download } from 'lucide-react'
+import { PageHeader, PageBody, Table, Pill, Btn, StatTile, EmptyState } from '../components/ui'
+import { DEMO, demoInvoices } from '../demo/demoData'
+import { Download, Receipt } from 'lucide-react'
 import { format, parseISO } from 'date-fns'
 
 export default function Invoices() {
+  if (!DEMO) return (
+    <>
+      <PageHeader breadcrumb={['Governance', 'Invoices']} title="Invoices" subtitle="Billing history for your Amplior engagement." />
+      <PageBody><EmptyState icon={<Receipt size={36} strokeWidth={1.5} />} title="No invoices yet" sub="Your monthly invoices from Amplior will appear here." /></PageBody>
+    </>
+  )
   const paid = demoInvoices.filter((i) => i.status === 'Paid').length
   const due = demoInvoices.filter((i) => i.status !== 'Paid').length
 

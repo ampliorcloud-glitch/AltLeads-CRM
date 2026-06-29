@@ -32,17 +32,8 @@ const sections: NavSection[] = [
   ] },
 ]
 
-function roleBadgeLabel(role: string) {
-  switch (role) {
-    case 'COMPANY_ADMIN': return 'Company Admin'
-    case 'SALES_HEAD': return 'Sales Head'
-    case 'SALES_PERSON': return 'Sales Person'
-    default: return role
-  }
-}
-
 export default function PortalLayout() {
-  const { portalUser, signOut } = usePortalAuth()
+  const { account, signOut } = usePortalAuth()
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const navigate = useNavigate()
 
@@ -51,8 +42,8 @@ export default function PortalLayout() {
     navigate('/login', { replace: true })
   }
 
-  const displayName = DEMO ? demoClient.adminName : `${portalUser?.auth_uid.slice(0, 8)}…`
-  const displaySub = DEMO ? demoClient.companyName : roleBadgeLabel(portalUser?.portal_role ?? '')
+  const displayName = DEMO ? demoClient.adminName : account?.fullName ?? 'Portal User'
+  const displaySub = DEMO ? demoClient.companyName : account?.roleLabel ?? ''
   const initials = displayName.split(' ').map((w) => w[0]).join('').slice(0, 2).toUpperCase()
 
   const SidebarContent = () => (

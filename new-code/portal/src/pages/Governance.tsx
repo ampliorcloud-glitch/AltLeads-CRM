@@ -1,9 +1,15 @@
-import { PageHeader, PageBody, Card, Pill, Btn } from '../components/ui'
-import { demoGovernance } from '../demo/demoData'
+import { PageHeader, PageBody, Card, Pill, Btn, EmptyState } from '../components/ui'
+import { DEMO, demoGovernance } from '../demo/demoData'
 import { CalendarCheck, Users, Video, Clock } from 'lucide-react'
 import { format, parseISO } from 'date-fns'
 
 export default function Governance() {
+  if (!DEMO) return (
+    <>
+      <PageHeader breadcrumb={['Governance', 'Review Meetings']} title="Governance & Reviews" subtitle="Scheduled business reviews between Amplior leadership and your team." />
+      <PageBody><EmptyState icon={<CalendarCheck size={36} strokeWidth={1.5} />} title="No reviews scheduled yet" sub="Amplior will schedule and publish your business reviews here." /></PageBody>
+    </>
+  )
   const upcoming = demoGovernance.filter((g) => g.status === 'Upcoming')
   const past = demoGovernance.filter((g) => g.status === 'Completed')
 

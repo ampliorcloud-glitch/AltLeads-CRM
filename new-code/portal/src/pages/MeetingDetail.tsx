@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react'
 import { useParams, useNavigate, Link } from 'react-router-dom'
-import { supabase } from '../lib/supabase'
 import { usePortalAuth } from '../hooks/usePortalAuth'
 import { PortalMeeting, STATUS_COLORS, PreSalesQA } from '../types/portal'
+import { fetchRealMeetingDetail } from '../data/crm'
 import { DEMO, getDemoMeeting } from '../demo/demoData'
 import { format, parseISO, isAfter, isSameDay } from 'date-fns'
 import {
@@ -52,7 +52,7 @@ function Divider() {
 export default function MeetingDetail() {
   const { meetingId } = useParams<{ meetingId: string }>()
   const navigate = useNavigate()
-  const { portalUser } = usePortalAuth()
+  const { account } = usePortalAuth()
   const [meeting, setMeeting] = useState<PortalMeeting | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -65,20 +65,13 @@ export default function MeetingDetail() {
       setLoading(false)
       return
     }
-    if (!portalUser || !meetingId) return
-    supabase
-      .schema('portal')
-      .from('portal_meetings')
-      .select('*')
-      .eq('meeting_id', Number(meetingId))
-      .eq('client_assoc_id', portalUser.client_assoc_id)
-      .single()
-      .then(({ data, error: err }) => {
-        if (err) setError('Meeting not found.')
-        else setMeeting(data as PortalMeeting)
-        setLoading(false)
-      })
-  }, [meetingId, portalUser])
+    if (!account || !meetingId) return
+    fetchRealMeetingDetail(Number(meetingId)).then((m) => {
+      if (m) setMeeting(m)
+      else setError('Meeting not found.')
+      setLoading(false)
+    })
+  }, [meetingId, account])
 
   const canLeaveFeedback = (m: PortalMeeting) => {
     if (!m.started_at) return false

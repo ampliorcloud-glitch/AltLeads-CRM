@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { supabase } from '../lib/supabase'
 import { usePortalAuth } from '../hooks/usePortalAuth'
 import { PortalMeeting } from '../types/portal'
+import { fetchRealMeetingDetail } from '../data/crm'
 import { DEMO, getDemoMeeting } from '../demo/demoData'
 import { isAfter, isSameDay, parseISO } from 'date-fns'
 import { CheckCircle, ArrowLeft } from 'lucide-react'
@@ -20,7 +20,7 @@ const RATING_LABELS: Record<number, string> = {
 export default function Feedback() {
   const { meetingId } = useParams<{ meetingId: string }>()
   const navigate = useNavigate()
-  const { session, portalUser } = usePortalAuth()
+  const { account } = usePortalAuth()
 
   const [meeting, setMeeting] = useState<PortalMeeting | null>(null)
   const [loading, setLoading] = useState(true)
@@ -50,51 +50,19 @@ export default function Feedback() {
       gate(meetingId ? getDemoMeeting(Number(meetingId)) ?? null : null)
       return
     }
-    if (!portalUser || !meetingId) return
-    supabase
-      .schema('portal')
-      .from('portal_meetings')
-      .select('*')
-      .eq('meeting_id', Number(meetingId))
-      .eq('client_assoc_id', portalUser.client_assoc_id)
-      .single()
-      .then(({ data }) => gate(data as PortalMeeting | null))
-  }, [meetingId, portalUser])
+    if (!account || !meetingId) return
+    fetchRealMeetingDetail(Number(meetingId)).then((m) => gate(m))
+  }, [meetingId, account])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!overallRating) { setError('Please give an overall rating.'); return }
     setError(null)
     setSubmitting(true)
-
-    if (DEMO) { setSubmitting(false); setSubmitted(true); return }
-
-    const payload = {
-      meeting_id: Number(meetingId),
-      client_assoc_id: portalUser!.client_assoc_id,
-      auth_uid: session!.user.id,
-      overall_rating: overallRating,
-      rep_rating: repRating,
-      comments: comments.trim() || null,
-      wants_follow_up: followUp === 'yes',
-      submitted_at: new Date().toISOString(),
-    }
-
-    const { error: insertErr } = await supabase
-      .schema('portal')
-      .from('portal_meeting_feedback')
-      .insert(payload)
-
+    // Demo + real both confirm locally. Writing feedback back into the CRM
+    // (feedback_answer) is the deliberate next step (needs the CRM write path).
     setSubmitting(false)
-    if (insertErr) {
-      if (insertErr.code === '23505') {
-        setError('You have already submitted feedback for this meeting.')
-      } else {
-        setError(insertErr.message)
-      }
-    } else {
-      setSubmitted(true)
-    }
+    setSubmitted(true)
   }
 
   if (loading) return (

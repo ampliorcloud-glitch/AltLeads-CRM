@@ -1,18 +1,52 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import { Search, FileText, Download } from 'lucide-react'
 import { PageHeader, PageBody, Table, Pill, Btn, EmptyState } from '../components/ui'
-import { demoLeadReports } from '../demo/demoData'
+import { usePortalAuth } from '../hooks/usePortalAuth'
+import { fetchRealMeetings } from '../data/crm'
+import { DEMO, demoLeadReports, DemoLeadReport } from '../demo/demoData'
 import { format, parseISO } from 'date-fns'
 
+function stageFromStatus(s: string | null): string {
+  if (s === 'Completed') return 'Meeting done'
+  if (s === 'Cancelled') return 'Dropped'
+  if (s === 'Missed') return 'Follow-up'
+  return 'Meeting scheduled'
+}
+function stagePill(stage: string): string {
+  return stage === 'Meeting scheduled' ? 'Scheduled' : stage === 'Meeting done' ? 'Completed' : stage === 'Dropped' ? 'Dropped' : 'Pending'
+}
+
 export default function LeadReports() {
+  const { account, scope } = usePortalAuth()
+  const [rows, setRows] = useState<DemoLeadReport[]>(DEMO ? demoLeadReports : [])
+  const [loading, setLoading] = useState(!DEMO)
   const [q, setQ] = useState('')
-  const rows = useMemo(() => {
-    if (!q.trim()) return demoLeadReports
+
+  useEffect(() => {
+    if (DEMO || !account) return
+    setLoading(true)
+    fetchRealMeetings(scope).then((ms) => {
+      setRows(ms.map((m, i) => ({
+        id: 7000 + i,
+        company: m.company_name ?? '—',
+        contact: m.lead_name ?? '—',
+        designation: m.lead_designation ?? '—',
+        city: m.company_city ?? '—',
+        industry: m.company_industry ?? '—',
+        stage: stageFromStatus(m.meeting_status),
+        rep: m.assigned_rep_name ?? '—',
+        value: m.opportunity_value ?? '—',
+        updated: m.meeting_date ?? new Date().toISOString().slice(0, 10),
+      })))
+      setLoading(false)
+    })
+  }, [account])
+
+  const filtered = useMemo(() => {
+    if (!q.trim()) return rows
     const s = q.toLowerCase()
-    return demoLeadReports.filter(
-      (r) => r.company.toLowerCase().includes(s) || r.contact.toLowerCase().includes(s) || r.city.toLowerCase().includes(s)
-    )
-  }, [q])
+    return rows.filter((r) => r.company.toLowerCase().includes(s) || r.contact.toLowerCase().includes(s) || r.city.toLowerCase().includes(s))
+  }, [q, rows])
 
   return (
     <>
@@ -32,23 +66,25 @@ export default function LeadReports() {
           />
         </div>
 
-        {rows.length === 0 ? (
-          <EmptyState icon={<FileText size={36} strokeWidth={1.5} />} title="No lead reports found" sub="Try a different search." />
+        {loading ? (
+          <EmptyState title="Loading lead reports…" />
+        ) : filtered.length === 0 ? (
+          <EmptyState icon={<FileText size={36} strokeWidth={1.5} />} title="No lead reports found" sub={q ? 'Try a different search.' : 'No leads assigned yet.'} />
         ) : (
           <Table head={['Company', 'Contact', 'City', 'Industry', 'Stage', 'Rep', 'Opp. value', 'Updated']}>
-            {rows.map((r) => (
+            {filtered.map((r) => (
               <tr key={r.id} className="hover:bg-mist/60 transition-colors">
                 <td className="px-4 py-3 font-semibold text-ink whitespace-nowrap">{r.company}</td>
                 <td className="px-4 py-3 text-ink-soft whitespace-nowrap">
                   {r.contact}
-                  <span className="block text-xs text-ink-faint">{r.designation}</span>
+                  {r.designation !== '—' && <span className="block text-xs text-ink-faint">{r.designation}</span>}
                 </td>
                 <td className="px-4 py-3 text-ink-mute whitespace-nowrap">{r.city}</td>
                 <td className="px-4 py-3 text-ink-mute whitespace-nowrap">{r.industry}</td>
-                <td className="px-4 py-3"><Pill>{r.stage === 'Meeting scheduled' ? 'Scheduled' : r.stage === 'Meeting done' ? 'Completed' : r.stage === 'Dropped' ? 'Dropped' : 'Pending'}</Pill></td>
+                <td className="px-4 py-3"><Pill>{stagePill(r.stage)}</Pill></td>
                 <td className="px-4 py-3 text-ink-mute whitespace-nowrap">{r.rep}</td>
                 <td className="px-4 py-3 font-medium text-ink whitespace-nowrap">{r.value}</td>
-                <td className="px-4 py-3 text-ink-faint whitespace-nowrap">{format(parseISO(r.updated), 'dd MMM')}</td>
+                <td className="px-4 py-3 text-ink-faint whitespace-nowrap">{(() => { try { return format(parseISO(r.updated), 'dd MMM') } catch { return r.updated } })()}</td>
               </tr>
             ))}
           </Table>

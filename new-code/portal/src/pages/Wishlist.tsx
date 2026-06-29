@@ -1,6 +1,4 @@
 import { useEffect, useState } from 'react'
-import { supabase } from '../lib/supabase'
-import { usePortalAuth } from '../hooks/usePortalAuth'
 import { PlusCircle, CheckCircle, Clock, X } from 'lucide-react'
 import { format, parseISO } from 'date-fns'
 import { DEMO } from '../demo/demoData'
@@ -23,7 +21,6 @@ const STATUS_STYLE: Record<string, string> = {
 }
 
 export default function Wishlist() {
-  const { session, portalUser } = usePortalAuth()
   const [items, setItems] = useState<WishlistItem[]>([])
   const [loading, setLoading] = useState(true)
   const [showForm, setShowForm] = useState(false)
@@ -34,65 +31,28 @@ export default function Wishlist() {
   const [success, setSuccess] = useState(false)
 
   const loadItems = () => {
-    if (DEMO) {
-      setItems([
-        { wishlist_id: 1, client_assoc_id: 501, auth_uid: 'demo', company_name: 'Adani Group', notes: 'Large facilities footprint — worth targeting.', status: 'In Review', created_at: new Date(Date.now() - 4 * 86_400_000).toISOString() },
-        { wishlist_id: 2, client_assoc_id: 501, auth_uid: 'demo', company_name: 'Zomato', notes: 'Tech HQ, big cafeteria.', status: 'Added', created_at: new Date(Date.now() - 9 * 86_400_000).toISOString() },
-      ])
-      setLoading(false)
-      return
-    }
-    if (!portalUser) return
-    supabase
-      .schema('portal')
-      .from('portal_wishlist')
-      .select('*')
-      .eq('client_assoc_id', portalUser.client_assoc_id)
-      .order('created_at', { ascending: false })
-      .then(({ data }) => {
-        setItems((data ?? []) as WishlistItem[])
-        setLoading(false)
-      })
+    // Wishlist requests are a client-side capture for now (routing the request to
+    // the Amplior agent/TL is the deliberate next step). Demo seeds examples.
+    setItems(DEMO ? [
+      { wishlist_id: 1, client_assoc_id: 501, auth_uid: 'demo', company_name: 'Adani Group', notes: 'Large facilities footprint — worth targeting.', status: 'In Review', created_at: new Date(Date.now() - 4 * 86_400_000).toISOString() },
+      { wishlist_id: 2, client_assoc_id: 501, auth_uid: 'demo', company_name: 'Zomato', notes: 'Tech HQ, big cafeteria.', status: 'Added', created_at: new Date(Date.now() - 9 * 86_400_000).toISOString() },
+    ] : [])
+    setLoading(false)
   }
 
-  useEffect(() => { loadItems() }, [portalUser])
+  useEffect(() => { loadItems() }, [])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!companyName.trim()) return
     setSubmitError(null)
     setSubmitting(true)
-
-    if (DEMO) {
-      setItems((prev) => [
-        { wishlist_id: Date.now(), client_assoc_id: 501, auth_uid: 'demo', company_name: companyName.trim(), notes: notes.trim() || null, status: 'Pending', created_at: new Date().toISOString() },
-        ...prev,
-      ])
-      setSubmitting(false); setCompanyName(''); setNotes(''); setShowForm(false); setSuccess(true)
-      setTimeout(() => setSuccess(false), 3000)
-      return
-    }
-
-    const { error } = await supabase
-      .schema('portal')
-      .from('portal_wishlist')
-      .insert({
-        client_assoc_id: portalUser!.client_assoc_id,
-        auth_uid: session!.user.id,
-        company_name: companyName.trim(),
-        notes: notes.trim() || null,
-        status: 'Pending',
-        created_at: new Date().toISOString(),
-      })
-
-    setSubmitting(false)
-    if (error) {
-      setSubmitError(error.message)
-    } else {
-      setCompanyName(''); setNotes(''); setShowForm(false); setSuccess(true)
-      loadItems()
-      setTimeout(() => setSuccess(false), 3000)
-    }
+    setItems((prev) => [
+      { wishlist_id: Date.now(), client_assoc_id: 501, auth_uid: 'me', company_name: companyName.trim(), notes: notes.trim() || null, status: 'Pending', created_at: new Date().toISOString() },
+      ...prev,
+    ])
+    setSubmitting(false); setCompanyName(''); setNotes(''); setShowForm(false); setSuccess(true)
+    setTimeout(() => setSuccess(false), 3000)
   }
 
   if (loading) return (

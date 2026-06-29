@@ -1,9 +1,9 @@
 import { useEffect, useState, useMemo } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { Search } from 'lucide-react'
-import { supabase } from '../lib/supabase'
 import { usePortalAuth } from '../hooks/usePortalAuth'
 import { PortalMeeting } from '../types/portal'
+import { fetchRealMeetings } from '../data/crm'
 import MeetingCard from '../components/MeetingCard'
 import { PageHeader, PageBody } from '../components/ui'
 import { DEMO, demoMeetings } from '../demo/demoData'
@@ -39,7 +39,7 @@ function SkeletonCard() {
 }
 
 export default function Meetings() {
-  const { portalUser } = usePortalAuth()
+  const { account, scope } = usePortalAuth()
   const navigate = useNavigate()
   const [searchParams, setSearchParams] = useSearchParams()
 
@@ -59,22 +59,13 @@ export default function Meetings() {
       setLoading(false)
       return
     }
-    if (!portalUser) return
-    async function fetchMeetings() {
-      setLoading(true)
-      const { data, error } = await supabase
-        .schema('portal')
-        .from('portal_meetings')
-        .select('*')
-        .order('meeting_date', { ascending: false })
-
-      if (!error && data) {
-        setMeetings(data as PortalMeeting[])
-      }
+    if (!account) return
+    setLoading(true)
+    fetchRealMeetings(scope).then((ms) => {
+      setMeetings(ms)
       setLoading(false)
-    }
-    fetchMeetings()
-  }, [portalUser])
+    })
+  }, [account])
 
   // Sync tab → URL param
   function handleTabChange(tab: TabLabel) {
