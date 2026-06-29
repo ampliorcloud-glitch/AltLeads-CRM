@@ -56,6 +56,12 @@ import { pushRecent } from '../lib/useRecentlyViewed';
 // server-side; the UI just surfaces a cleaner experience when the flag is on.
 // The canReassign flag already excludes QC (Part 9 / ALT-459).
 import { gated, agentCanEditLeadReport } from '../lib/roleGating';
+import { COLLAB_ASSOC } from '../lib/collabAssoc';
+import { CollaboratorsCard } from '../components/collab/CollaboratorsCard';
+import { AssociationsPanel } from '../components/collab/AssociationsPanel';
+import type { SearchSelectOption } from '../components/ui/SearchSelect';
+import type { RecordType } from '../lib/collabAssoc';
+import { fetchAllContacts, fetchCompanyOptions } from '../data/contacts';
 
 /* ── Progress stepper: Pre-Sales → Meeting → Closing ─────────────────────── */
 
@@ -335,6 +341,12 @@ export function LeadDetailPage() {
   // Bumped after a call is logged so the call-history card re-fetches (ALT-269).
   const [callsRefresh, setCallsRefresh] = useState(0);
 
+  // COLLAB_ASSOC: user + target-record options for the collab/association cards.
+  const [collabUserOptions, setCollabUserOptions] = useState<SearchSelectOption[]>([]);
+  const [collabTargetOptions, setCollabTargetOptions] = useState<Record<RecordType, SearchSelectOption[]>>({
+    lead: [], contact: [], company: [], meeting: [],
+  });
+
   // Reassign / change-salesperson (ALT-288).
   const [showReassign, setShowReassign] = useState(false);
   const [reassignSaving, setReassignSaving] = useState(false);
@@ -472,6 +484,28 @@ export function LeadDetailPage() {
     toast.success('Lead reassigned — the new salesperson has been notified');
     await refreshLead();
   };
+
+  // COLLAB_ASSOC: load user options + target options once the flag is enabled.
+  useEffect(() => {
+    if (!COLLAB_ASSOC) return;
+    let cancelled = false;
+    (async () => {
+      const [users, contacts, companies] = await Promise.all([
+        fetchAssignableUsers(null),
+        fetchAllContacts(),
+        fetchCompanyOptions(),
+      ]);
+      if (cancelled) return;
+      setCollabUserOptions(users.map((u) => ({ id: u.id, label: u.label })));
+      setCollabTargetOptions({
+        lead: [],
+        contact: contacts.contacts.map((c) => ({ id: c.contact_id, label: c.full_name })),
+        company: companies.map((c) => ({ id: c.company_id, label: c.company_name })),
+        meeting: [],
+      });
+    })();
+    return () => { cancelled = true; };
+  }, []);
 
   if (loadingLead) {
     return (
@@ -779,6 +813,23 @@ export function LeadDetailPage() {
             />
             {/* In-record activity hub (ALT-466) — no-op while TASKS_V2 is off */}
             <RecordActivityHub recordType="lead" recordId={lead.lead_id} />
+            {/* Collaborators & Associations (ALT-441/442) — dark behind COLLAB_ASSOC */}
+            {COLLAB_ASSOC && (
+              <>
+                <CollaboratorsCard
+                  recordType="lead"
+                  recordId={lead.lead_id}
+                  userOptions={collabUserOptions}
+                  actorId={actor}
+                />
+                <AssociationsPanel
+                  recordType="lead"
+                  recordId={lead.lead_id}
+                  targetOptions={collabTargetOptions}
+                  actorId={actor}
+                />
+              </>
+            )}
           </div>
         </div>
 

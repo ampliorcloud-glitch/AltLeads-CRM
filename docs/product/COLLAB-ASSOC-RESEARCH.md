@@ -315,3 +315,31 @@ CREATE TABLE contact_role_labels (
 - [HubSpot Community: Automate record associations in workflows](https://community.hubspot.com/t5/HubSpot-Ideas/Automate-record-associations-in-workflows/idi-p/535753)
 - [HubSpot Community: Filter/trigger by association labels](https://community.hubspot.com/t5/Dashboards-Reporting/Ability-to-Filter-and-Trigger-Actions-by-Association-Labels-in/m-p/1175927)
 - [HubSpot Changelog: Associations Limits Increase](https://community.hubspot.com/t5/Releases-and-Updates/Now-Live-Associations-Limits-Increase/ba-p/631739)
+
+---
+
+## Implementation note — v1 Wired (ALT-441/442) — 2026-06-29
+
+### What is wired
+
+**Feature flag:** `COLLAB_ASSOC` in `src/lib/collabAssoc.ts` (currently `false` — all code is dark in prod).
+
+**Detail pages** — both cards mounted on all 4 pages, inside `{COLLAB_ASSOC && (...)}`:
+
+| Page | recordType | userOptions source | targetOptions |
+|------|-----------|-------------------|---------------|
+| `LeadDetailPage` | `'lead'` | `fetchAssignableUsers()` → mapped to `SearchSelectOption[]` | contacts from `fetchAllContacts`, companies from `fetchCompanyOptions`; lead+meeting = `[]` |
+| `ContactDetailPage` | `'contact'` | `fetchAssignableUsers()` | companies from `fetchCompanyOptions`; lead+contact+meeting = `[]` |
+| `CompanyDetailPage` | `'company'` | `fetchAssignableUsers()` | companies from `fetchCompanyOptions`; lead+contact+meeting = `[]` |
+| `MeetingDetailPage` | `'meeting'` | `fetchAssignableUsers()` | contacts from `fetchAllContacts`, companies from `fetchCompanyOptions`; lead+meeting = `[]` |
+
+`actorId` = `profile.user_id` (string) on each page — reuses the existing `actor`/`actorId` variable already in scope.
+
+**Admin tab:** `CollaboratorAccessTab` added to `AdminPage` as key `'collabaccess'` (label: "Collab Access"), shown only when `COLLAB_ASSOC` is on (mirrors HB Settings pattern). Stores view/edit setting per object type in `collaborator_access_setting` table.
+
+**Migration (staged):** `new-code/migration/apply-collaborator-access-setting.cjs` — creates `collaborator_access_setting` table with RLS. `node -c` passes. NOT executed — requires DEC-03 sign-off + existing collab/assoc table migrations applied first.
+
+### Deferred
+
+- RLS enforcement of the `collabaccess` setting in Supabase — gatekeeper middleware (ALT-431) — after DEC-03 ownership model is validated and `COLLAB_ASSOC` is flipped live.
+- Lead options for `targetOptions.lead` (requires a lightweight lead name/ID fetch; deferred to v2 to keep v1 bounded).

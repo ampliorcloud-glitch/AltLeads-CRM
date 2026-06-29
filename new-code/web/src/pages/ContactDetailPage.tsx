@@ -66,6 +66,10 @@ import type { Interaction } from '../data/contacts';
 import { formatDate } from '../data/account';
 import { pushRecent } from '../lib/useRecentlyViewed';
 import { gated } from '../lib/roleGating';
+import { COLLAB_ASSOC } from '../lib/collabAssoc';
+import { CollaboratorsCard } from '../components/collab/CollaboratorsCard';
+import { AssociationsPanel } from '../components/collab/AssociationsPanel';
+import type { RecordType } from '../lib/collabAssoc';
 
 /* ------------------------------------------------------------------ */
 /*  Helpers                                                             */
@@ -331,6 +335,12 @@ export function ContactDetailPage() {
   // Activity timeline
   const [activity, setActivity] = useState<Interaction[]>([]);
 
+  // COLLAB_ASSOC: user options for the collab card.
+  const [collabUserOptions, setCollabUserOptions] = useState<SearchSelectOption[]>([]);
+  const [collabTargetOptions, setCollabTargetOptions] = useState<Record<RecordType, SearchSelectOption[]>>({
+    lead: [], contact: [], company: [], meeting: [],
+  });
+
   // Associations (HubSpot-style): leads for this contact + colleagues at the same company
   const [leads, setLeads] = useState<ContactLead[]>([]);
   const [siblings, setSiblings] = useState<CompanyContact[]>([]);
@@ -424,6 +434,27 @@ export function ContactDetailPage() {
   }, [contactId]);
 
   useEffect(() => { loadActivity(); }, [loadActivity]);
+
+  // COLLAB_ASSOC: load user + target options once the flag is enabled.
+  useEffect(() => {
+    if (!COLLAB_ASSOC) return;
+    let cancelled = false;
+    (async () => {
+      const [users, companies] = await Promise.all([
+        fetchAssignableUsers(null),
+        fetchCompanyOptions(),
+      ]);
+      if (cancelled) return;
+      setCollabUserOptions(users.map((u) => ({ id: u.id, label: u.label })));
+      setCollabTargetOptions({
+        lead: [],
+        contact: [],
+        company: companies.map((c) => ({ id: c.company_id, label: c.company_name })),
+        meeting: [],
+      });
+    })();
+    return () => { cancelled = true; };
+  }, []);
 
   /* ---------------------------------------------------------------- */
   /*  Edit contact fields                                              */
@@ -1177,6 +1208,24 @@ export function ContactDetailPage() {
 
         {/* In-record activity hub (ALT-466) — no-op while TASKS_V2 is off */}
         {contactId != null && <RecordActivityHub recordType="contact" recordId={contactId} />}
+
+        {/* Collaborators & Associations (ALT-441/442) — dark behind COLLAB_ASSOC */}
+        {COLLAB_ASSOC && contactId != null && (
+          <>
+            <CollaboratorsCard
+              recordType="contact"
+              recordId={contactId}
+              userOptions={collabUserOptions}
+              actorId={actorId ?? ''}
+            />
+            <AssociationsPanel
+              recordType="contact"
+              recordId={contactId}
+              targetOptions={collabTargetOptions}
+              actorId={actorId ?? ''}
+            />
+          </>
+        )}
 
       </div>
     </AppShell>

@@ -72,6 +72,11 @@ import { HUNGERBOX_FEATURES } from '../lib/hungerbox';
 import { CompanySitesPanel } from '../components/hungerbox/CompanySitesPanel';
 import { fetchProjectHbSetting, type PrequalGranularity } from '../data/projectHbSettings';
 import { gated } from '../lib/roleGating';
+import { COLLAB_ASSOC } from '../lib/collabAssoc';
+import { CollaboratorsCard } from '../components/collab/CollaboratorsCard';
+import { AssociationsPanel } from '../components/collab/AssociationsPanel';
+import type { RecordType } from '../lib/collabAssoc';
+import { fetchCompanyOptions } from '../data/contacts';
 
 /* ------------------------------------------------------------------
    Helpers
@@ -1300,6 +1305,12 @@ export function CompanyDetailPage() {
   const [activityRefresh, setActivityRefresh] = useState(0);
   const handleActivityLogged = useCallback(() => setActivityRefresh((n) => n + 1), []);
 
+  // COLLAB_ASSOC: user + target options for the collab/association cards.
+  const [collabUserOptions, setCollabUserOptions] = useState<SearchSelectOption[]>([]);
+  const [collabTargetOptions, setCollabTargetOptions] = useState<Record<RecordType, SearchSelectOption[]>>({
+    lead: [], contact: [], company: [], meeting: [],
+  });
+
   useEffect(() => {
     let cancelled = false;
     if (!companyId) { setNotFound(true); setLoading(false); return; }
@@ -1329,6 +1340,27 @@ export function CompanyDetailPage() {
       profile?.user_id,
     );
   }, [company?.name, companyId, profile?.user_id]);
+
+  // COLLAB_ASSOC: load user + target options once the flag is enabled.
+  useEffect(() => {
+    if (!COLLAB_ASSOC) return;
+    let cancelled = false;
+    (async () => {
+      const [users, companies_] = await Promise.all([
+        fetchAssignableUsers(null),
+        fetchCompanyOptions(),
+      ]);
+      if (cancelled) return;
+      setCollabUserOptions(users.map((u) => ({ id: u.id, label: u.label })));
+      setCollabTargetOptions({
+        lead: [],
+        contact: [],
+        company: companies_.map((c) => ({ id: c.company_id, label: c.company_name })),
+        meeting: [],
+      });
+    })();
+    return () => { cancelled = true; };
+  }, []);
 
   async function handleContactLinked() {
     setShowLinkModal(false);
@@ -1606,6 +1638,24 @@ export function CompanyDetailPage() {
 
       {/* In-record activity hub (ALT-466) — no-op while TASKS_V2 is off */}
       <RecordActivityHub recordType="company" recordId={companyId} />
+
+      {/* Collaborators & Associations (ALT-441/442) — dark behind COLLAB_ASSOC */}
+      {COLLAB_ASSOC && (
+        <div className="space-y-4 mt-4">
+          <CollaboratorsCard
+            recordType="company"
+            recordId={companyId}
+            userOptions={collabUserOptions}
+            actorId={actorId ?? ''}
+          />
+          <AssociationsPanel
+            recordType="company"
+            recordId={companyId}
+            targetOptions={collabTargetOptions}
+            actorId={actorId ?? ''}
+          />
+        </div>
+      )}
 
       {/* Link-existing-contact modal (Fix #6) */}
       {showLinkModal && (

@@ -12,9 +12,11 @@ import { PreSalesQuestionsTab } from '../components/admin/PreSalesQuestionsTab';
 import { ProjectAccessTab } from '../components/admin/ProjectAccessTab';
 import { ActivityTimelineTab } from '../components/admin/ActivityTimelineTab';
 import { HbProjectSettingsTab } from '../components/admin/HbProjectSettingsTab';
+import { CollaboratorAccessTab } from '../components/admin/CollaboratorAccessTab';
 import { HUNGERBOX_FEATURES } from '../lib/hungerbox';
+import { COLLAB_ASSOC } from '../lib/collabAssoc';
 
-type TabKey = 'users' | 'projects' | 'clients' | 'reference' | 'dropdowns' | 'presales' | 'access' | 'activity' | 'hbsettings';
+type TabKey = 'users' | 'projects' | 'clients' | 'reference' | 'dropdowns' | 'presales' | 'access' | 'activity' | 'hbsettings' | 'collabaccess';
 
 const BASE_NAV_ITEMS: { key: TabKey; label: string; icon: React.ReactNode }[] = [
   { key: 'users',     label: 'User',              icon: <Users size={15} strokeWidth={1.6} /> },
@@ -32,20 +34,28 @@ const HB_NAV_ITEMS: { key: TabKey; label: string; icon: React.ReactNode }[] = [
   { key: 'hbsettings', label: 'HB Settings', icon: <ToggleLeft size={15} strokeWidth={1.6} /> },
 ];
 
-const NAV_ITEMS = HUNGERBOX_FEATURES
-  ? [...BASE_NAV_ITEMS, ...HB_NAV_ITEMS]
-  : BASE_NAV_ITEMS;
+// Collaborators & Associations nav item — only shown when COLLAB_ASSOC is on.
+const COLLAB_NAV_ITEMS: { key: TabKey; label: string; icon: React.ReactNode }[] = [
+  { key: 'collabaccess', label: 'Collab Access', icon: <Users size={15} strokeWidth={1.6} /> },
+];
+
+const NAV_ITEMS = [
+  ...BASE_NAV_ITEMS,
+  ...(HUNGERBOX_FEATURES ? HB_NAV_ITEMS : []),
+  ...(COLLAB_ASSOC ? COLLAB_NAV_ITEMS : []),
+];
 
 const TAB_TITLES: Record<TabKey, string> = {
-  users:      'User',
-  projects:   'Project',
-  clients:    'Client',
-  access:     'Project Access',
-  reference:  'Reference Data',
-  dropdowns:  'Option Lists',
-  presales:   'Pre-Sales Questions',
-  activity:   'Activity',
-  hbsettings: 'HungerBox Settings',
+  users:        'User',
+  projects:     'Project',
+  clients:      'Client',
+  access:       'Project Access',
+  reference:    'Reference Data',
+  dropdowns:    'Option Lists',
+  presales:     'Pre-Sales Questions',
+  activity:     'Activity',
+  hbsettings:   'HungerBox Settings',
+  collabaccess: 'Collaborator Access',
 };
 
 function Restricted() {
@@ -246,6 +256,7 @@ export default function AdminPage() {
               {tab === 'presales'   && <PreSalesQuestionsTab actorId={actorId} />}
               {tab === 'activity'   && <ActivityTimelineTab />}
               {tab === 'hbsettings' && <HbProjectSettingsTab actorId={actorId} />}
+              {tab === 'collabaccess' && <CollaboratorAccessTab actorId={actorId} />}
             </>
           )}
         </div>

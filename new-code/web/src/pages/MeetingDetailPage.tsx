@@ -48,6 +48,12 @@ import { humanizeWriteError } from '../lib/writeError';
 import type { UserOption } from '../data/wishlist';
 import { CopyButton } from '../components/ui/CopyButton';
 import { pushRecent } from '../lib/useRecentlyViewed';
+import { COLLAB_ASSOC } from '../lib/collabAssoc';
+import { CollaboratorsCard } from '../components/collab/CollaboratorsCard';
+import { AssociationsPanel } from '../components/collab/AssociationsPanel';
+import type { SearchSelectOption } from '../components/ui/SearchSelect';
+import type { RecordType } from '../lib/collabAssoc';
+import { fetchAllContacts, fetchCompanyOptions } from '../data/contacts';
 
 /* ------------------------------------------------------------------ */
 /* Small primitives                                                    */
@@ -333,6 +339,12 @@ export function MeetingDetailPage() {
   const [reassignError, setReassignError] = useState<string | null>(null);
   const [reassignOwners, setReassignOwners] = useState<UserOption[]>([]);
 
+  // COLLAB_ASSOC: user + target options for the collab/association cards.
+  const [collabUserOptions, setCollabUserOptions] = useState<SearchSelectOption[]>([]);
+  const [collabTargetOptions, setCollabTargetOptions] = useState<Record<RecordType, SearchSelectOption[]>>({
+    lead: [], contact: [], company: [], meeting: [],
+  });
+
   const actor = profile?.user_id != null ? String(profile.user_id) : '';
   const role = (profile?.role ?? '').toUpperCase();
   // Small-CR: only ADMIN / TEAM_LEAD may edit a concluded meeting's details.
@@ -373,6 +385,28 @@ export function MeetingDetailPage() {
       profile?.user_id,
     );
   }, [meeting, profile?.user_id]);
+
+  // COLLAB_ASSOC: load user + target options once the flag is enabled.
+  useEffect(() => {
+    if (!COLLAB_ASSOC) return;
+    let cancelled = false;
+    (async () => {
+      const [users, contacts, companies] = await Promise.all([
+        fetchAssignableUsers(null),
+        fetchAllContacts(),
+        fetchCompanyOptions(),
+      ]);
+      if (cancelled) return;
+      setCollabUserOptions(users.map((u) => ({ id: u.id, label: u.label })));
+      setCollabTargetOptions({
+        lead: [],
+        contact: contacts.contacts.map((c) => ({ id: c.contact_id, label: c.full_name })),
+        company: companies.map((c) => ({ id: c.company_id, label: c.company_name })),
+        meeting: [],
+      });
+    })();
+    return () => { cancelled = true; };
+  }, []);
 
   const handleConfirm = async () => {
     if (!meeting) return;
@@ -834,6 +868,24 @@ export function MeetingDetailPage() {
           </>
         )}
       </div>
+
+      {/* Collaborators & Associations (ALT-441/442) — dark behind COLLAB_ASSOC */}
+      {COLLAB_ASSOC && meeting && (
+        <div className="space-y-3" style={{ maxWidth: 940 }}>
+          <CollaboratorsCard
+            recordType="meeting"
+            recordId={Number(meeting.id)}
+            userOptions={collabUserOptions}
+            actorId={actor}
+          />
+          <AssociationsPanel
+            recordType="meeting"
+            recordId={Number(meeting.id)}
+            targetOptions={collabTargetOptions}
+            actorId={actor}
+          />
+        </div>
+      )}
 
       {/* Modals */}
       {meeting && showUpdate && (
