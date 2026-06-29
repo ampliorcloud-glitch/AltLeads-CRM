@@ -1,357 +1,548 @@
-# EspoCRM Architecture Blueprint
-
-> Read-only teardown produced from source at `E:\reference code for crm\espocrm`.
-> Sources examined: `application/Espo/Modules/Crm/Resources/metadata/entityDefs/` (8 entities),
-> `clientDefs/` (Lead, Opportunity), `layouts/` (Lead detail, Opportunity list, Case defaultSidePanel),
-> `Core/Acl/` (DefaultOwnershipChecker, DefaultTable, Table), `Hooks/Common/Formula.php`,
-> scopes metadata for all CRM entities.
-> Generated: 2026-06-29.
+# EspoCRM Architecture Teardown
+**Source:** `E:\reference code for crm\espocrm` (PHP + metadata JSON)
+**Purpose:** Durable reference for AltLeads CRM design decisions — esp. ACL model, layout system, collaborators.
+**Date:** 2026-06-29
 
 ---
 
-## 1. Stack and Code Organisation
+## 1. Stack & Code Organization
 
-EspoCRM is a **PHP 8 monolith** (Slim-style DI container, custom ORM) with a **Backbone.js + Handlebars SPA** front-end. The entire schema, API surface, and UI are driven by a layered **metadata system** — not by imperative code.
+### Runtime
+- **Backend:** PHP 8+ (no framework — EspoCRM's own DI container, ORM, and routing)
+- **Frontend:** Backbone.js + Handlebars (custom MVC in the browser; not React)
+- **DB:** MySQL/MariaDB (also PostgreSQL-compatible). ORM handles all queries; raw SQL is rare.
+- **API:** REST (`/api/v1/<Entity>`) + WebSocket for real-time stream notifications
 
-### The three metadata layers
+### The metadata layer — the core insight
+Everything in EspoCRM is driven by JSON metadata files, not hardcoded PHP or JS. This is the dominant architectural pattern.
 
-| Layer | Path pattern | Purpose |
+**Three metadata namespaces per entity:**
+
+| Namespace | Path | What it controls |
 |---|---|---|
-| `entityDefs` | `Resources/metadata/entityDefs/<Entity>.json` | Field types, field constraints, relationship links, DB indexes, text-filter fields, optional OCC flag |
-| `clientDefs` | `Resources/metadata/clientDefs/<Entity>.json` | Controller class, view overrides, side panels, bottom panels, filter lists, boolean filters, kanban flag, relationship panel config, icon/colour |
-| `layouts` | `Resources/layouts/<Entity>/<type>.json` | Column/row configuration for every rendered surface: `list`, `detail`, `detailSmall`, `filters`, `massUpdate`, `relationships`, `sidePanels*`, `defaultSidePanel`, `listSmall`, `listForAccount`, etc. |
+| `entityDefs` | `Resources/metadata/entityDefs/<Entity>.json` | Fields (type, validation, audit, relations), links (hasMany/belongsTo/hasChildren), indexes, convertEntityList |
+| `clientDefs` | `Resources/metadata/clientDefs/<Entity>.json` | Which controller, which view class, side panels, bottom panels, kanban mode, filter list, color, icon |
+| `layouts/` | `Resources/layouts/<Entity>/<layout>.json` | Field order for list/detail/detailSmall/filters/massUpdate views |
 
-A fourth layer — `scopes` metadata — controls which ACL actions apply to each entity (`entity`, `acl`, `aclPortal`, `aclLevelList`, `aclPortalLevelList`, `stream`, `importable`, `customizable`).
+Additionally:
+- `scopes/<Entity>.json` — marks whether entity has ACL, stream, is importable, customizable, portal access, which field is the status field
+- `aclDefs/<Entity>.json` — overrides default ACL checker class (e.g. Meeting uses a custom checker that looks at `users` M2M, not `assignedUserId`)
+- `logicDefs/<Entity>.json` — dynamic UI logic: field visibility conditions, required conditions evaluated client-side
 
-### How metadata drives the ORM and API
-
-- The ORM reads `entityDefs` at boot and generates the relational schema (MySQL/MariaDB). Fields with `"notStorable": true` are computed-only (e.g. `duration`, `amountWeightedConverted`, `acceptanceStatus`). Computed fields declare their SQL expression inline via `"select": { "select": "EXPR" }` and their filter translation via `"where": { "=": { "whereClause": ... } }` — effectively inline query builder DSL.
-- Every many-to-many uses a named `relationName` junction table (e.g. `entityTeam`, `entityCollaborator`, `AccountContact`, `ContactMeeting`, `MeetingUser`). Additional junction columns (e.g. `status` for acceptance, `role` for contact role) are declared in `"additionalColumns"`.
-- The REST API is auto-generated from entityDefs — no separate route files. CRUD endpoints, list, search, mass-update, and relationship management all come for free.
-- `optimisticConcurrencyControl: true` on Account, Opportunity, Case, Task — server rejects a save if another write happened since the client loaded the record.
+### ORM
+- Custom PHP ORM: entity classes extend `Espo\ORM\Entity`; queries built via ORM Query Builder
+- `entityDefs` links define all relationships; the ORM reads them to generate joins
+- No migrations in the traditional sense — schema is rebuilt from metadata on upgrade
+- Relation types: `belongsTo`, `hasMany`, `hasOne`, `hasChildren` (polymorphic parent), `belongsToParent`, `linkMultiple`
 
 ---
 
 ## 2. Core CRM Data Model
 
-### Lead
-Fields: `personName` (firstName/lastName composite), `salutationName`, `title`, `status` (New → Assigned → In Process → Converted → Recycled → Dead), `source` (enum: Call/Email/Web Site/Campaign/…), `industry` (references Account.industry), `opportunityAmount` (currency), `emailAddress`, `phoneNumber` (multi-type: Mobile/Office/Home/Fax), `doNotCall`, `address`, `accountName` (plain varchar, not a link).
+### Entity graph
 
-Key links: `assignedUser` (belongsTo User), `teams` (hasMany via `entityTeam`), `meetings`/`calls` (hasMany with acceptance status column), `tasks`/`emails`/`cases` (hasChildren/parent pattern), `campaign` (belongsTo), `targetLists`, `documents`, `createdAccount`/`createdContact`/`createdOpportunity` (populated on conversion).
+```
+Campaign --> Lead --[convert]--> Account + Contact + Opportunity
+                                         |
+                                    Meeting / Call / Task / Email / Document / Case
+```
 
-**Lead conversion** is a first-class feature declared in entityDefs via `"convertEntityList": ["Account", "Contact", "Opportunity"]` and `"convertFields"` mapping (e.g. Lead.source → Opportunity.leadSource, Lead.address → Account.billingAddress). Conversion sets `convertedAt`, locks the lead, and populates the three `created*` back-links.
+### Lead (`entityDefs/Lead.json`)
+- **Fields:** personName (firstName+lastName composite), salutationName, title, status (enum: New/Assigned/In Process/Converted/Recycled/Dead), source (Call/Email/Campaign/Web Site/etc.), industry (references Account.industry options), opportunityAmount (currency), website, address (composite), emailAddress (multi-value type), phoneNumber (multi-value with typeList: Mobile/Office/Home/Fax/Other), doNotCall (bool, audited), description
+- **ACL fields:** assignedUser (link), teams (linkMultiple)
+- **Activity links:** meetings (hasMany via junction LeadMeeting), calls (hasMany via junction LeadCall), tasks (hasChildren polymorphic), emails (hasChildren polymorphic), cases (hasMany)
+- **Campaign tracking:** campaign (belongsTo), targetLists (hasMany via junction), campaignLogRecords
+- **Conversion:** `convertEntityList: [Account, Contact, Opportunity]`; `convertFields` maps Lead fields to target entity fields (e.g. `accountName` to Account.name, `opportunityAmount` to Opportunity.amount). After conversion: `createdAccount`, `createdContact`, `createdOpportunity` links point to the new records; status flips to Converted; `convertedAt` timestamp set.
 
-### Contact
-Fields: personName, salutationName, emailAddress, phoneNumber, address, `doNotCall`, `opportunityRole` (computed from junction column), `accountIsInactive` (computed), `hasPortalUser` (computed SQL EXISTS), `originalLead` (linkOne back to source Lead).
+### Contact (`entityDefs/Contact.json`)
+- Belongs to a primary `account` (belongsTo) AND can belong to many `accounts` (hasMany through `AccountContact` junction with `role` and `isInactive` columns)
+- `title` is a computed (notStorable) field pulling from AccountContact.role via a left join — sophisticated ORM-level computed attribute
+- `opportunityRole` is a junction column attribute (Decision Maker / Evaluator / Influencer) from the ContactOpportunity junction table
+- `originalLead` back-link to the Lead that was converted into this Contact
+- `hasPortalUser` computed bool — checks if a linked portal user exists (via IS_NOT_NULL subselect)
+- `acceptanceStatusMeetings` / `acceptanceStatusCalls` — virtual filter-only fields that query the junction table status column for calendar filtering
 
-Key links: `account` (primary belongsTo), `accounts` (hasMany — a contact can belong to multiple accounts with per-link `role` and `isInactive` columns), `opportunities` (hasMany with junction role column), `meetings`/`calls`/`tasks`/`emails` (hasChildren), `cases`, `portalUser` (hasOne — each contact can be a portal user).
+### Account (`entityDefs/Account.json`)
+- `type` enum: Customer / Investor / Partner / Reseller
+- `industry` enum: 50+ industries (Advertising, Aerospace, Agriculture ... Water)
+- Billing + Shipping address composites
+- Links: contacts (hasMany with role+isInactive junction), opportunities, cases, documents, meetings (two sets: `meetingsPrimary` via account FK and `meetings` as hasChildren/polymorphic parent), emails, calls, tasks, campaign, portalUsers
+- `isLocked` (bool, readOnly, audited) — record-level lock (via Core Action Lock/Unlock)
+- `optimisticConcurrencyControl: true` — backend uses ETag/version checking on writes
 
-### Account
-Fields: `name`, `website`, `emailAddress`, `phoneNumber`, `type` (Customer/Investor/Partner/Reseller), `industry` (full industry taxonomy, ~50 values), `sicCode`, `billingAddress`, `shippingAddress`, `isLocked` (read-only, audited), `campaign`, `assignedUser`, `teams`.
+### Opportunity (`entityDefs/Opportunity.json`)
+- **Fields:** name, amount (currency, audited), amountConverted (read-only currency-converted), amountWeightedConverted (computed: `amount * probability / 100`, expressed as ORM formula in `select.select`), stage (enum: Prospecting/Qualification/Proposal/Negotiation/Closed Won/Closed Lost with `probabilityMap`), lastStage, probability (int 0-100), leadSource, closeDate (required, audited), campaign
+- `contacts` linkMultiple with `opportunityRole` junction column (same pattern as Contact.title)
+- `contact` (primary contact, belongsTo) separate from `contacts` (all contacts)
+- `originalLead` back-link to conversion source
+- `optimisticConcurrencyControl: true`
+- `kanbanStatusIgnoreList: ["Closed Lost"]` — won't appear in kanban columns
 
-Key links: `contacts` (hasMany with role/isInactive columns), `contactsPrimary` (filtered view), `opportunities`, `cases`, `documents`, `meetings`/`calls`/`tasks`/`emails` (both hasChildren via parent and hasMany via foreign key — dual-path), `portalUsers` (hasMany User), `originalLead`.
+### Meeting (`entityDefs/Meeting.json`)
+- **Fields:** name, status (Planned/Held/Not Held), dateStart (datetimeOptional), dateEnd, isAllDay, duration (computed TIMESTAMPDIFF_SECOND), reminders (jsonArray — popup/email reminders with offset), parent (linkParent — can belong to Account/Lead/Contact/Opportunity/Case), account (readOnly, derived from parent), uid (iCalendar UID), joinUrl (for video conferencing), externalService (Zoom/Google Meet/etc.)
+- **Attendees (3-way):** users (linkMultiple, junction `MeetingUser` with `status` column = acceptanceStatus), contacts (junction `ContactMeeting`), leads (junction `LeadMeeting`) — each attendee has their own acceptance status: None/Accepted/Tentative/Declined
+- ACL uses custom checker (`aclDefs/Meeting.json`): ownership determined by `readOwnerUserField: "users"` (not just assignedUser)
+- `repositoryClassName: Espo\Core\Repositories\Event`
 
-Account has `"optimisticConcurrencyControl": true`.
+### Call (same pattern as Meeting)
+- Same attendee model (users/contacts/leads with acceptanceStatus junction column)
+- Same parent linkParent
+- Status: Planned/Held/Not Held
 
-### Opportunity
-Fields: `name`, `amount` (required currency), `amountWeightedConverted` (computed: `amount * probability / 100` with live currency-rate join), `stage` (Prospecting → Qualification → Proposal → Negotiation → Closed Won/Lost), `lastStage`, `probability` (0–100), `leadSource`, `closeDate` (required date), `campaign`, `contact` (primary), `contacts` (linkMultiple with per-link `role`).
+### Task (`entityDefs/Task.json`)
+- **Fields:** name, status (Not Started/Started/Completed/Canceled/Deferred), priority (Low/Normal/High/Urgent), dateStart, dateEnd (audited), dateCompleted (readOnly), isOverdue (virtual bool), reminders, description (with attachments), parent (Account/Contact/Lead/Opportunity/Case), account (readOnly derived), contact (readOnly derived), attachments (attachmentMultiple)
+- **COLLABORATORS:** `collaborators` field (linkMultiple, view: `views/fields/collaborators`, maxCount: 30, relation: `entityCollaborator`). This is a first-class field on Task — collaborators get read+stream access to the task even if it is not assigned to them. See Section 3 for ACL mechanics.
+- `optimisticConcurrencyControl: true`
 
-Stage has a `probabilityMap` embedded in entityDefs so changing stage auto-suggests probability. `optimisticConcurrencyControl: true`. Kanban view enabled via clientDefs `"kanbanViewMode": true`.
-
-### Meeting
-Fields: `name`, `status` (Planned/Held/Not Held), `dateStart` (datetimeOptional), `dateEnd`, `duration` (computed TIMESTAMPDIFF), `isAllDay`, `reminders` (jsonArray, stored separately), `parent` (linkParent: Account/Lead/Contact/Opportunity/Case), `account` (read-only auto-derived), `uid`, `joinUrl`, `externalService`.
-
-Attendees: `users` (hasMany User), `contacts` (hasMany Contact), `leads` (hasMany Lead) — each with a junction `status` column mapped to `acceptanceStatus` (None/Accepted/Tentative/Declined). Three separate junction tables: `MeetingUser`, `ContactMeeting`, `LeadMeeting`.
-
-### Call
-Identical structure to Meeting but adds `direction` (Outbound/Inbound) and duration options in seconds rather than hours. Junction tables: `CallUser`, `CallContact`, `CallLead`. Stored via `Espo\Core\Repositories\Event`.
-
-### Task
-Fields: `name`, `status` (Not Started/Started/Completed/Canceled/Deferred), `priority` (Low/Normal/High/Urgent), `dateStart`, `dateEnd`, `dateCompleted`, `isOverdue` (computed), `reminders`, `description` (with attachments), `parent` (linkParent: Account/Contact/Lead/Opportunity/Case).
-
-Task is notable for having **`collaborators`** (linkMultiple User via `entityCollaborator` relation) — up to 30 collaborators, rendered with the `views/fields/collaborators` view. `optimisticConcurrencyControl: true`.
-
-### Case
-Fields: `name`, `number` (autoincrement), `status` (New/Assigned/Pending/Closed/Rejected/Duplicate), `priority`, `type` (Question/Incident/Problem), `account`, `lead`, `contact` (primary), `contacts` (hasMany), `inboundEmail`, `isInternal`, `attachments`.
-
-Case also has `collaborators` (same pattern as Task, max 30). Full-text search enabled. `optimisticConcurrencyControl: true`. Linked to KnowledgeBaseArticle (hasMany `articles`).
+### Case (Support)
+- Fields: number (auto), name, status, priority, type, account (link), contact (primary), contacts (many), lead, description
+- Has Knowledge Base Article links
+- Portal-visible (aclPortalLevelList configured)
 
 ---
 
-## 3. Multi-Tenancy / Access Control
+## 3. Multi-Tenancy / Access Control (Roles + Teams + own/team/all)
 
-EspoCRM uses a **Role + Team** ACL model, not tenant-level isolation.
+EspoCRM is a **single-tenant** application (one installation = one company). It has no cross-tenant isolation layer.
 
-### ACL levels (from `DefaultTable.php`)
+### The ACL table
+Defined in `Core/Acl/Table.php`. Five scope-level permission levels, two field-level:
 
-Actions: `read`, `stream`, `edit`, `delete`, `create`.
-Levels (ordered most to least permissive): `all` > `team` > `own` > `no` (plus `yes` for boolean actions like `create`).
-Field-level: `yes` or `no` per action (read/edit).
+**Scope (entity-level) actions and levels:**
 
-When a user has multiple roles, levels are **merged to the most permissive** (lowest index in the ordered list). Admin users always get `all` on everything unless explicitly disabled.
+| Action | Available Levels |
+|---|---|
+| `read` | `all` / `team` / `own` / `no` |
+| `stream` | `all` / `team` / `own` / `no` |
+| `edit` | `all` / `team` / `own` / `no` |
+| `delete` | `all` / `team` / `own` / `no` |
+| `create` | `yes` / `no` (boolean only) |
 
-### How ownership is evaluated (`DefaultOwnershipChecker.php`)
+**Field-level actions and levels:**
 
-1. **own**: Check `assignedUserId` == current user. If entity has `assignedUsers` (linkMultiple), check membership. Fallback to `createdById` only if `assignedUserId` is absent.
-2. **team**: Check intersection of `entity.teamsIds` and `user.teamsIds`.
-3. **shared** (read/stream only): Check if user is in `entity.collaboratorsIds` (linkMultiple via `entityCollaborator`). This is the **collaborators** mechanism — it grants read and stream access without full team membership.
+| Action | Levels |
+|---|---|
+| `read` | `yes` / `no` |
+| `edit` | `yes` / `no` |
 
-### Roles and Teams
+### How levels are evaluated — DefaultOwnershipChecker.php
 
-- A user can belong to multiple Teams. Each entity carries a `teams` linkMultiple. A user's effective team is the union of all team memberships.
-- A Role defines per-scope and per-field levels. Multiple roles merge. Admin bypasses all role checks.
-- `scopes` metadata controls which actions a scope exposes (e.g. `"aclActionList"`) and the allowed levels (e.g. `"aclLevelList"`). Some scopes omit `own` (e.g. `Team` only allows `all`/`team`/`no`). Email scope additionally allows `own`.
-- Portal users get a separate `aclPortalLevelList` per scope (e.g. Case portal: `all/contact/own/no`; Contact portal: `all/account/contact/no`). This enables customer self-service portals with account-scoped visibility.
+The `DefaultOwnershipChecker` (`Core/Acl/DefaultOwnershipChecker.php`) implements three interfaces: `OwnershipOwnChecker`, `OwnershipTeamChecker`, `OwnershipSharedChecker`.
 
-### Comparison with AltLeads RLS
+**`checkOwn` (determines "own" match):**
+1. If entity has `assignedUsers` (linkMultiple) — check if current user's ID is in that list
+2. Else if entity has `assignedUserId` attribute — check equality with current user
+3. Else fall back to `createdById`
 
-| Dimension | EspoCRM | AltLeads |
-|---|---|---|
-| Isolation boundary | None (single schema, filtered by roles/teams) | `project_id` (Postgres RLS, true tenant isolation) |
-| Owner field | `assignedUserId` (explicit; fallback `createdById`) | `lead_report.user_id` (assignment; `created_by` ≠ owner) |
-| Team scoping | `entityTeam` junction, teams on user | No team layer yet |
-| Collaborators | `entityCollaborator` junction, read+stream only | Building |
-| Field-level ACL | Yes, per-field read/edit | Not present |
-| Portal ACL | Account/contact-scoped levels | Sales portal (building) |
-| OCC | Per-entity flag, server-side check | ALT-378 (dark flag) |
+**`checkTeam` (determines "team" match):**
+- Gets user's team IDs (from `user.teamsIds`)
+- Gets entity's team IDs (from `entity.teamsIds`)
+- Returns true if any overlap exists
 
-EspoCRM's ACL is richer in role granularity but has no hard tenant boundary — everything is in one schema filtered by PHP. AltLeads's Postgres RLS provides true isolation per project, which is more robust for multi-client SaaS.
+**`checkShared` (determines collaborator access — read/stream only):**
+- Only applies to `read` and `stream` actions
+- Checks if entity has a `collaborators` linkMultiple relation
+- If yes, checks if current user's ID is in `entity.collaboratorsIds`
+- If matched: user gets read+stream access regardless of own/team/all level
+
+### Role merging
+A user can have multiple roles. `DefaultTable.php` merges them: **most permissive level wins**. Level order (most to least permissive): `all > team > own > no`.
+
+### Teams
+- A `Team` entity groups users
+- Every CRM entity (Lead, Contact, Opportunity, etc.) has a `teams` linkMultiple field
+- When a record is placed in a team, any user in that team with `team`-level permission can read/edit it
+- A user belongs to teams; a record belongs to teams; overlap = access
+
+### Assignment
+- Every entity has `assignedUser` (single) and `teams` (multiple)
+- The `assignedUser` determines "own" ownership
+- Some entities (Meeting, Call) use `assignedUsers` (linkMultiple) — then own = "I am in the attendees list"
+
+### Collaborators (Task entity — and the infrastructure)
+Collaborators are a **third ownership tier**, distinct from assignedUser and teams:
+- Defined as `linkMultiple` field named `collaborators`, relation `entityCollaborator` (junction table `entityCollaborator` with columns entity_type, entity_id, user_id)
+- Access scope: **read and stream only** — collaborators cannot edit via this mechanism
+- Checked in `checkShared()` — only fires for `ACTION_READ` and `ACTION_STREAM`
+- Currently Task is the only CRM entity with a `collaborators` field; the infrastructure in DefaultOwnershipChecker supports it on any entity that declares the field
+
+### Portal ACL
+Separate system (`aclPortal`). Lead has `aclPortalLevelList: ["all", "own", "no"]`. Opportunity has `["all", "account", "contact", "own", "no"]` — contact/account levels are portal-specific.
+
+### Vs. AltLeads project-RLS
+AltLeads uses Supabase Postgres RLS with `project_id` as the tenant boundary. EspoCRM has no equivalent — it is single-tenant. The closest analogy to AltLeads' project scoping is Teams: put all records for a project into a team, restrict agents to that team. EspoCRM's own/team/all levels are role-configured per entity type; AltLeads' RLS is a hard row-level filter on project_id. EspoCRM's model is more flexible but AltLeads' model provides stronger isolation for a multi-project SaaS-style deployment.
 
 ---
 
 ## 4. Activity / Communication Model
 
-### Activities vs History
+### Activities vs History — the two-panel pattern
+EspoCRM splits activity display into two logical panels on every record's sidebar:
 
-EspoCRM defines activities as **future/in-progress** records and history as **past** ones, split by status:
-- Meeting with status `Planned` → Activity. Meeting with status `Held`/`Not Held` → History.
-- Call same pattern.
-- Task: `Not Started`/`Started` → Activity; `Completed`/`Canceled`/`Deferred` → History (via `notActualOptions`).
-- Email: Draft → Activity (`activityStatusList`); Archived/Sent → History (`historyStatusList`) — defined in Email scopes metadata.
+- **Activities** (upcoming/planned) — shows Meetings and Calls with status = Planned
+- **History** (past) — shows Meetings (Held/Not Held), Calls (Held), Emails sent/received, and archived Notes
 
-In `clientDefs`, both `sidePanels` and `bottomPanels` reference the `"activities"` and `"history"` panels using the `"reference"` shorthand — the panel system resolves these to reusable panel definitions.
+The `clientDefs/<Entity>.json` `sidePanels` array references `"activities"` and `"history"` by name; the `crm:controllers/activities` controller handles both. Example from `clientDefs/Lead.json`:
 
-### Stream (chatter)
+```json
+"sidePanels": {
+  "detail": [
+    {"name": "activities", "reference": "activities"},
+    {"name": "history", "reference": "history"},
+    {"name": "tasks", "reference": "tasks"}
+  ]
+}
+```
 
-The Stream is an entity-level activity feed. Entities with `"stream": true` in scopes (Lead, Contact, Account, Opportunity, Case, Meeting, Call, Task) show a Stream panel where users can post notes, @mention colleagues, and see automated field-change notifications.
+### Stream (chatter / activity feed)
+- Every entity with `"stream": true` in its scope has a Stream panel
+- Stream contains Notes (user-typed text), field change logs (audited fields), and activity records (calls/meetings linked to the record)
+- Users can follow/unfollow records — followers receive in-app and email notifications on stream events
+- `Account.bottomPanelsDetail.json` shows `"stream"` as the first bottom panel tab
+- WebSocket pushes real-time stream updates to all followers
 
-Stream notes are stored as `Note` entities (`Tools/Stream/NoteUtil.php`, `NoteAccessControl.php`). Notes have types: Post (manual text), Update (field change audit), Create, Relate, etc. Users can `follow` records; followers receive notifications when the Stream is updated.
+### Email
+- Email is a first-class entity (entityDefs/Email.json)
+- Records can receive emails via Inbound Email (IMAP integration per group mailbox)
+- Emails are linked to records via the `parent` polymorphic link (same hasChildren pattern as Task)
+- Each Contact/Lead/Account can have multiple email addresses (the `email` field type supports multiple addresses with types: Work/Home/Other and opt-out flags per address)
+- Mass Email / Campaign modules handle bulk outreach with tracking URLs and opt-out management
 
-### Email integration
-
-Emails attach to records via the `parent` linkParent or via explicit `account`/`contact` foreign keys. Inbound email parsing auto-creates Cases. MassEmail and Campaign entities drive bulk outreach with tracking URLs and log records (`CampaignLogRecord`).
-
----
-
-## 5. Automation / Workflow Engine
-
-### Formula (community edition — present in source)
-
-Formula is EspoCRM's **expression language** for computed fields and before-save hooks. Evidence:
-- `Core/Formula/` contains a full `Parser.php`, `Processor.php`, `Manager.php`, function library (`Functions/`), variable handling, while/if control flow.
-- `Hooks/Common/Formula.php` fires on every `beforeSave` — reads `formula.<EntityType>.beforeSaveScriptList` and `beforeSaveCustomScript` from metadata, then runs each script against the entity.
-- Formula expressions appear directly in entityDefs for computed fields: e.g. `amountWeightedConverted` uses the inline DSL `"DIV:(MUL:(amount, probability, amountCurrencyRate.rate), 100)"`.
-- Admin UI (Field Manager) lets non-developers write Formula scripts for fields. There is also a `Tools/Formula/Service.php` and `SyntaxCheckResult.php`.
-
-Formula covers: field computation, conditional logic, setting field values on save, cross-field validation, math, string ops, date ops, entity-attribute reads.
-
-### Workflows / BPM (Advanced Pack — enterprise, not in community source)
-
-Workflow and BPM modules are referenced by the scope `Formula.json` (there is a `scopes/Formula.json` entry) but the full Workflow/BPM modules are not present in the community source at this path. These are sold as the **Advanced Pack**. They provide:
-- Event-triggered workflows (on record create/update, on scheduled time)
-- Action types: send email, create record, update record, run formula, create notification, apply assignment rules
-- BPM process builder (BPMN-like) for multi-step approval/routing flows
-
-AltLeads's planned "automation event-spine" maps to this tier.
+### Reminders
+- Both Meeting and Task support `reminders` (jsonArray stored in a separate `Reminder` entity)
+- Reminder types: popup (browser notification) and email
+- Offset can be minutes/hours before the event
 
 ---
 
-## 6. Customisation
+## 5. Automation / Workflow
 
-### Custom fields via metadata
+### Formula (community — built-in)
+- EspoCRM's own expression language — runs server-side on save events
+- Configured per entity type in Admin > Formula
+- Executes a script on `beforeSave` or `afterSave`
+- Syntax: `ifThen(condition, action)`, `string\concatenate(...)`, `entity\setAttribute(...)`, loops (`while`)
+- CRM module extends formula with: `ext\account\findByEmailAddress(EMAIL_ADDRESS)` and `ext\calendar\userIsBusy(USER_ID, FROM, TO)`
+- The Formula processor (`Core/Formula/Processor.php`) runs on every record save
+- Mass recalculate action exists: `Core/MassAction/Actions/MassRecalculateFormula.php`
 
-The admin Field Manager UI creates custom fields by writing to `custom/Espo/Custom/Resources/metadata/entityDefs/<Entity>.json` (a `custom/` overlay layer that merges with core metadata at runtime). Each field gets a `type`, optional `view` override, and any flags (`required`, `audited`, `isPersonalData`, etc.).
+### Workflows (community — basic)
+- Simple trigger-action rules: When [entity] [event] — do [actions]
+- Events: record created, record updated (specific field changed), scheduled (time-based)
+- Actions: send email, create record, update record, relate record, run formula
+- Community edition workflows are limited (no loops, no branching beyond conditions)
 
-Field types available: varchar, text, email, phone, url, date, datetime, datetimeOptional, int, float, currency, currencyConverted, bool, enum, multiEnum, link, linkMultiple, linkOne, linkParent, address, attachmentMultiple, jsonArray, jsonObject, foreign, autoincrement, duration, personName, and more.
+### BPM — Business Process Manager (enterprise only)
+- BPMN 2.0 visual process designer
+- Not present in the community codebase scanned here
+- Enables: parallel gateways, exclusive gateways, catch/throw events, user tasks with assignments, timers
+- Lives in the `Espo\Modules\Advanced` module (enterprise)
 
-### Dynamic Logic
+### Scheduled Jobs
+- Cron-style jobs; used for: sending queued emails, processing BPM timers, cleanup, reminders
 
-`dynamicLogic` (declared in entityDefs or via admin UI) controls field visibility, required state, and read-only state based on other field values at runtime (client-side). For example: show `shippingAddress` only when a checkbox is checked. Fields explicitly set `"dynamicLogicDisabled": true` (e.g. `reminders`, `externalService`) to opt out.
+### Dynamic Logic (`logicDefs`)
+- Client-side conditional UI rules (field visibility, required state, read-only state based on other field values)
+- Evaluated in the browser; no server round-trip
+- Example (`logicDefs/Lead.json`): `name` required only if accountName AND emailAddress AND phoneNumber are all empty; `convertedAt` visible only when status = Converted
+- `logicDefs/Opportunity.json` shows stage-dependent probability auto-fill
 
-### Layout Manager
+---
 
-All layout JSON files under `layouts/` are editable via the admin Layout Manager UI. Custom layouts are saved to `custom/` overlays. Named layout types include: `list`, `listSmall`, `listDashlet`, `detail`, `detailSmall`, `detailConvert`, `filters`, `massUpdate`, `relationships`, `sidePanelsDetail`, `defaultSidePanel`, `bottomPanelsDetail`, `listForAccount`, `listForContact`, `kanban`.
+## 6. Customization
 
-### Custom entities
+### Custom fields via Entity Manager (no-code)
+- Admin > Entity Manager > select entity > Fields > Add Field
+- Field types: varchar, text, int, float, currency, date, datetime, email, phone, url, bool, enum, multiEnum, checklist, array, jsonArray, link (belongsTo), linkMultiple, address, image, file, attachmentMultiple, number (auto-increment), formula (calculated), barcode, map
+- New fields are stored in `custom/Espo/Custom/Resources/metadata/entityDefs/<Entity>.json` (overrides/merges with module metadata)
+- Database columns are created automatically on schema rebuild
+- `customizationOptionsReferenceDisabled` and similar flags in base entityDefs control which attributes can be changed for built-in fields
 
-The Entity Manager (admin UI) creates new entity types entirely through metadata — generates entityDefs, clientDefs, layouts, and scopes JSON — without writing PHP. Relationships between entities are also added through this UI.
+### Layout Manager (no-code)
+- Admin > Layout Manager > select entity > select layout type (list / detail / detailSmall / edit / filters / massUpdate / relationships)
+- Changes saved to `custom/Espo/Custom/Resources/layouts/<Entity>/<layout>.json`
+- The layout file format is simple JSON arrays (for list) or panel/row/cell arrays (for detail)
+- Side panels (Activities, History, Tasks) are configurable here too
+- Changes take effect immediately without code deploy
+
+### Dynamic Logic (no-code)
+- Admin > Entity Manager > select entity > Dynamic Logic
+- Conditions and consequences stored in `logicDefs/<Entity>.json` per field
+- Supports: visible/hidden, required/not-required, read-only conditions based on field values
+
+### Formula (admin-level scripting)
+- Admin > Formula > select entity > Before Save / After Save script editor
+- No deployment needed; stored in DB
+
+### Extension system
+- Extensions are ZIP packages installed via Admin > Extensions
+- Can override any metadata file; module code lives in `custom/Espo/Modules/<Name>/`
 
 ---
 
 ## 7. Full Feature Inventory
 
-**Core CRM**
-- Lead management with full lifecycle (New → Converted) and formal conversion wizard creating Account + Contact + Opportunity
-- Contact management with multi-account membership (a contact at multiple companies, each with a role and active/inactive flag)
-- Account management with billing/shipping addresses, SIC code, type taxonomy
-- Opportunity pipeline with probability, weighted amount, stage-to-probability auto-mapping, close date, multi-contact support with per-contact role (Decision Maker/Evaluator/Influencer)
-- Case management with auto-increment case numbers, priority/type, inbound email integration, Knowledge Base linking
+**Data model and records:**
+- Lead with status lifecycle and 1-click conversion to Account + Contact + Opportunity
+- Account (company) with billing + shipping addresses, type (Customer/Partner/etc.), industry (50+ options)
+- Contact with multi-account relationships (with role per account), portal user linkage
+- Opportunity with pipeline stages, probability, close date, weighted amount
+- Case (support tickets) with Knowledge Base linkage
+- Document management (attach/relate documents to any entity)
+- Campaign management with Target Lists, mass email, tracking URLs, opt-out handling
+- Portal (customer/partner self-service with scoped data visibility and separate ACL)
 
-**Activities**
-- Meetings with calendar view, all-day support, iCal UID, external service integration (Zoom etc.), join URL, acceptance status per attendee (None/Accepted/Tentative/Declined)
-- Calls with inbound/outbound direction, duration, same attendee acceptance model
-- Tasks with priority, due date, overdue detection, reminders, collaborators
-- Reminders via email/popup with time-offset configuration
+**Activity and communication:**
+- Meeting and Call with multi-party attendees (users + contacts + leads), acceptance status per attendee
+- Task with priority, reminders, attachments, collaborators
+- Email as a first-class entity; inbound email processing via IMAP; email tracking
+- Stream (chatter) on every major entity; followers; real-time via WebSocket
+- Reminders (popup + email) for meetings and tasks
+- Calendar view (personal + shared team calendars)
 
-**Communication**
-- Full email client (IMAP/SMTP per user, shared inbound accounts, group mailboxes)
-- Email-to-Case auto-creation from inbound email
-- Mass Email campaigns with target lists, opt-out management, tracking URLs, open/click log records
-- Campaign management with lead/contact/account targeting, campaign log
-- Email templates with variable substitution
+**ACL and users:**
+- Role-based access with own / team / all / no levels per entity per action (read/edit/delete/stream)
+- Field-level ACL (hide or make read-only per field per role)
+- Teams for group-based access scoping
+- Collaborators on tasks (shared read-only access for named users on specific records)
+- Portal users (external contacts/accounts with portal login, separate ACL)
+- 2FA, API keys, OAuth authentication
 
-**Productivity**
-- Stream (chatter) on all main entities with post, @mention, follow, automated change notes
-- Calendar with day/week/month views, shared calendars, working time calendar
-- Global activity feed
-- Dashlets and dashboards (configurable per user)
-- Knowledge Base with categories, articles, portal exposure
+**Automation:**
+- Formula (scripted field computation/updates on save)
+- Workflows (trigger-action rules; community)
+- BPM (BPMN visual designer; enterprise)
+- Scheduled jobs (cron)
+- Webhooks (outbound HTTP on events)
+- Lead Capture (web form to Lead, with campaign attribution)
 
-**Admin and customisation**
-- Entity Manager (create custom entities, fields, relationships via UI)
-- Field Manager (add custom fields to existing entities, write Formula scripts)
-- Layout Manager (drag-drop column/row editing for every layout type)
-- Role and Team manager (granular per-scope, per-field, per-action levels)
-- Import engine (CSV, field mapping, dedup)
-- Export (filtered lists to CSV/XLSX)
-- Lead Capture API endpoints (web-to-lead forms)
-- Portal user provisioning per Contact (each Contact can get a portal login)
-- Webhooks (outbound event triggers)
-- Scheduled jobs
+**UI:**
+- List view (sortable, column-configurable, bulk actions)
+- Kanban view (Opportunity stages, drag-drop)
+- Detail view with side panels (Activities/History/Tasks) and bottom panels (Stream, related lists)
+- Mass update, mass delete, merge duplicates
+- Import (CSV) with field mapping and duplicate checking
+- Export (CSV/XLSX) with field selection
+- Saved filters / search views
+- Dashboards with configurable dashlets (Sales Pipeline, Opportunities by Stage, Calendar, Activities, etc.)
+- Global search
 
-**Developer/integration**
-- REST API auto-generated from entityDefs
-- Formula scripting language (before-save hooks, field computation)
-- Dynamic Logic (client-side conditional field visibility/required)
-- Optimistic Concurrency Control per entity
-- Metadata overlay/custom layer for non-destructive customisation
-- Extension package system
+**Other:**
+- Currency with conversion rates and weighted amount calculations
+- Multi-language (i18n)
+- Extension/plugin system
+- REST API + Swagger docs
+- Optimistic concurrency control on Account, Opportunity, Task
 
 ---
 
 ## 8. UI/UX Patterns
 
-### Layout system
+### Layout system — the JSON-driven UI
+Every screen is driven by a layout JSON file. There are no hardcoded HTML templates for field position.
 
-Every rendered surface uses a named JSON layout file. The `detail` layout is an array of panels; each panel is `{ "label": "...", "rows": [[field, field], ...] }`. Fields are `{ "name": "fieldName" }` optionally with `"fullWidth": true`, `"hidden": true`. `false` in a row means empty cell.
+**Layout types per entity:**
 
-The `list` layout is a flat array of column descriptors with `name`, optional `link` (make it a hyperlink), `width`, `align`, `hidden`.
+| Layout file | What it renders |
+|---|---|
+| `list.json` | Column list for the main entity list view — array of `{name, width, link, align, hidden}` |
+| `listSmall.json` | Compact list used in relationship panels (sub-lists on detail page) |
+| `detail.json` | Array of panels, each with `{label, rows: [[cell, cell], ...]}` where cell = `{name}` or `false` (empty half) |
+| `detailSmall.json` | Condensed detail for quick-view popups |
+| `filters.json` | Which fields appear in the search/filter panel |
+| `massUpdate.json` | Which fields can be mass-updated |
+| `relationships.json` | Which relationship panels appear and their order on detail view |
+| `bottomPanelsDetail.json` | Tab structure for bottom panels (Stream, Contacts, Opportunities, etc.) |
+| `defaultSidePanel.json` | Default side panel fields (assignedUser, teams, etc.) |
+| `sidePanelsDetailSmall.json` | Side panel for compact view |
 
-The `defaultSidePanel` layout for Case shows `assignedUser`, `teams`, `collaborators`, `isInternal` — the three ownership/access fields always surface together in the right sidebar.
+**Detail layout example** (`layouts/Lead/detail.json`):
+```json
+[
+  {"label": "Overview", "rows": [
+    [{"name":"name"}, {"name":"accountName"}],
+    [{"name":"emailAddress"}, {"name":"phoneNumber"}],
+    [{"name":"title"}, {"name":"website"}],
+    [{"name":"address"}, false]
+  ]},
+  {"label": "Details", "rows": [
+    [{"name":"status"}, {"name":"source"}],
+    [{"name":"opportunityAmount"}, {"name":"campaign"}],
+    [{"name":"industry"}, false],
+    [{"name":"description", "fullWidth": true}]
+  ]}
+]
+```
 
-`sidePanelsDetail` and `sidePanelsDetailSmall` in clientDefs define which panels appear in the right column of detail view. Common references: `"activities"`, `"history"`, `"tasks"`, `"convertedTo"` (Lead-specific).
+**Bottom panel with tab breaks** (`layouts/Account/bottomPanelsDetail.json`):
+```json
+{
+  "_tabBreak_0": {"tabBreak": true, "tabLabel": "$Stream"},
+  "stream": {"index": 1},
+  "_tabBreak_1": {"tabBreak": true, "tabLabel": "$Account"},
+  "contacts": {"index": 3},
+  "opportunities": {"index": 4}
+}
+```
 
-`bottomPanels` lists panels that appear below the main form — used for relationship grids (contacts list on Opportunity, etc.). The same panel can appear in both sidePanels (compact) and bottomPanels (expanded) with `"disabled": true` on one to suppress duplication.
+### Side panels (Activities / History / Tasks)
+Defined in `clientDefs/<Entity>.json` under `sidePanels.detail`:
+- `"reference": "activities"` / `"reference": "history"` / `"reference": "tasks"` — resolved to global panel definitions
+- Side panels appear on the right of the detail view
+- Bottom panels appear below the main form (relationship sub-lists, stream)
+- The Layout Manager allows admins to reorder/hide any panel without code
 
-### Kanban
+### Stream (chatter) panel
+- First tab in bottom panels on Account, Contact, Opportunity, Lead, Case
+- Shows a chronological feed: user notes, field change entries (for `"audited": true` fields), activity logs
+- Users can @mention others, who receive notifications
+- Followers button: any user can follow any record they have access to
 
-Opportunity has `"kanbanViewMode": true` in clientDefs and a `recordViews.kanban` override. The kanban groups by `stage`. Any entity with a status-type enum field can get a kanban view.
+### Kanban view
+- `clientDefs/Opportunity.json` has `"kanbanViewMode": true` and `"recordViews": {"kanban": "crm:views/opportunity/record/kanban"}`
+- Columns = stage enum values; `kanbanStatusIgnoreList: ["Closed Lost"]` hides that column
+- Drag-drop card between columns updates the stage field
+- The same kanban infrastructure is available for any entity with a status field
 
-### Saved filters and search
+### Filter / saved search
+- `filters.json` lists which fields appear in the search panel
+- Users can save named filter sets
+- `boolFilterList: ["onlyMy"]` adds quick boolean filter buttons (e.g. "My Leads")
+- `filterList` in clientDefs adds named preset filters (e.g. `{name: "actual"}`, `{name: "converted", style: "success"}`)
 
-`filterList` in clientDefs declares named quick-filter tabs (e.g. Lead's `"actual"` and `"converted"` tabs). `boolFilterList` adds toggle chips (e.g. `"onlyMy"`). Users can also create personal saved search/filter combinations from the full filter panel.
-
-### Stream panel
-
-Shown on the right side of detail view for stream-enabled entities. Renders Note records with type badges (Post, Update, Relate). Users can reply, @mention (triggers notifications), and follow/unfollow. The stream is access-controlled: collaborators get read+stream access even without team membership.
+### Entity colors and icons
+Every entity in `clientDefs` has `"color"` (hex) and `"iconClass"` (Font Awesome). Lead = `#da90c8` + `fas fa-address-card`; Opportunity = `#71ca7f` + `fas fa-dollar-sign`.
 
 ---
 
-## 9. What AltLeads Appears to be Missing
+## 9. What AltLeads Appears to Be Missing
 
-This is a candid gap analysis. AltLeads has solid foundations (list, detail, kanban, filters, saved views, merge/dedup, recycle bin, import engine, in-record activity hub, bulk reassign). The significant gaps against EspoCRM's surface area:
+Comparing EspoCRM's architecture against AltLeads (TS/React/Vite/Supabase) current state:
 
-**1. Deals / Opportunity pipeline (highest priority gap)**
-AltLeads has no deal entity. EspoCRM's Opportunity has stage, probability, weighted amount, close date, multi-contact roles, kanban by stage, `lastStage` tracking, and Closed Won/Lost funnel analytics. AltLeads is planning this but it does not exist yet.
+### ACL model gaps
+- **own / team / all levels per action** — AltLeads uses RLS but the assignment model is binary (you own it or you don't). EspoCRM's 4-level system (own/team/all/no) per each of 5 actions (CRUD + stream) per entity type is far more granular. AltLeads has no equivalent of "team-level read" (see records in your team's pool even if not assigned to you).
+- **Field-level ACL** — EspoCRM can hide or make read-only individual fields per role. AltLeads has no field-level access control.
+- **Collaborators** — EspoCRM's `entityCollaborator` junction gives named users read+stream access to a specific task record without assigning it to them. AltLeads does not have collaborators yet (ALT-152 is the blocker mentioned in docs).
+- **Portal roles** — Separate ACL table for external users (customers, partners). AltLeads' sales portal uses a separate login but not a distinct ACL system.
 
-**2. Multi-account contact membership**
-In EspoCRM a Contact can belong to multiple Accounts with per-link role and active/inactive status (`AccountContact` junction with `role` and `isInactive` columns). AltLeads `contact_master` has a single company FK. This matters for contacts who switch companies or sit at multiple.
+### Data model gaps
+- **No native Opportunity / Deal entity** — AltLeads has lead_report as the per-project status carrier but no explicit deal pipeline with stage/probability/amount/closeDate. EspoCRM's Opportunity with `probabilityMap` per stage and weighted amount calculation is a strong pattern.
+- **No Case / Support ticket entity** — AltLeads is outreach-focused, but for client-facing support this is absent.
+- **No Document management** — No file-attach-to-any-entity capability.
+- **No multi-account Contact** — AltLeads contacts are linked to one company. EspoCRM's Contact-to-Account many-to-many with `role` and `isInactive` columns on the junction allows a contact to have roles at multiple companies.
+- **Opportunity contact roles** — No concept of Decision Maker / Evaluator / Influencer on a deal.
+- **No campaign / target list model** — Mass outreach attribution not tracked at the CRM data model level.
 
-**3. Collaborators / secondary-owner pattern (formally)**
-EspoCRM's `entityCollaborator` junction (Task, Case) grants read + stream access to named users without giving them full team membership. AltLeads is building this but it's not shipped. The formal data pattern: a dedicated `entityCollaborator` table, max-count cap (30), rendered via a specific `views/fields/collaborators` widget, and reflected in the ownership checker.
+### Activity model gaps
+- **Activities vs History split panel** — AltLeads has an activity hub but not the structured two-panel split (upcoming vs past) per record.
+- **Meeting/Call acceptance status per attendee** — AltLeads' meeting_master does not track per-attendee acceptance (None/Accepted/Tentative/Declined) via junction table columns.
+- **Followers / auto-notification** — No subscribe-to-record mechanic. AltLeads users cannot "follow" a record to receive change notifications.
+- **Stream / chatter** — AltLeads' interaction log captures call/meeting outcomes but is not a free-form chatter stream where team members can post notes and @mention.
 
-**4. Formal lead conversion wizard**
-EspoCRM has a structured conversion flow (Lead → Account + Contact + Opportunity) with field mapping declared in entityDefs (`convertFields`), back-links (`createdAccount`, `createdContact`, `createdOpportunity`), and a `convertedAt` timestamp. AltLeads has lead status management but no conversion that creates downstream structured records.
+### Automation gaps
+- **No Formula / server-side scripting on save** — AltLeads has no equivalent of EspoCRM's formula language for auto-computing fields or triggering actions on record save.
+- **No Workflow rules** — No trigger-action automation. Actions like "when lead status changes to Converted, create a task" require code changes.
+- **No Dynamic Logic** — No UI visibility conditions based on field values (e.g. show field X only when status = Y).
 
-**5. Formula / before-save scripting**
-EspoCRM has a full expression language for computed fields and pre-save validation scripts, configurable by admins through the Field Manager. AltLeads has no equivalent admin-configurable automation at the field level. Business logic is hardcoded in service layer.
+### UI/UX gaps
+- **Metadata-driven layout system** — AltLeads layouts are hardcoded in React components. EspoCRM's JSON layout files allow admins to rearrange fields, add/remove columns, reorder panels without touching code.
+- **No Layout Manager** — No admin UI to configure field order per view per entity.
+- **No Kanban on all entities** — AltLeads has kanban for companies but it is not a generic system applicable to any entity with a status field.
+- **No dashlets / configurable dashboard** — Fixed dashboard; no per-user drag-drop dashlet configuration.
+- **No in-app Entity Manager** — Admins cannot add custom fields through a UI.
 
-**6. Dynamic Logic (client-side conditional fields)**
-Field visibility, required, and read-only driven by other field values at runtime. AltLeads has no equivalent — all fields are always visible/required or not. Needed for conditional qualifying questions, for example.
-
-**7. Field-level ACL**
-EspoCRM can mark individual fields as `read: no` or `edit: no` per role. AltLeads controls visibility at the page/component level, not the individual field level. This becomes important when e.g. salary or financial data should be hidden from agents but visible to managers.
-
-**8. Stream / chatter**
-EspoCRM's Stream on every record lets users post notes, @mention, follow, and see automatic change notifications. AltLeads has an activity hub (interaction log + tasks), but there is no free-form post/chatter capability or follower model. This is a collaboration gap.
-
-**9. Knowledge Base**
-Cases link to KnowledgeBaseArticle records. AltLeads has no knowledge base or article-linking concept.
-
-**10. Workflows / BPM (event-triggered automation)**
-EspoCRM Advanced Pack (enterprise) provides trigger-action workflows and BPMN process builder. AltLeads's planned "automation event-spine" covers the same ground but doesn't exist yet.
-
-**11. Portal users per Contact**
-EspoCRM allows each Contact to be provisioned a portal login, with account-scoped ACL (`all/account/contact/own/no`). AltLeads's sales portal gives a separate login to salespersons, but individual customer/contact self-service portal is not planned.
-
-**12. Campaign / mass-email engine**
-TargetList, Campaign, MassEmail, CampaignLogRecord, TrackingUrl, opt-out management. AltLeads has no outbound campaign management; it's an inbound-outreach tracking system.
-
-**13. Reminders**
-EspoCRM persists `reminders` as a jsonArray on Meeting/Call/Task (stored separately, with time-offset and popup/email type). AltLeads has no reminder or notification scheduling for activities.
-
-**14. Acceptance status on activities**
-Meeting/Call attendees (users, contacts, leads) each have an individual `acceptanceStatus` (Accepted/Tentative/Declined/None) stored in the junction table. AltLeads meeting records have no attendee acceptance model.
+### Infrastructure gaps
+- **No custom fields (admin-managed)** — Adding a field requires a code change + migration.
+- **No import with duplicate detection** — AltLeads has bulk import but EspoCRM's includes field mapping UI, duplicate checking on configurable fields, and merge/skip/update options.
+- **No merge duplicates** — AltLeads has no duplicate merge UI.
+- **No Reminders** — No popup or email reminders for tasks/meetings.
 
 ---
 
 ## 10. Reverse-Engineering Feasibility
 
-### What ports well to React/Supabase
+### What translates directly to React/Supabase
 
-**Metadata-driven layouts (high ROI).** The three-layer pattern — entityDefs (schema), clientDefs (UI config), layouts (column/row JSON) — translates directly. Store the layout JSON in a `metadata` Postgres table or as static config files. The React renderer reads the layout and renders fields generically. This is exactly how admin-configurable list/detail columns should work. AltLeads already has layout-based list views; formalising the JSON config store would unlock admin-editable layouts and custom field rendering with zero per-entity code.
+**1. Entity and field metadata to Supabase schema + Zod types**
 
-**Link types as a vocabulary (high ROI).** EspoCRM's link types (`belongsTo`, `hasMany`, `hasChildren`, `belongsToParent`, `hasOne`, `linkMultiple`, `linkOne`) are a clean vocabulary for describing relationships. Adopting this vocabulary in AltLeads's internal API/ORM layer would make it easier to add new entities and relationships without writing bespoke join logic every time.
+EspoCRM's `entityDefs` field type system maps cleanly:
+- `varchar` to `text`
+- `enum` to Postgres `enum` or `text CHECK`
+- `currency` to `numeric(15,2)` + currency code column
+- `linkMultiple` to junction table (already how AltLeads works)
+- `linkParent` to `parent_type text, parent_id uuid` polymorphic columns
+- `hasChildren` / `hasMany` to FK or junction table
 
-**Collaborators pattern (medium ROI, building now).** The `entityCollaborator` junction with read-only ownership check is directly implementable as a Postgres join table + RLS policy that grants SELECT to users in the collaborators list. The AltLeads RLS already has the concept of project-scoped access; collaborators adds record-scoped sharing on top.
+**2. ACL own/team/all model to RLS policies**
 
-**Stage-to-probability map in entityDefs (low effort).** For the future Deals entity, embed the `probabilityMap` in the entity config so changing stage auto-fills probability. Pure frontend logic, no backend change needed.
+This is the highest-ROI translation. The four levels map to composable RLS conditions:
 
-**Formula-style computed fields (medium ROI).** Inline SQL expressions for computed fields (e.g. weighted amount, duration) map directly to Postgres generated columns or computed columns in PostgREST views. The pattern of declaring the computation in metadata rather than a service class is worth adopting.
+- `own` level: `auth.uid() = assigned_user_id`
+- `team` level: `auth.uid() IN (SELECT user_id FROM team_members WHERE team_id IN (SELECT team_id FROM record_teams WHERE record_id = id))`
+- `all` level: no row-level restriction (role-check only at query time)
+- `collaborators`: `auth.uid() IN (SELECT user_id FROM entity_collaborators WHERE entity_id = id)` — gives read access to named users on specific records
 
-**notActualOptions for status enums (easy win).** The concept of marking certain status values as `notActualOptions` (they appear in data but not in the "create new" dropdown) is a UX pattern AltLeads should steal immediately for statuses like Converted, Recycled, Dead — prevents agents accidentally selecting terminal states.
+The four levels can be implemented as a `user_access_level` config per role per entity type, evaluated at query time via a helper function. AltLeads currently has only project-scoped RLS; adding own/team/all would be a significant but buildable enhancement that directly addresses the assignment/write-path risk documented in REBUILD_LOG.
 
-### What is Espo-specific / does not port
+**3. Collaborators junction to `entity_collaborator` table**
 
-**PHP metadata merge at boot.** EspoCRM's `custom/` overlay that deep-merges JSON at PHP boot is clever but deeply tied to the PHP process. In the AltLeads React+Supabase world, the equivalent is a `metadata` table in Postgres with a row per entity+type+content, loaded at app init via a single API call. The concept ports; the mechanism must be rebuilt.
+The pattern is simple:
+```sql
+CREATE TABLE entity_collaborator (
+  entity_type text,
+  entity_id uuid,
+  user_id uuid,
+  PRIMARY KEY (entity_type, entity_id, user_id)
+);
+```
+RLS union on `collaborators` gives read access. This is what ALT-152 should implement.
 
-**Backbone.js view hierarchy.** EspoCRM's `views/`, `recordViews`, `sidePanels` are all Backbone View class references. They don't port at all — AltLeads uses React components. The layout JSON format can be adopted but the renderer must be React-native.
+**4. Activities / History panel split**
 
-**Formula language.** EspoCRM's custom expression language is significant investment. For AltLeads the pragmatic equivalent is Postgres `DEFAULT` expressions and `GENERATED ALWAYS AS` columns for simple computations, plus a Supabase Edge Function for complex before-save logic. A full Formula interpreter would take months; start with the column-level computation pattern.
+The split between upcoming (status=Planned) and past (status=Held/Not Held + emails) is a filter-and-display pattern, not an architectural one. AltLeads can implement this as a query filter on the activity hub per record.
 
-**Multi-role merge at table-build time.** The ACL table is assembled at login time from all a user's roles and cached. Supabase RLS runs per-query in Postgres and is simpler (project scoped). AltLeads's approach of having role as a single field per user and enforcing it in RLS policies is arguably cleaner for a smaller role set. Adopting EspoCRM's multi-role merge would require moving ACL computation out of RLS and into a custom middleware layer — not worth it for 6 roles.
+**5. Kanban infrastructure**
 
-### Overall verdict
+Already partially in AltLeads; generalizing it to any entity with a `status` field is achievable. The EspoCRM pattern of `kanbanViewMode: true` + `kanbanStatusIgnoreList` in metadata is guidance for what config flags to expose.
 
-EspoCRM is a very well-structured reference for **data model design** (entity relationships, junction table patterns, computed fields, conversion flows) and **UI configuration patterns** (layout JSON, side panel conventions, filter lists). Its ACL model provides a richer vocabulary than AltLeads currently has (team levels, field-level ACL, collaborators, portal scoping).
+### What does NOT port easily
 
-The highest-ROI ideas to take from this analysis:
+**1. Metadata-driven layout system**
 
-1. **Formalise layout JSON as a config store** — enables admin-editable lists/detail layouts and custom field ordering without code deploys.
-2. **`entityCollaborator` junction** — implement as planned, using the max-30 cap and read-only ownership semantics from EspoCRM.
-3. **Deal entity modelled after Opportunity** — stage/probability/close-date/contacts-with-role pattern is proven.
-4. **`notActualOptions` pattern for status enums** — prevent terminal statuses appearing in create/edit dropdowns.
-5. **Field-level ACL in roles** — at minimum, a `hidden_fields` list per role to suppress sensitive columns.
-6. **Acceptance status on meeting attendees** — store per-attendee RSVP in the junction table.
+EspoCRM's JSON layout files + Layout Manager is the most powerful but most expensive feature to replicate in React. Every React component in AltLeads today has its fields hardcoded. Building a metadata-driven system requires:
+- A layouts table in Supabase (`layouts` table with entity_type, layout_type, config jsonb)
+- A generic React field renderer that looks up field type from metadata and renders the right input
+- An admin Layout Manager UI
+This is a multi-week project but is the highest-leverage customization enabler long-term.
 
-Avoid: porting Formula (use Postgres-native expressions instead), porting multi-role merge (keep single-role-per-user), porting Backbone views (already using React).
+**2. Formula / server-side scripting**
+
+No Supabase equivalent out of the box. Options:
+- Postgres triggers (PL/pgSQL for computed fields) — works for simple cases
+- Supabase Edge Functions triggered via DB webhooks — closest equivalent to EspoCRM's afterSave formula
+- Not feasible as a no-code admin feature; would remain developer-configured
+
+**3. Dynamic Logic (client-side conditional UI)**
+
+Achievable in React but requires storing condition rules as JSON and evaluating them in the form renderer. Medium complexity; very high UX value.
+
+**4. Workflow rules**
+
+Can be built as a Supabase Edge Function triggered by DB change events, but the admin UI to configure trigger-action rules is complex. Medium-term roadmap item.
+
+### Verdict and highest-ROI items
+
+**Priority order for adapting from EspoCRM:**
+
+| # | Feature | Effort | Value |
+|---|---|---|---|
+| 1 | **Collaborators** (`entity_collaborator` table + RLS union) | Low | High — unblocks ALT-152, enables shared task access |
+| 2 | **own/team/all ACL levels** (add `team_members` + `record_teams` + role config + RLS policies) | Medium | High — solves the assignment/access model cleanly for internal launch |
+| 3 | **Activities vs History split** per record | Low | Medium — cleaner UX than flat activity log |
+| 4 | **Attendee acceptance status** on meetings/calls (add `status` column to junction tables) | Low | Medium — important for scheduling coordination |
+| 5 | **Opportunity / Deal entity** with stage + probability + closeDate | Medium | High — enables pipeline tracking and sales portal |
+| 6 | **Dynamic Logic** (field visibility from JSON conditions) | Medium | High — enables conditional forms without code deploys |
+| 7 | **Layout-as-config** (store list/detail layouts in DB, render from metadata) | High | Very High long-term — enables no-code customization |
+| 8 | **Formula / Edge Function triggers** (auto-compute fields on save) | Medium | Medium — enables automation without code changes |
+
+**Bottom line:** EspoCRM's ACL model (own/team/all levels per action, collaborators for record-specific sharing, teams for group access) is the single most architecturally valuable pattern to port to AltLeads. It maps cleanly to Postgres RLS policies and directly addresses the write-path/ownership blocker. The metadata-driven layout system is the most powerful but most expensive; start with the ACL model and collaborators, then work toward JSON-driven layouts as the platform matures.

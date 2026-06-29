@@ -1,640 +1,506 @@
-# Odoo Community CRM — Architecture Blueprint
-
-> Reverse-engineered from source at `E:\reference code for crm\odoo`.
-> All file paths are relative to that root. Read date: 2026-06-29.
-> Purpose: durable reference for AltLeads product decisions. Do NOT copy code (LGPL).
+# Odoo CRM — Architecture Teardown
+> Reference blueprint for AltLeads product team. Source: `E:\reference code for crm\odoo` (read-only study; LGPL).
+> Written: 2026-06-29
 
 ---
 
 ## 1. Stack & Code Organization
 
-**Runtime:** Python 3 + own ORM (`odoo.fields`, `odoo.models`) backed by PostgreSQL. Frontend uses OWL (Own Web Library, a reactive JS framework) + QWeb XML templates. No external ORM (SQLAlchemy, etc.) — Odoo's ORM generates SQL internally and surfaces a Python record-set API.
+**Language / framework:** Python 3 (ORM layer `odoo.models`), XML for views and security rules, CSV for access-control lists. Front-end is Owl.js (Odoo's own JS component framework). No TypeScript.
 
-**Module / addon structure** (observed in `addons/crm/`, `addons/mail/`, `addons/sales_team/`, `addons/base_automation/`):
+**Server:** Python WSGI server + PostgreSQL. Cron jobs run inside the server process. Email is handled via `fetchmail` (IMAP polling) and `ir.mail_server` (SMTP out).
 
-```
-addons/<module>/
-  __manifest__.py          # name, version, depends, data files list
-  __init__.py              # imports models/, controllers/, wizards/
-  models/                  # Python model classes (one file per model, roughly)
-  views/                   # XML view definitions (list, form, kanban, search)
-  security/                # XML: res.groups definitions + ir.rule record rules
-  data/                    # XML seed data (stages, lost-reasons, cron jobs, mail subtypes)
-  wizard/                  # transient models + views for dialogs (e.g. merge, convert)
-  report/                  # XML report views
-  static/src/              # JS/OWL components, SCSS
-```
+**Addon (module) architecture:** Every feature lives in a self-contained addon directory under `addons/`. An addon declares its dependencies in `__manifest__.py` and ships:
+- `models/` — Python ORM model classes
+- `views/` — XML view definitions (form, list, kanban, search)
+- `security/` — `ir.model.access.csv` (table-level CRUD) + `*_security.xml` (row-level `ir.rule`)
+- `data/` — seed/demo XML
+- `controllers/` — HTTP routes
 
-**Key framework concepts:**
-- **Model inheritance via `_inherit`**: a model can extend another (`class CrmTeam(_inherit=['mail.thread', 'crm.team'])`) — both "extension" (adds fields to same table) and "delegation" (separate table) patterns exist. The CRM `crm.team` is defined in `sales_team/models/crm_team.py` and extended in `crm/models/crm_team.py`.
-- **Mixin pattern**: `mail.thread`, `mail.activity.mixin`, `utm.mixin`, `format.address.mixin` etc. are abstract models mixed into concrete models via `_inherit`. The `CrmLead` class inherits six mixins (line 88-95 of `crm/models/crm_lead.py`).
-- **Computed fields**: `compute='_method_name'`, optionally `store=True` (materialized) or `readonly=False` (user-editable computed default). Tracking (`tracking=N`) logs field changes to the chatter automatically.
-- **XML data files**: security rules, view definitions, demo data, cron jobs, and mail templates are all XML, loaded on module install/upgrade. Views are stored in the database as `ir.ui.view` records.
-- **`ir.*` registry models**: `ir.model`, `ir.model.fields`, `ir.rule`, `ir.actions.server`, `ir.cron` — Odoo's meta-layer. Everything (models, fields, menus, actions) is introspectable at runtime from the database.
+**CRM-relevant addons:**
+
+| Addon | Purpose |
+|---|---|
+| `addons/crm/` | Leads, opportunities, stages, teams, scoring |
+| `addons/mail/` | Thread, followers, activities, chatter, push notifications |
+| `addons/sales_team/` | `crm.team` base model, salesperson groups |
+| `addons/base_automation/` | Automated actions / workflow engine |
+| `addons/contacts/` | Thin UI layer over `res.partner` |
+| `odoo/addons/base/` | `res.partner`, `res.users`, `res.company`, `ir.rule`, `res.groups` |
+
+**Inheritance model:** Python multiple-inheritance mixins. `crm.lead` inherits from `mail.thread.cc`, `mail.thread.blacklist`, `mail.thread.phone`, `mail.activity.mixin`, `utm.mixin`, `format.address.mixin`, `mail.tracking.duration.mixin`. This is class-level mixin chaining — every mixin adds fields and methods to the same PostgreSQL table.
 
 ---
 
 ## 2. Core CRM Data Model
 
-### `crm.lead` — the central record (`addons/crm/models/crm_lead.py`)
+### `res.partner` — Unified Company + Contact
+File: `odoo/addons/base/models/res_partner.py`
 
-Single table holds both **Leads** and **Opportunities**, distinguished by `type = Selection([('lead','Lead'),('opportunity','Opportunity')])`. This unified model means list/kanban views can filter by type; converting a lead to an opportunity is just a write to `type` plus linking a `partner_id`.
+The single most architecturally distinctive choice in Odoo: **one table holds both companies and individual contacts**.
 
-**Key fields:**
+Key fields:
+- `is_company: Boolean` — True = company record, False = person
+- `parent_id: Many2one('res.partner')` — links a contact to its employer company
+- `child_ids: One2many('res.partner', 'parent_id')` — reverse: company → contacts
+- `type: Selection['contact','invoice','delivery','other']` — sub-address types
+- `name`, `email`, `phone`, `website`, `street`, `city`, `country_id`
+- `vat` (Tax ID), `company_registry` (legal registration number)
+- `industry_id`, `category_id` (hierarchical tags via `parent_path`)
+- `user_id` — Salesperson on the partner record itself
+- `active` — soft-delete (default filter excludes `active=False`)
 
-| Field | Type | Notes |
-|---|---|---|
-| `name` | Char | Opportunity name; auto-computed from partner if blank |
-| `type` | Selection | `'lead'` or `'opportunity'`; controls which pipeline UI appears |
-| `stage_id` | Many2one → `crm.stage` | Current pipeline stage; domain-filtered by `team_id` |
-| `user_id` | Many2one → `res.users` | Salesperson (owner); triggers `date_open` on first set |
-| `team_id` | Many2one → `crm.team` | Sales team; auto-computed from `user_id` membership |
-| `partner_id` | Many2one → `res.partner` | Linked contact (optional on lead, usually set on opportunity) |
-| `partner_name` / `contact_name` | Char | Denormalized from partner for pre-conversion leads |
-| `email_from` / `phone` | Char | Synced bidirectionally with `partner_id.email`/`phone` |
-| `priority` | Selection | 0-3 (Low/Medium/High/Very High); affects default sort |
-| `expected_revenue` | Monetary | Deal value |
-| `recurring_revenue` + `recurring_plan` | Monetary + Many2one | MRR/ARR support |
-| `probability` | Float | Manual or AI-automated win probability (0-100) |
-| `automated_probability` | Float | ML-computed from `crm.lead.scoring.frequency` table |
-| `won_status` | Selection | `won/lost/pending` — computed from `stage_id.is_won` + `active` |
-| `lost_reason_id` | Many2one → `crm.lost.reason` | Required on archive-as-lost |
-| `active` | Boolean | False = archived; combined with `probability=0` means "lost" |
-| `date_open` | Datetime | Assignment date (when `user_id` first set) |
-| `date_closed` | Datetime | Set on won/lost |
-| `date_deadline` | Date | Expected closing |
-| `day_open` / `day_close` | Float | KPI: days to assign / days to close (computed) |
-| `date_last_stage_update` | Datetime | Used for "rotting" detection |
-| `tag_ids` | Many2many → `crm.tag` | Classification tags |
-| `lead_properties` | Properties | Dynamic custom fields; definition stored on `team_id.lead_properties_definition` |
-| `campaign_id` / `medium_id` / `source_id` | Many2one (UTM) | Marketing attribution |
-| `calendar_event_ids` | One2many → `calendar.event` | Meetings linked via `opportunity_id` |
-| `duplicate_lead_ids` | Many2many (computed) | Potential duplicate detection by email domain |
-| `color` | Integer | Kanban color index |
-| `referred` | Char | "Referred by" free text |
+There is no separate "Company" table. A partner with `is_company=True` IS the company; contacts hang off it via `parent_id`. This collapses the company↔contact relationship into a self-referential tree. Address subtypes (invoice, delivery) are also rows in the same table with a different `type` value.
 
-**Clever design choices:**
-- **Unified Lead + Opportunity** in one table eliminates a join when converting; conversion is just a field write plus partner creation.
-- **Bidirectional partner sync**: `email_from`/`phone` are computed from `partner_id` but also have inverses that push back to the partner — with a "ribbon" warning when they diverge (`partner_email_update`, `partner_phone_update` flags).
-- **Rotting threshold per stage** (`crm_stage.rotting_threshold_days`): each stage can define how many days without update constitutes a stale record; no global setting needed.
-- **AI probability** is stored separately from manual probability so users can see both and choose to re-align.
-- **`lead_properties` via `fields.Properties`**: a JSON column whose schema (`PropertiesDefinition`) lives on the team record — so each sales team can define different custom fields for its leads without schema migrations.
+### `crm.lead` — Lead and Opportunity (same table)
+File: `addons/crm/models/crm_lead.py`
 
-### `crm.stage` (`addons/crm/models/crm_stage.py`)
+One table serves both leads (pre-qualification) and opportunities (sales pipeline). The `type` field (`lead` | `opportunity`) is the discriminator. Conversion (`convert_opportunity()`) flips `type` and optionally creates or links a `res.partner`.
 
-| Field | Notes |
-|---|---|
-| `name` | Translatable stage label |
-| `sequence` | Ordering (lower = earlier) |
-| `is_won` | Boolean; setting this cascades `probability=100` to all leads in stage |
-| `fold` | Whether column is folded by default in kanban |
-| `team_ids` | Many2many → `crm.team`; stages can be shared across teams or team-specific |
-| `rotting_threshold_days` | Per-stage staleness threshold |
-| `requirements` | Tooltip text for stage entry criteria |
+Key fields:
+- `name` — opportunity name
+- `type: Selection['lead','opportunity']` — lifecycle discriminator
+- `stage_id: Many2one('crm.stage')` — current pipeline stage
+- `user_id` — Salesperson (assigned agent)
+- `team_id: Many2one('crm.team')` — Sales Team
+- `partner_id: Many2one('res.partner')` — linked contact (optional on leads)
+- `partner_name`, `contact_name`, `email_from`, `phone` — denormalized copies from partner (exist before partner is created)
+- `priority: Selection['0','1','2','3']` — Low / Medium / High / Very High (star rating)
+- `won_status: Selection['won','lost','pending']` — computed from stage + user action
+- `lost_reason_id: Many2one('crm.lost.reason')`
+- `probability`, `automated_probability` — ML-computed win probability (Predictive Lead Scoring)
+- `expected_revenue`, `recurring_revenue`, `recurring_plan`
+- `date_open` (assignment date), `date_deadline`, `date_closed`, `date_conversion`
+- `day_open`, `day_close` — computed cycle-time metrics in days
+- `date_last_stage_update` — stage-time tracking
+- `tag_ids: Many2many('crm.tag')`
+- `lead_properties: Properties` — JSON custom fields per team (`team_id.lead_properties_definition`)
+- `campaign_id`, `medium_id`, `source_id` — UTM attribution
+- `calendar_event_ids: One2many('calendar.event')` — linked meetings
+- `duplicate_lead_ids` — computed potential duplicates
 
-Stages are **global-by-default** (no `team_ids`), or team-scoped via `team_ids`. Lead `stage_id` domain filters: `['|', ('team_ids', '=', False), ('team_ids', 'in', team_id)]` — a lead only sees stages for its team or global stages.
+Performance indexes declared in model (notable):
+```python
+_user_id_team_id_type_index = models.Index("(user_id, team_id, type)")
+_create_date_team_id_idx    = models.Index("(create_date, team_id)")
+_default_order_idx          = models.Index('(priority DESC, id DESC) WHERE active IS TRUE')
+```
 
-### `res.partner` — unified company + contact model (`odoo/addons/base/models/res_partner.py`)
+### `crm.stage`
+File: `addons/crm/models/crm_stage.py`
 
-The single most important design decision in Odoo CRM: **one table for both companies and individual contacts**, distinguished by `is_company = Boolean`. Hierarchy via `parent_id` (self-referential Many2one): a contact's parent is its company.
+Fields: `name`, `sequence`, `is_won: Boolean`, `fold: Boolean`, `rotting_threshold_days`, `requirements` (tooltip text), `team_ids: Many2many('crm.team')` — stages can be global or scoped to specific teams.
 
-| Field | Notes |
-|---|---|
-| `name` | Person or company name |
-| `is_company` | Boolean; True = company record |
-| `parent_id` | Many2one → `res.partner`; contact's employer company |
-| `child_ids` | One2many inverse; company's contacts |
-| `commercial_partner_id` | Computed: topmost company in hierarchy |
-| `complete_name` | Computed: "Company / Contact" display |
-| `email`, `phone`, `mobile` | Contact info |
-| `street`, `city`, `zip`, `country_id` | Full address |
-| `user_id` | Salesperson responsible |
-| `category_id` | Many2many tags |
-| `vat` | Tax ID (validated per country) |
-| `lang` | Language for email/doc generation |
-| `ref` | Internal reference |
+Setting `is_won=True` triggers a bulk update of all leads in that stage to `probability=100`.
 
-**No separate "Account" vs "Contact" objects** (unlike Salesforce). One model, two roles, parent-child hierarchy. This simplifies queries but requires careful filtering (`is_company=True` for company lookups).
+### `crm.team` (Sales Team)
+File: `addons/crm/models/crm_team.py`
 
-### `crm.team` (`addons/sales_team/models/crm_team.py` + `addons/crm/models/crm_team.py`)
+- `use_leads: Boolean`, `use_opportunities: Boolean` — feature flags per team
+- `alias_id` — inbound email alias; emails to this address auto-create leads
+- `assignment_domain` — filter domain for auto-lead-assignment
+- `assignment_max` — monthly capacity across all members
+- `lead_properties_definition: PropertiesDefinition` — custom field schema for leads in this team
+- `crm_team_member_ids` → `crm.team.member` (with `assignment_max` per member, `lead_month_count`)
 
-Base definition in `sales_team`; CRM-specific extension adds leads/opportunities logic.
+### Relationship map
+```
+res.partner (is_company=True)
+  └─ child_ids → res.partner (is_company=False, parent_id=company)
 
-| Field | Notes |
-|---|---|
-| `name` | Team name |
-| `user_id` | Team leader |
-| `member_ids` | Many2many → `res.users` (computed from `crm_team_member_ids`) |
-| `crm_team_member_ids` | One2many → `crm.team.member`; membership records with quotas |
-| `company_id` | Optional company scoping |
-| `use_leads` / `use_opportunities` | Feature flags per team |
-| `alias_id` | Email alias; incoming mail auto-creates leads for this team |
-| `assignment_domain` | Char (domain expression); filters which leads this team can receive in auto-assignment |
-| `assignment_max` | Computed: sum of member assignment_max — monthly lead capacity |
-| `lead_properties_definition` | PropertiesDefinition; schema for per-team custom fields on leads |
+crm.lead
+  ├─ partner_id → res.partner (contact)
+  ├─ stage_id → crm.stage
+  ├─ team_id → crm.team
+  ├─ user_id → res.users (salesperson)
+  ├─ tag_ids → crm.tag []
+  ├─ calendar_event_ids → calendar.event []
+  ├─ [via mail.activity.mixin] → mail.activity []
+  └─ [via mail.thread] → mail.message [], mail.followers []
+```
 
-### `crm.team.member` (`addons/crm/models/crm_team_member.py`)
-
-Junction model between team and user, with assignment metadata:
-
-- `crm_team_id` → `crm.team`
-- `user_id` → `res.users`
-- `assignment_max` (Integer): monthly lead capacity for this member
-- `assignment_domain` / `assignment_domain_preferred`: filter domains for lead routing
-- `lead_month_count`: how many leads assigned this month
-- `assignment_optout`: skip this member in auto-assignment
-
-### `mail.activity` (`addons/mail/models/mail_activity.py`)
-
-Activities are **future tasks on records**, not log entries. They are unlinked (deleted) when marked done, and a chatter message is posted as the completion record.
-
-| Field | Notes |
-|---|---|
-| `res_model_id` / `res_id` | Polymorphic link to any model record |
-| `activity_type_id` | Many2one → `mail.activity.type` |
-| `summary` | Short label |
-| `note` | HTML description |
-| `date_deadline` | Due date (required) |
-| `user_id` | Assigned to |
-| `state` | Computed: `overdue/today/planned/done` |
-| `feedback` | Text entered when marking done |
-| `automated` | Boolean; system-created vs user-created |
-
-Activity types (`mail.activity.type`): Email, Call, Meeting, Document, etc. — extensible. Type has `category` (for icon/color), `decoration_type`, and optional `res_model` to restrict to a specific model.
+### Lead → Opportunity lifecycle
+1. Inbound email or manual creation → `type='lead'`
+2. Qualification → `convert_opportunity()` → `type='opportunity'`, partner created or linked
+3. Move through `crm.stage` (kanban drag or form save)
+4. Won: `action_set_won()` → `won_status='won'`, `probability=100`, `date_closed`
+5. Lost: `action_set_lost()` → `won_status='lost'`, requires `lost_reason_id`, `probability=0`
+6. Merge: `merge_opportunity()` — moves messages, attachments, activities, calendar events, and recent followers to winning record; archives duplicates
 
 ---
 
 ## 3. Multi-tenancy / Access Control
 
-Odoo uses **three interlocking layers**: ACL (model-level CRUD matrix), `ir.rule` (row-level domain filter), and `res.groups` (role).
+Odoo uses a two-layer model: **table-level ACL** (`ir.model.access`) + **row-level record rules** (`ir.rule`).
 
-### Groups (roles) — `addons/crm/security/crm_security.xml` + `addons/sales_team/`
+### Groups (`res.groups`)
+Defined in `addons/sales_team/` and `addons/crm/security/crm_security.xml`:
+- `sales_team.group_sale_salesman` — basic salesperson; sees own leads only
+- `sales_team.group_sale_salesman_all_leads` — sees all leads across teams
+- `sales_team.group_sale_manager` — manages teams, activity plans, contacts menu
 
-```
-sales_team.group_sale_salesman        — basic salesperson
-sales_team.group_sale_salesman_all_leads  — can see all leads (not just own)
-sales_team.group_sale_manager         — full access, team config
-crm.group_use_lead                    — show "Leads" menu (feature flag)
-crm.group_use_recurring_revenues      — show MRR fields
-```
-
-Groups form an implicit hierarchy (manager implies salesman); this is declared in the group XML.
-
-### Record Rules (`ir.rule`) — `addons/crm/security/crm_security.xml`
-
-Record rules are **row-level security** evaluated as PostgreSQL WHERE clauses appended to every query for users in the specified group. They combine with AND (if multiple rules match a group) or OR (rules for different groups).
+### Record Rules (`ir.rule`) — from `addons/crm/security/crm_security.xml`
 
 ```xml
-<!-- Salespeople only see own leads OR unassigned leads -->
-<record id="crm_rule_personal_lead" model="ir.rule">
-  <field name="domain_force">['|',('user_id','=',user.id),('user_id','=',False)]</field>
-  <field name="groups" eval="[(4, ref('sales_team.group_sale_salesman'))]"/>
-</record>
+<!-- Salesperson sees only own leads OR unassigned -->
+crm_rule_personal_lead:
+  domain: ['|', ('user_id','=',user.id), ('user_id','=',False)]
+  groups: [group_sale_salesman]
 
-<!-- Managers / "all leads" group see everything -->
-<record id="crm_rule_all_lead" model="ir.rule">
-  <field name="domain_force">[(1,'=',1)]</field>  <!-- always true -->
-  <field name="groups" eval="[(4, ref('sales_team.group_sale_salesman_all_leads'))]"/>
-</record>
+<!-- Override: manager sees all -->
+crm_rule_all_lead:
+  domain: [(1,'=',1)]
+  groups: [group_sale_salesman_all_leads]
 
-<!-- Multi-company: leads scoped to user's active companies -->
-<record id="crm_lead_company_rule" model="ir.rule">
-  <field name="domain_force">[('company_id', 'in', company_ids + [False])]</field>
-  <!-- no groups = global rule, applies to everyone -->
-</record>
+<!-- Multi-company isolation (global — all users) -->
+crm_lead_company_rule:
+  domain: [('company_id', 'in', company_ids + [False])]
 ```
 
-**How `ir.rule` works** (`odoo/addons/base/models/ir_rule.py`):
-- `domain_force` is a Python expression evaluated with context `{'user': env.user, 'company_ids': [active company IDs], 'company_id': primary company}`.
-- `perm_read/perm_write/perm_create/perm_unlink`: which operations the rule restricts.
-- Rules without `groups` = global (apply to all users).
-- Rules are OR-combined across groups a user belongs to, AND-combined when multiple rules apply to the same group.
-- The ORM appends the domain as a SQL JOIN / WHERE clause — transparent to application code.
+Rules within a group are OR'd; rules across groups are AND'd. The multi-company rule applies globally regardless of role.
 
 ### Multi-company
+`crm.lead.company_id` links a lead to one `res.company`. Users can belong to multiple companies (`res.users.company_ids`). The company rule confines each user to records in their allowed companies. This is Odoo's native multi-tenant mechanism: a single database, company-scoped via `company_id` + a blanket `ir.rule`.
 
-- Every record with `company_id` gets a global rule `[('company_id', 'in', company_ids + [False])]` — the `+ [False]` allows records with no company to be seen by everyone.
-- Users can belong to multiple companies (`company_ids`); the "active" company set (`company_ids` in domain context) determines visibility.
-- Teams can be company-scoped; stages can be global or team-scoped.
-
-### Comparison to AltLeads project-scoped RLS
-
-| Odoo | AltLeads |
-|---|---|
-| `company_id` on records, global ir.rule | `project_id` on `lead_report`; RLS policy filters by project membership |
-| `user_id` = salesperson owner | `lead_report.user_id` = assigned agent |
-| Groups = `ir.rule` groups field | Roles in `role_master` (1=ADMIN…6=QC) |
-| Salesman sees own OR unassigned | Agent sees assigned to them OR team-visible |
-| Multi-company = separate filter layer | No multi-company; project = tenant boundary |
-| Stages global OR team-scoped | Statuses global (no per-project stage definitions yet) |
-
-AltLeads' `project` boundary is functionally equivalent to Odoo's `company_id` + team combination but is a single concept. The key difference: Odoo's `ir.rule` is evaluated server-side in SQL (zero leakage risk); AltLeads uses Supabase RLS policies which are also server-side Postgres policies — architecturally equivalent.
+### vs AltLeads
+AltLeads uses **Supabase RLS policies on `lead_report.project_id`** as the tenant boundary — functionally equivalent to Odoo's company scoping but enforced at the Postgres layer rather than the Python ORM layer. Odoo's group hierarchy (salesman → all-leads → manager) maps loosely to AltLeads roles (AGENT → TEAM_LEAD → ADMIN). Our approach is architecturally cleaner because RLS cannot be bypassed by application code errors.
 
 ---
 
 ## 4. Activity / Communication Model
 
-### `mail.thread` — the chatter backbone (`addons/mail/models/mail_thread.py`)
+This is one of Odoo's strongest architectural choices — everything communication-related is wired through `mail.thread`.
 
-`MailThread` is an **abstract model** mixed into any record that needs communication history. `CrmLead` inherits it via `mail.thread.cc`, `mail.thread.blacklist`, `mail.thread.phone`.
+### `mail.thread` (abstract mixin)
+File: `addons/mail/models/mail_thread.py`
 
-Key capabilities:
-- `message_ids` (One2many → `mail.message`): all messages, notes, field-change logs on a record.
-- `message_post(body, subtype, partner_ids, ...)`: sends a message and notifies followers.
-- Incoming email routing: each team can have an `alias_id` (email alias); inbound emails are parsed and create/update leads via `message_new()` / `message_update()`.
-- **Field-change tracking**: fields with `tracking=N` (integer = display order in chatter) auto-log changes as `mail.tracking.value` records linked to a chatter message.
+Any model that inherits `mail.thread` gets:
+- A **chatter** UI widget showing all messages, log notes, field-change history, and activity due dates in a unified timeline
+- `message_ids: One2many('mail.message')` — full conversation history
+- `message_follower_ids: One2many('mail.followers')` — subscription list
+- Inbound email routing: emails to the record's alias auto-post as messages
+- Field-change tracking: fields decorated with `tracking=True` emit `mail.tracking.value` rows on every write
+- `_track_duration_field` — one field whose time-in-value is tracked (used on `crm.lead` for stage duration analytics)
 
-### `mail.followers` (`addons/mail/models/mail_followers.py`)
+Key class options:
+- `_mail_flat_thread` — if True, all messages are attached to the first message (flat thread); if False, threaded replies are supported
+- `_mail_post_access` — minimum access right required to post a message (default: `write`)
+
+### `mail.followers` — Secondary Watchers (= Collaborators)
+File: `addons/mail/models/mail_followers.py`
 
 ```python
 class MailFollowers(models.Model):
-    res_model = fields.Char(...)   # e.g. 'crm.lead'
-    res_id    = fields.Many2oneReference(...)
-    partner_id = fields.Many2one('res.partner', ...)
-    subtype_ids = fields.Many2many('mail.message.subtype', ...)
+    _name = 'mail.followers'
+    res_model: Char          # model name e.g. 'crm.lead'
+    res_id: Integer          # record ID
+    partner_id: Many2one('res.partner')
+    subtype_ids: Many2many('mail.message.subtype')  # which event types they watch
 ```
 
-- **Followers are per-record, per-partner** — a partner can follow a lead and receive notifications.
-- `subtype_ids`: controls which notification types the follower receives (e.g., only stage changes, not every note).
-- The record creator is auto-subscribed as a follower (controllable via `mail_create_nosubscribe` context key).
-- **Followers vs. Collaborators**: in Odoo, a "follower" is anyone who should receive notifications — they are not necessarily assigned work. The `user_id` (salesperson) is the single owner; followers are the notification list. There is no native "collaborator" role with edit rights (that would require custom security).
+Any `res.partner` can follow any record of any model — fully polymorphic. Followers receive in-app and email notifications for only the message subtypes they subscribed to (e.g. only stage changes, not log notes). When leads are merged, followers active in the last 30 days are migrated to the winning record (`_merge_followers()`). Auto-follow rules: creating a record auto-subscribes the author; being assigned auto-subscribes the salesperson.
 
-### `mail.activity` + `mail.activity.mixin` — scheduled activities
+**vs AltLeads collaborators (planned):** The right design is a junction table `(model, record_id, user_id, notification_mask)`. Odoo's subtype granularity — subscribe to only specific event types — is worth replicating at design time even if the first version just notifies on everything.
 
-As described in section 2. The mixin (`addons/mail/models/mail_activity_mixin.py`) adds:
-- `activity_ids` One2many to the record
-- `activity_state`: computed (`overdue/today/planned`) — drives kanban color coding
-- `activity_date_deadline`: next upcoming deadline
-- `my_activity_date_deadline`: deadline of activities assigned to current user (used for sort/search)
+### `mail.activity` — Scheduled Activities (= Task Hub)
+File: `addons/mail/models/mail_activity.py`
 
-**Activities are prospective** (things to do); **chatter messages are retrospective** (things done). When an activity is marked done, it is deleted and a message is posted to the chatter capturing the feedback. This is a clean separation.
+```python
+class MailActivity(models.Model):
+    _name = 'mail.activity'
+    res_model_id: Many2one('ir.model')   # polymorphic: which model
+    res_id: Integer                       # which record
+    activity_type_id: Many2one('mail.activity.type')
+    summary: Char
+    note: Html
+    date_deadline: Date
+    feedback: Text               # filled when marking done
+    user_id: Many2one('res.users')    # assigned to
+    state: computed['overdue','today','planned','done']
+    attachment_ids: Many2many('ir.attachment')
+    previous_activity_type_id    # what came before
+    recommended_activity_type_id # next suggested action (chaining)
+    automated: Boolean           # created by automation rule vs manually
+```
 
-**Activity Plans** (`mail.activity.plan` + `mail.activity.plan_template`): a named sequence of activities that can be applied at once to a record (e.g., "Onboarding Plan" = Call + Demo + Proposal). Plans are defined in `addons/mail/models/mail_activity_plan.py`.
+Activities are **pre-completion tasks**: they appear on calendars, lists, and kanban cards. When marked done, the row is **deleted** and a `mail.message` (chatter post) is written with the feedback — preserving outcome history without leaving a stale "done task" pile. Activity types are configurable (`mail.activity.type`) and support chaining: completing type A prompts scheduling type B.
 
-### `mail.message` + subtypes
+**vs AltLeads task hub:** AltLeads's `task` table is the same concept. Key differences:
+- Odoo activities are polymorphic (any model, same table) — AltLeads tasks are lead-only
+- Odoo posts a chatter message on completion with the feedback text — AltLeads should write an `interaction` record when a task is closed
+- Odoo has chaining (done → suggest next) — AltLeads does not yet
 
-- `mail.message.subtype` categorizes messages: "Stage Changed", "New Lead", "Note", "Sent Email", etc.
-- Subtypes control follower notifications: followers subscribe to specific subtypes.
-- `mail_message_subtype_data.xml` in `addons/crm/data/` registers CRM-specific subtypes.
+### `mail.message` — Chatter
+Stores every message, note, system log, and tracking event. Key fields: `body`, `message_type` (`email`|`comment`|`notification`|`auto_comment`), `subtype_id`, `author_id`, `partner_ids` (recipients), `attachment_ids`, `tracking_value_ids` (field-change records). All in one flat table keyed by `(model, res_id)`.
 
-### Email routing
-
-- `mail.alias` (`alias_name@company.example.com`): each team has one. Incoming email to the alias creates a `crm.lead` with `team_id` set.
-- The `mail.alias.mixin` mixin wires a model to an alias domain.
-- `fetchmail` polling or SMTP push feeds inbound emails into the router.
+### Mail routing
+Inbound email → `fetchmail` → `mail.thread.message_process()` → matches on `Message-ID` header or alias → creates/updates record → posts as message. Outbound: `mail.mail` → `ir.mail_server`. Each `crm.team` can have an email alias — emails to `sales@company.com` auto-create leads assigned to that team.
 
 ---
 
 ## 5. Automation / Workflow Engine
 
-### `base.automation` (`addons/base_automation/models/base_automation.py`)
+File: `addons/base_automation/models/base_automation.py`
 
-The core automation model. Fields:
+`base.automation` ("Automated Actions") is Odoo's no-code workflow engine. Rules fire on triggers, check conditions, and execute one or more server actions.
 
-| Field | Notes |
-|---|---|
-| `name` | Rule name |
-| `model_id` | Which model to watch |
-| `trigger` | When to fire (see below) |
-| `filter_domain` | Additional domain filter: only apply to matching records |
-| `filter_pre_domain` | Pre-update domain: condition that must be true BEFORE the write |
-| `action_server_ids` | One2many → `ir.actions.server`; what to DO |
-| `active` | Enable/disable |
-| `last_run` | For time-based triggers |
-
-**Trigger types** (from `base_automation.py` lines 80-111):
-
-```python
-CREATE_TRIGGERS = ['on_create', 'on_create_or_write', 'on_priority_set',
-                   'on_stage_set', 'on_state_set', 'on_tag_set', 'on_user_set']
-
-WRITE_TRIGGERS  = ['on_write', 'on_archive', 'on_unarchive',
-                   'on_create_or_write', 'on_priority_set', 'on_stage_set',
-                   'on_state_set', 'on_tag_set', 'on_user_set']
-
-TIME_TRIGGERS   = ['on_time', 'on_time_created', 'on_time_updated']
-
-MAIL_TRIGGERS   = ['on_message_received', 'on_message_sent']
-
-# Plus: 'on_unlink', 'on_change' (UI only), 'on_webhook'
+### Triggers (from source)
+```
+on_create             — record created
+on_write              — record updated (deprecated; prefer on_create_or_write)
+on_create_or_write    — created or updated
+on_stage_set          — specific stage selected
+on_user_set           — salesperson assigned
+on_tag_set            — tag added
+on_state_set          — state field changes to specific value
+on_priority_set       — priority star changed
+on_archive            — record archived
+on_unarchive          — record unarchived
+on_unlink             — record deleted
+on_change             — UI field change (client-side only, not saved)
+on_time               — date field passes threshold (cron-checked)
+on_time_created       — N time after creation date
+on_time_updated       — N time after last update date
+on_message_received   — inbound message arrives on thread
+on_message_sent       — outbound message sent from thread
+on_webhook            — HTTP POST to generated URL
 ```
 
-- **`on_stage_set`** with `trg_field_ref` pointing to a specific stage: fires when lead moves to that stage. This is the most common CRM automation pattern.
-- **`on_time`** with `trg_date_id` (a date field) + `trg_date_range` (offset): e.g., "5 days after `date_deadline`" — the cron scans and fires. Uses `trg_date_range_type` (minutes/hours/days/months) and optional calendar for working-days calculation.
-- **`on_webhook`**: a URL is generated (`url` field); third-party POSTs to it; automation fires with the payload.
-- **`filter_pre_domain`**: enables "field changed FROM value X" semantics — check old state with pre-domain, new state with `filter_domain`.
+### Rule structure
+- `model_id` — which model this rule fires on
+- `trigger` — one of the above
+- `filter_domain` — condition that must be true at fire time
+- `filter_pre_domain` — condition that must be true BEFORE the change (for write triggers; enables "if it was X and becomes Y" logic)
+- `action_server_ids: One2many('ir.actions.server')` — one or more actions to execute
+- `trg_date_id`, `trg_date_range`, `trg_date_range_mode`, `trg_date_range_type` — for time-based triggers (e.g. "3 days after `date_deadline`")
+- `trg_date_calendar_id` — use working calendar for date math
+- `trg_field_ref` — for `on_stage_set` / `on_state_set` (which stage/state value)
+- `active: Boolean`, `last_run: Datetime`
 
-### `ir.actions.server` — what automations DO
+### Server actions (`ir.actions.server`)
+The actions that rules execute can: update field values on the record, create new records, send emails from a template, send SMS, add/remove followers, trigger another webhook, run arbitrary Python code (`code_type='code'`), or chain multiple actions.
 
-Server actions are the action side. Types include:
-- `code` — execute Python code snippet
-- `object_write` — update fields on matched records
-- `object_create` — create related records
-- `mail_post` — post a message / send email
-- `followers` — add/remove followers
-- `next_activity` — schedule an activity
-
-### `ir.cron` — scheduled tasks
-
-- CRM uses `ir_cron_data.xml` to register cron jobs: lead assignment (`_cron_assign_leads`), automated probability updates, rotting detection.
-- Cron entries have `interval_number` + `interval_type` (minutes/hours/days/weeks/months) and call a model method.
-
-### Lead Assignment Engine (`addons/crm/models/crm_team.py`)
-
-A sophisticated rule-based assignment system:
-1. `_allocate_leads()`: distributes unassigned leads across teams by weighted random selection based on `assignment_max` (team capacity). Merges duplicates during allocation.
-2. `_assign_and_convert_leads()`: within each team, distributes leads among members using round-robin weighted by quota; members with `assignment_domain_preferred` get priority leads first.
-3. Converts leads to opportunities as part of assignment (`convert_opportunity()`).
-4. Runs via `_cron_assign_leads()` on a daily cron, or on-demand via `action_assign_leads()`.
+### Practical CRM automations possible out-of-the-box
+- Auto-assign leads to salesperson by round-robin or domain filter
+- Send email to customer when stage changes to "Proposal Sent"
+- Escalate rotting opportunities (time-based trigger N days after last update)
+- Schedule a follow-up activity N days after lead creation
+- Post a note when probability crosses a threshold
 
 ---
 
-## 6. Customization
+## 6. Customization (Custom Fields / Studio)
 
-### Dynamic custom fields via `fields.Properties`
+### `lead_properties` — dynamic custom fields per team
+`crm.lead` has a `lead_properties: Properties` field whose schema is defined by `team_id.lead_properties_definition: PropertiesDefinition`. Each team defines its own set of extra fields (text, number, date, selection, boolean, many2one, tags) in the UI. Values are stored as JSON in a single column — **no schema migrations required per field addition**. The definition lives on the team record; values live on each lead.
 
-`CrmLead.lead_properties = fields.Properties('Properties', definition='team_id.lead_properties_definition')` (line 114-116, `crm_lead.py`).
+This is the "light customization" path available in the community edition without Studio.
 
-`PropertiesDefinition` (from `odoo/addons/base/models/properties_base_definition.py`) stores a JSON schema of field definitions on the parent record (here `crm.team`). Each team defines its own set of custom fields; the JSON is stored in a JSONB-like column on leads. UI renders these dynamically. Field types supported: text, integer, boolean, date, selection, many2one, tags.
+### Odoo Studio (`web_studio` addon — Enterprise)
+Studio is a paid add-on not present in the community edition studied here. It provides a drag-and-drop form builder. Under the hood it creates `ir.model.fields` records (which do create real DB columns via `ALTER TABLE`) and `ir.ui.view` overrides (XML stored in the DB). Changes export as a module.
 
-This is a **metadata-driven custom field system** without requiring database schema migrations — the trade-off is that custom fields cannot be indexed efficiently and can't be used in complex SQL joins.
-
-### Odoo Studio (Enterprise only — not in Community source)
-
-Community edition does NOT include Studio. Custom fields in Community must be added by Python developers via model inheritance or via the Properties field above.
-
-### `ir.model.fields` — runtime field introspection
-
-Every field defined in Python models is registered in `ir.model.fields`. Admin users can browse fields at Settings > Technical > Database Structure. Computed fields, required flags, field types, and labels are all stored. This powers dynamic UI (searches, exports, filters) without hardcoding field names in views.
-
-### Views are data (`ir.ui.view`)
-
-All view definitions (list, form, kanban, search) are stored in the database as `ir.ui.view` records loaded from XML. This means they can be overridden or extended by other modules using `inherit_id` + XPath without modifying the original file — the extensibility model. In Studio (Enterprise), views can be edited via UI.
-
-### Saved filters / favorites (`ir.filters`)
-
-Users can save their filter+groupby combinations as "Favorites" on any list/search view. These are `ir.filters` records scoped to a model, user (or shared). This is the end-user search-customization layer.
+### `ir.model.fields` (all editions)
+Technical users can add fields through Settings > Technical > Fields. These create real columns but skip the module/migration lifecycle — not recommended for production.
 
 ---
 
 ## 7. Full Feature Inventory
 
-**Pipeline / Leads:**
-- Dual mode: Leads queue (pre-qualification) + Opportunities pipeline, togglable per team
-- Kanban pipeline with drag-and-drop stage transitions
-- List view with inline editing
-- Stage-specific requirements (tooltip hints for entry criteria)
-- Won / Lost actions with reason codes (`crm.lost.reason`)
-- Restore (un-lose) a lead
-- "Rotting" detection: stage-level threshold; highlights stale records in kanban
-- Duplicate detection by email domain (`_get_lead_duplicates`); surface count on record
-- Merge duplicates wizard (`crm_merge_opportunities_views.xml`); field-level merge with priority selection
-- Convert Lead → Opportunity wizard (creates/links `res.partner`)
-- Bulk convert / assign in mass wizard (`crm_lead_to_opportunity_mass_views.xml`)
+**Lead & Opportunity management**
+- Single table for both; `type` field discriminates
+- Lead → Opportunity conversion with partner creation/linking, team and stage assignment
+- Won / Lost actions with configurable reason tracking
+- Predictive Lead Scoring (ML probability; auto-updated on stage, team, and history changes)
+- Merge duplicates: messages, attachments, activities, calendar events, followers all migrate to winner
+- Recycle bin via `active=False` (soft-delete; restore via unarchive)
+- Automatic duplicate detection via `email_domain_criterion`, `phone_sanitized`, `partner_id`
+- Rotting detection: per-stage configurable threshold + visual highlighting
+- Priority stars (4 levels: Low/Medium/High/Very High)
+- Stage duration analytics (`_track_duration_field`)
+- Cycle-time metrics: `day_open` (create → assign), `day_close` (create → won/lost)
 
-**Scoring / Analytics:**
-- AI win probability (`automated_probability`) via Bayesian scoring frequency table (`crm.lead.scoring.frequency`)
-- Manual probability override with re-align button
-- Prorated revenue = `probability * expected_revenue`
-- MRR / recurring revenue support (`recurring_plan`, `recurring_revenue_monthly`)
-- Days-to-assign and days-to-close KPIs
-- Activity report view (`crm_activity_report_views.xml`) — cross-lead activity analytics
-- Opportunity forecast view
+**Pipeline & Stages**
+- Customizable stages per sales team (stages can be global or team-scoped)
+- Kanban + list + form views
+- Stage-level fold (hides empty columns in kanban)
+- Stage requirements tooltip (internal checklist)
+- Stage changes update probability automatically
+- Scheduled auto-assignment cron (round-robin by member capacity)
 
-**Assignment:**
-- Team-level capacity (`assignment_max` = sum of member quotas)
-- Per-member capacity (`assignment_max`) + preferred-domain routing
-- Auto-assign cron (daily) with weighted round-robin
-- Deduplication during assignment
-- Manual assign trigger per team
+**Sales Teams**
+- Multiple teams; each has its own stage set, email alias, member list
+- Per-member monthly assignment capacity (`assignment_max`)
+- Rule-based auto lead assignment
+- Team-level custom field schema
 
-**Communication:**
-- Email alias per team (inbound email → lead creation)
-- Chatter: messages, notes, field-change log, file attachments
-- Followers with per-subtype subscriptions
-- CC field on leads (`mail.thread.cc`)
-- Email blacklist integration (`mail.thread.blacklist`)
-- Phone validation (`mail.thread.phone`)
-- Scheduled activities: Call, Email, Meeting, Document, etc.
-- Activity plans: multi-step activity templates
-- Calendar integration: meetings linked to leads via `calendar_event_ids`
-- Scheduled/deferred message sending (`mail.scheduled_message`)
-- Push notifications (web push, mobile)
-- Real-time discuss (bus/websocket via `ir.websocket`)
+**Partners (Companies + Contacts)**
+- Unified company + contact model (`res.partner`, `is_company` + `parent_id`)
+- Multiple address types per company (contacts, invoicing, delivery, other)
+- Hierarchical tags (`res.partner.category` with `parent_path`)
+- Industry classification (`res.partner.industry`)
+- Phone / email quality validation (`phone_state`, `email_state`)
+- Blacklist (`mail.blacklist`) — blocks all outgoing marketing emails to an address
+- Geo coordinates (`partner_latitude`, `partner_longitude`)
+- VAT / Tax ID with per-country format validation
+- Language preference (per-contact email localization)
+- Bank accounts (`res.partner.bank`)
 
-**Team Management:**
-- Multiple sales teams; one team leader
-- Team-scoped stages, pipelines, email aliases
-- Team performance digest (`digest.py`)
-- Dashboard with team stats
+**Communication / Chatter**
+- Full email thread on every record (inbound + outbound)
+- Internal log notes (not sent to customer)
+- Field-change tracking in chatter ("Stage changed from X to Y at HH:MM")
+- Email CC (`mail.thread.cc` mixin)
+- Inbound email alias per team or per record
+- Scheduled messages (`mail.scheduled_message`)
+- Canned responses (`mail.canned_response`)
+- Link previews in messages
+- Message reactions (emoji)
+- Real-time: WebSocket push + web push (PWA) notifications
+- Blacklist management from thread
 
-**Data Quality / Import:**
-- Phone sanitization and quality flag (`phone_state`)
-- Email normalization and quality flag (`email_state`)
-- UTM tracking (campaign, medium, source) on leads
-- "Referred by" field
+**Followers / Collaborators**
+- Any partner can follow any record (polymorphic across all models)
+- Per-subtype subscription (follow only specific event types)
+- Auto-follow on create, on reply, on assignment
+- Follower migration on merge
+- Activity plan access managers (Enterprise)
 
-**Search / Filters:**
-- Full-text search with trigram index on `name`, `contact_name`, `partner_name`, `email_from`
-- Filter by team, salesperson, stage, priority, deadline, activity state, won/lost
-- Group by: stage, salesperson, team, country, source, campaign
-- Activity-deadline sort (custom `search_fetch` override for `my_activity_date_deadline`)
-- Saved favorites (`ir.filters`)
+**Activities (Scheduled Tasks)**
+- Polymorphic: same `mail.activity` table works for leads, orders, invoices, etc.
+- Configurable activity types with icons and default deadlines
+- Activity chaining: completing one type suggests/creates the next
+- "Done" action writes feedback to chatter and deletes the activity row
+- Activity plan templates: multi-step sequences launched in one click (Enterprise)
+- Calendar integration (`calendar.event` linked to opportunity)
+- Overdue / Today / Planned color states on kanban cards and list rows
+- "My Activities" global cross-model view for each user
 
-**Security:**
-- Per-role record rules (own leads vs all leads vs manager view)
-- Multi-company data isolation
-- Per-operation permissions (read/write/create/delete independently controllable per rule)
+**Automation**
+- 14+ trigger types: lifecycle events, time delays, webhooks, messages
+- Pre/post-condition filters (before-update and after-update domains)
+- Multiple server actions per rule (chain actions)
+- Working-calendar-aware date math for time triggers
+- In-app configurable, no code required
+
+**Reporting**
+- Pipeline funnel by stage, team, salesperson
+- Win/loss analysis with reason breakdown
+- Activity report (`crm.activity.report` — denormalized read model)
+- Expected revenue forecast by month
+- Recurring revenue (MRR) tracking
+- Conversion rate, days-to-close, days-to-assign computed metrics
+- Cohort / pivot / graph / list views in the UI
+
+**Customization**
+- Dynamic custom fields per team (JSON Properties column, zero migrations)
+- Studio (Enterprise): drag-and-drop form builder, real column creation
+- All views overridable via `ir.ui.view` XML inheritance
+- All row-level access via `ir.rule` domain expressions
+
+**Integrations (built-in)**
+- Email (IMAP fetch + SMTP send)
+- Calendar (CalDAV)
+- VoIP/telephony (Asterisk / SIP)
+- IAP cloud enrichment / lead generation service
+- UTM campaign tracking (campaign, source, medium on every lead)
+- WhatsApp (Enterprise)
+- Live Chat → lead conversion
 
 ---
 
 ## 8. UI/UX Patterns
 
-**View types** (from `crm_lead_views.xml` and kanban/list/form XML files):
+**Views:** Rendered from XML definitions by the Owl.js framework. Four standard view types:
+- **Kanban** — pipeline board grouped by `stage_id`; cards show partner name, email, expected revenue, priority stars, activity status dot; drag-to-move changes stage; quick-create inline form in each column
+- **List** — tabular with sortable columns; inline editing; bulk actions (assign, tag, archive, delete); optional columns
+- **Form** — full record edit; smart buttons at top (count of meetings, activities, duplicates); chatter/activity widget on right side; two-column layout for fields
+- **Search** — filter panel with grouped filter facets ("My Leads", "Won", "Rotting"), group-by options, favorite saved searches
 
-- **List view**: sortable columns, optional inline edit, group-by headers with aggregates (sum of expected_revenue per group), optional column hide/show.
-- **Kanban view** (`crm_lead_views.xml`): columns = stages; cards show priority stars, activity status badge, expected revenue, salesperson avatar. Progress bar per column via `crm_column_progress.xml`. Fold empty columns automatically.
-- **Form view**: ribbon badges (Lost/Won/Archived). Smart buttons in `oe_button_box` (Meetings count, Duplicate count). Stage status bar at top with `rotting_statusbar_duration` widget showing time-in-stage. Inline partner creation. Chatter + activity widget at bottom.
-- **Forecast view**: a kanban variant grouped by `date_deadline` month for pipeline forecasting.
-- **Activity report**: pivot/graph view for cross-record activity analysis.
-- **Calendar view**: leads displayed as calendar events by `date_deadline`.
+**Activity status indicator:** A colored dot (green=today, orange=overdue, grey=planned) on every record that has an open activity; clicking the dot opens an activity popover with mark-done, reschedule, and create-next actions.
 
-**Search bar patterns:**
-- Unified search box with type-ahead suggestions for filter types.
-- Facet chips for active filters (removable).
-- "Favorites" dropdown for saved searches.
-- Group-by and filter dropdowns.
+**Stage conversion UX:** "Mark Won" calls `action_set_won_rainbowman()` — triggers a rainbow/confetti animation as a reward signal.
 
-**Activity widget (chatter):**
-- Timeline of messages + activities in reverse-chronological order.
-- "Log note" vs "Send message" (note = internal only, message = emails followers).
-- Activity scheduling inline with type picker, due date, assignee.
-- "Mark as done" inline with feedback field.
+**Chatter widget:** Right-aligned panel in form view; scrollable thread of messages, log notes, field-change entries, and activity status; follower avatars at top with manage-followers popover; Send Message / Log Note / Schedule Activity tabs.
 
-**Kanban activity badge:**
-- Small colored circle on kanban cards: green (planned), orange (today), red (overdue). Uses `activity_state` from `MailActivityMixin`.
+**Quick-create in kanban:** Click "+" in a stage column → inline mini-form (just name + a few fields) to create a new opportunity without opening the full form.
 
-**Rotting widget:**
-- `rotting_statusbar_duration` on the stage status bar in form view: shows how long the record has been in the current stage and highlights if past the threshold.
+**Activity plan (Enterprise):** Multi-step launcher — pick a plan template and Odoo creates the full sequence of activities in one action.
 
-**Priority stars:**
-- 1-3 star widget (`priority` field) for quick lead prioritization directly from list/kanban.
-
-**Ribbon badges:**
-- `web_ribbon` widget shows "Won" / "Lost" / "Archived" overlays on the form card, driven by `won_status` and `active`.
-
-**Rainbow man effect:**
-- When marking a lead as Won, a celebratory animation fires if the deal meets certain criteria (largest deal in last 31 days, etc.) — see `action_set_won_rainbowman()`.
+**Mobile:** The Owl.js framework renders the same view XML responsively. No separate CRM mobile app; the responsive web UI is the mobile experience.
 
 ---
 
 ## 9. What AltLeads Appears to Be Missing
 
-This section is candid and specific. Sources: AltLeads context block + confirmed Odoo patterns above.
+Concrete gaps identified from the Odoo source:
 
-### 9.1 Deals / Opportunity Pipeline with Revenue Tracking
+1. **Follower / subscriber model with notification scoping** — AltLeads has no collaborator/watcher system. Odoo's `mail.followers` with `subtype_ids` (subscribe to stage-change notifications but not log notes, for example) is the right pattern. The polymorphic design (same table works for any model) is worth copying.
 
-**Odoo has:** `expected_revenue`, `probability`, `prorated_revenue`, `recurring_revenue` + `recurring_plan`, `date_deadline`, `won_status` (won/lost/pending), `lost_reason_id`, `date_closed`, `day_open`, `day_close`.
+2. **Activity chaining (done → suggest next)** — Completing an activity in Odoo prompts scheduling the next based on `chaining_type` on the activity type. AltLeads's task hub has no next-step suggestion after closing a task, meaning follow-through depends entirely on agent memory.
 
-**AltLeads missing:** No deal value, no win probability, no revenue forecast, no won/lost lifecycle on leads. The `lead_report` entity tracks per-project status/owner but has no financial dimension. For a sales CRM, win probability and expected revenue are core to pipeline management.
+3. **Stage-time tracking and cycle-time metrics** — Odoo tracks `date_last_stage_update` and derives `day_open`, `day_close`, and time-in-stage. AltLeads has no cycle-time instrumentation. Without this, bottleneck reporting is impossible.
 
-### 9.2 Lead → Opportunity Lifecycle Distinction
+4. **Rotting / stagnation detection** — Per-stage configurable threshold (N days without update → highlight red in kanban/list). AltLeads has no inactivity alerting on individual lead records.
 
-**Odoo has:** `type = Selection(['lead','opportunity'])`. Leads are unqualified inbound; opportunities are qualified and have revenue/probability. Conversion is a first-class action with a wizard.
+5. **Won / Lost disposition with reason codes** — AltLeads has no won/lost workflow. No `won_status`, no `lost_reason_id`, no `date_closed`. This means there is no way to distinguish an active pipeline lead from one that was informally dropped.
 
-**AltLeads missing:** Single lead entity; no pre-qualification "lead" vs. post-conversion "opportunity" distinction. AltLeads is outreach-first (agents create calls, not inbound leads), so the distinction is less critical — but the concept of a "qualified deal" separate from a raw lead is absent.
+6. **Inbound email → record creation** — Odoo's team email alias (e.g. `sales@company.com` → auto-create lead) is a full inbound channel. AltLeads has no inbound email routing.
 
-### 9.3 Collaborators / Secondary Ownership
+7. **Custom field schema per project / team** — Odoo's `lead_properties` (JSON Properties column, schema defined per team) allows extra fields with zero DB migrations. AltLeads has no per-project custom field support (e.g. HungerBox-specific DNC, metro, feasibility fields require workarounds).
 
-**Odoo has:** `mail.followers` — any partner can follow any record and receive notifications. The system supports multiple people being notified without making them "owners."
+8. **Merge with full history transfer** — Odoo migrates messages, attachments, activities, calendar events, and followers during merge. AltLeads has merge/dedup for contacts and companies but does not transfer interaction history.
 
-**AltLeads status:** Building (`collaborators/secondary-owners` listed as next in backlog). No follower subscription mechanism yet. All notifications appear to go to primary owner only.
+9. **Activity plan templates** — Predefined multi-step activity sequences (e.g. "Outreach Sequence" = call day 1 + email day 3 + follow-up call day 7). AltLeads has no templated task sequences.
 
-### 9.4 AI / Automated Win Probability
+10. **Pipeline and funnel reporting** — Odoo has expected revenue forecasting, MRR, days-to-close, win rate, and stage funnel reports built-in. AltLeads reporting is limited to the activity/call log; there is no pipeline health view.
 
-**Odoo has:** Bayesian `automated_probability` computed from `crm.lead.scoring.frequency` — tracks win/loss rates by field combinations (country, source, stage) and updates a probability score on every lead. Users can see both automated and manual probability.
+11. **UTM attribution** — `campaign_id`, `medium_id`, `source_id` on every lead. AltLeads has no lead source attribution tracking — no way to know which campaigns generate the best pipeline.
 
-**AltLeads missing:** No scoring model. Planned (see AI-PGVECTOR-PLAN) but not built. This is a meaningful differentiator for pipeline management.
-
-### 9.5 Email Alias / Inbound Email → Lead Creation
-
-**Odoo has:** `mail.alias` per team; inbound SMTP creates records automatically. Leads can originate from email replies, contact forms, etc.
-
-**AltLeads:** Outreach-focused; no inbound email routing. All leads are manually imported or outbound-initiated. This is by design but limits future marketing/inbound scenarios.
-
-### 9.6 Activity Plans (Multi-step Sequences)
-
-**Odoo has:** `mail.activity.plan` + `mail.activity.plan_template`: define a named sequence of activities (e.g., "Demo Follow-up = Day 1: Call, Day 3: Email, Day 7: Proposal"). Apply a whole plan to a record at once.
-
-**AltLeads has:** Individual tasks and interactions in the activity hub. No concept of a plan/sequence template that auto-schedules multiple future activities. This is essentially a cadence feature.
-
-### 9.7 Per-Stage Entry Requirements / Rotting Detection
-
-**Odoo has:** `crm_stage.requirements` (tooltip for entry criteria), `rotting_threshold_days` per stage, computed `is_rotting` flag, `rotting_statusbar_duration` widget showing time-in-stage.
-
-**AltLeads missing:** No per-stage requirements documentation, no staleness/rotting detection. Records can sit in a status indefinitely without any system signal.
-
-### 9.8 Weighted / Rule-Based Auto-Assignment
-
-**Odoo has:** Team-level capacity + per-member quotas + domain-based preferred assignments + daily cron that distributes and deduplicates. Lead allocation is proportional to team size.
-
-**AltLeads has:** Bulk reassign (manual). No automated assignment engine, no capacity management, no round-robin or domain-filtered routing.
-
-### 9.9 UTM / Marketing Attribution
-
-**Odoo has:** `campaign_id`, `medium_id`, `source_id` (UTM mixin) on leads — tracks which campaign/channel generated the lead, with won/lost frequency tables used for ML probability scoring.
-
-**AltLeads missing:** No marketing attribution on leads. Relevant if AltLeads ever adds inbound lead capture (web forms, advertising).
-
-### 9.10 Revenue Analytics and Forecasting
-
-**Odoo has:** Forecast kanban (leads grouped by closing month × probability), opportunity report (pivot/graph on revenue by stage/team/salesperson), digest emails with KPIs.
-
-**AltLeads has:** Status/owner reporting per project; no revenue funnel, no forecast view.
-
-### 9.11 Per-Team Custom Fields (Properties)
-
-**Odoo has:** `lead_properties` (`fields.Properties`) — teams define their own custom field schemas without migrations. Stored as JSON, rendered dynamically.
-
-**AltLeads status:** Custom fields/metadata listed as "building next." No per-project or per-team custom field definition exists yet.
-
-### 9.12 Phone/Email Quality Flags
-
-**Odoo has:** `phone_state` (correct/incorrect), `email_state` (correct/incorrect) — computed from validation rules. `phone_sanitized` (E.164 format), `email_normalized`. `mail.blacklist` integration.
-
-**AltLeads:** Basic contact data but no quality/validation scoring on phone/email fields.
+12. **Automated lead assignment** — Rule-based round-robin or domain-filtered auto-assignment to salespeople with per-member monthly capacity limits. AltLeads has manual assignment only (TEAM_LEAD manually reassigns).
 
 ---
 
 ## 10. Reverse-Engineering Feasibility
 
-### Patterns that port cleanly to TS/React/Supabase+RLS
+### What ports cleanly to TS / React / Supabase + RLS
 
-**A. Row-level security via domain rules → Supabase RLS policies**
-Odoo's `ir.rule` is semantically identical to Supabase RLS policies: both are server-side Postgres WHERE clauses appended to queries. Translating `['|', ('user_id','=',user.id), ('user_id','=',False)]` to `auth.uid() = user_id OR user_id IS NULL` is direct. AltLeads already does this. The multi-group OR-combination logic mirrors how Supabase evaluates multiple policies with `PERMISSIVE` mode.
+| Odoo concept | AltLeads translation | Effort |
+|---|---|---|
+| `mail.followers` (polymorphic, subtype-scoped) | `lead_follower (lead_id, user_id, notification_mask)` + RLS policy | Low — 1 migration + UI chip |
+| Activity chaining (`recommended_activity_type_id`) | Add `next_task_type_id FK` on `task_type` table; prompt after mark-done | Low |
+| `date_last_stage_update`, `day_open`, `day_close` | `status_entered_at TIMESTAMPTZ` on `lead_report`; compute deltas in SQL | Low |
+| Rotting threshold per stage | `status_rotting_days INT` on `project_status` table; nightly cron flags leads | Medium |
+| Won/Lost disposition | `won_status ENUM`, `lost_reason_id FK`, `date_closed` on `lead_report` | Medium |
+| `lost_reason` table | New table; admin-configurable | Low |
+| Custom fields per project | `project_field_schema JSONB` on `project_master`; `lead_properties JSONB` on `lead_report` | Medium |
+| Merge with history transfer | `UPDATE interaction SET lead_id = winner_id` on merge; merge infra already exists | Low |
+| Activity plan templates | `task_plan` + `task_plan_step` tables; create N tasks from template | Medium |
+| UTM attribution | `source`, `medium`, `campaign` columns on `lead_master` | Low |
+| Stage funnel / cycle-time reports | SQL views or Supabase RPCs; potential materialized view | Medium |
+| Auto-assignment with capacity | Supabase Edge Function or cron; `assignment_capacity INT` on `profiles` | High |
 
-**B. Unified partner model (company + contact, parent-child)**
-The `res.partner` `parent_id` self-reference maps cleanly to adding `parent_company_id FK → company_master` on `contact_master` (or vice versa). AltLeads already has `company_master` and `contact_master` as separate tables — this is actually cleaner than Odoo's unified table for query simplicity. The key insight to adopt: always resolve the commercial/topmost company via a computed field or view, not at the application layer.
+### What is Odoo-specific — do not attempt to port
 
-**C. Activity lifecycle (prospective vs. retrospective)**
-Odoo's clean split — activities are future TODOs (deleted on completion + chatter message posted) vs. messages are historical records — is an excellent pattern. AltLeads' `task` (prospective) + `interaction` (retrospective) maps to this. The difference: Odoo's activities are polymorphic (point at any model); AltLeads' tasks/interactions appear to be lead-scoped. Expanding to fully polymorphic (`res_model`/`res_id` style) would enable tasks on companies, contacts, projects — a meaningful upgrade.
+- **Python ORM mixin chain (`_inherit = [...]`)** — Odoo's customization surface is the ORM class system. AltLeads extends via DB migrations and TypeScript types. The mixin pattern is irrelevant to our stack.
+- **XML view override system (`ir.ui.view` inheritance)** — Odoo lets addons surgically modify any view via XML paths. We use React components; customization means editing components or toggling feature flags.
+- **`ir.rule` domain expressions evaluated in Python** — Our Postgres RLS policies are the equivalent and are architecturally stronger (enforced at DB layer, cannot be bypassed by app code errors). No porting needed.
+- **Odoo Studio drag-and-drop form builder** — A multi-month product in itself. The JSON Properties column pattern (for custom fields per project) gives 80% of the value with 5% of the effort.
+- **IAP cloud enrichment** — Odoo's proprietary pay-per-use enrichment. Use Apollo.io MCP (already integrated) for lead enrichment.
+- **Owl.js / XML view engine** — Their custom JS framework. Irrelevant; we use React.
+- **Predictive Lead Scoring (IAP ML service)** — Requires training data volume we don't have yet. Punt until Phase 5 AI.
 
-**D. Followers / notification subscriptions**
-`mail.followers` (res_model, res_id, partner_id, subtype_ids) is a clean junction table. AltLeads can model this as `record_followers(model TEXT, record_id BIGINT, user_id BIGINT, notification_types TEXT[])` with a partial unique index. The subtype pattern (subscribe to specific event types, not all notifications) prevents notification fatigue and is worth copying.
+### Overall verdict
 
-**E. Stage/pipeline with `is_won` flag and per-stage rotting thresholds**
-The `is_won` boolean on a stage is cleaner than hardcoding a "Won" status — any stage can be a win stage. Adding `rotting_threshold_days` to AltLeads' status/stage table is a one-column migration. Both are straightforward Postgres column additions.
+AltLeads's core architecture (Supabase RLS + PostgREST + React) is cleaner and more maintainable than Odoo's Python ORM + XML stack for our use case. We are not missing anything that is hard to build — we are missing features that are **straightforward to build** but haven't been prioritized yet.
 
-**F. Automation rule structure**
-The `base.automation` trigger taxonomy is portable: create triggers, write triggers (with pre/post domain filtering), time-based (offset from a date field), and webhook triggers. AltLeads' planned "automation event-spine" should adopt similar vocabulary. The pre-domain (`filter_pre_domain`) / post-domain (`filter_domain`) pair for detecting "field changed FROM X TO Y" is worth copying exactly — it avoids storing old values separately.
+The five highest-ROI items from Odoo to implement next, in order:
 
-**G. Per-member assignment quotas with round-robin**
-The `crm.team.member` junction model with `assignment_max` + `assignment_domain` is directly portable as a column on a team-member junction table. Round-robin assignment can be implemented as a server-side Postgres function or a Node.js cron.
+1. **Won/Lost + `date_closed` + `lost_reason`** — Without this, there is no pipeline visibility, no conversion rate, no reason analysis. One sprint. Foundational for any sales reporting.
 
-### Patterns that are Odoo-specific and NOT worth copying
+2. **Follower / collaborator model** — Already on backlog. The `mail.followers` design (polymorphic, subtype-scoped) is the right target. Enables visibility sharing without full reassignment.
 
-**A. `ir.*` meta-layer (views as database records)**
-Odoo stores views, menus, actions, and fields in the database (`ir.ui.view`, `ir.ui.menu`, `ir.actions.*`, `ir.model.fields`). This enables runtime view editing and module-based overrides. In AltLeads (React/Vite), views are compiled React components — this dynamic view system would require a complete view-renderer engine that is not practical to build and contradicts the fast-iteration advantage of a typed React frontend.
+3. **Stage-time tracking + rotting alerts** — `status_entered_at` column + `rotting_days` per status + nightly flag. Agents self-manage without daily manager check-ins. Low DB cost, high behavioral impact.
 
-**B. Python ORM with mixin inheritance and `_inherit`**
-Odoo's model inheritance system (protocol-based Python ORM that merges class hierarchies at runtime) is deeply Odoo-specific. The equivalent in TypeScript is composing hooks and utility functions. Do not try to replicate the mixin-at-ORM-level pattern; use React hook composition and PostgREST views/functions instead.
+4. **Activity chaining (done → prompt next)** — After marking a task/call done, prompt "schedule follow-up?" with pre-filled type and date. Dramatically increases follow-through. Small UI addition on top of existing task hub.
 
-**C. QWeb / XML templates**
-Odoo's QWeb server-side templating engine for emails and reports has no equivalent value in a React+Supabase stack. Use React components for UI and simple Handlebars/Mustache or template literals for email rendering in Node.
-
-**D. `fields.Properties` (schemaless custom fields via JSON + PropertiesDefinition)**
-While the concept (dynamic custom fields without migrations) is portable, Odoo's implementation is tightly coupled to the ORM's field introspection and UI rendering system. For AltLeads, the better approach for custom fields is a `metadata JSONB` column (already likely in use) or a `custom_field_definition` table + `custom_field_value` EAV table, with React rendering driven by the definition records. Supabase's JSONB indexing (`jsonb_path_ops`) makes JSONB custom fields searchable.
-
-**E. Module/addon upgrade system**
-Odoo's `--upgrade` and `_inherit` conflict resolution system manages schema migrations across addon updates. AltLeads uses explicit `.cjs` migration appliers — this is simpler and more appropriate for a single-product SaaS.
-
-**F. Multi-company with `company_ids` context switching**
-Odoo's multi-company mechanism (users switch active company context; all queries filtered by `allowed_company_ids`) is appropriate for an ERP used by resellers and holding companies. AltLeads' `project` boundary achieves the same tenant isolation more simply and should not be complicated with a multi-company layer.
-
-**G. Email alias + fetchmail inbound routing**
-Building an inbound email router (SMTP listener → parse → create record) is significant infrastructure. For AltLeads' current outreach-only posture, skip this. If inbound becomes needed, use a third-party service (Postmark Inbound, SendGrid Inbound Parse) that posts to a webhook — then AltLeads' future webhook-trigger automation can handle it.
-
-### Overall Verdict
-
-Odoo is a mature, comprehensive CRM/ERP with excellent data-model patterns — particularly in:
-1. The unified partner model
-2. The activity/chatter separation (prospective vs. retrospective)
-3. The `ir.rule` row-level security model (directly analogous to Supabase RLS)
-4. The `base.automation` trigger taxonomy (directly applicable to AltLeads' event-spine)
-5. The per-stage rotting thresholds
-6. The follower/subscription model
-
-The framework infrastructure (ORM, view engine, module system) is entirely Odoo-specific and provides zero value to copy.
-
-**Priority ports for AltLeads (ranked by impact/effort ratio):**
-1. `is_won` flag on status + won/lost lifecycle with `lost_reason` — low effort, high pipeline value
-2. Follower subscription model (junction table) — one migration, unlocks collaborators
-3. Rotting threshold per status — one column on status table
-4. `expected_revenue` + `probability` on leads — enables pipeline reporting
-5. Activity plan templates (cadence sequences) — medium effort, high outreach-team value
-6. Polymorphic tasks/interactions (`res_model`/`res_id`) — enables tasks on any entity
-7. Automation trigger taxonomy (`on_stage_set`, `on_user_set`, `on_time`, `on_webhook`) — matches planned event-spine
-
----
-
-*Generated from source read: `addons/crm/models/crm_lead.py`, `crm_stage.py`, `crm_team.py`, `crm_team_member.py`; `addons/mail/models/mail_thread.py`, `mail_followers.py`, `mail_activity.py`, `mail_activity_mixin.py`; `addons/sales_team/models/crm_team.py`; `addons/base_automation/models/base_automation.py`; `odoo/addons/base/models/res_partner.py`, `ir_rule.py`; `addons/crm/security/crm_security.xml`; `addons/crm/views/crm_lead_views.xml`.*
+5. **JSON custom fields per project** — One `JSONB` column + a project-level schema definition table. Immediately unblocks HungerBox-specific data capture (DNC, feasibility, metro) without table migrations per client. Required before the CRM can scale to a second project with different data requirements.

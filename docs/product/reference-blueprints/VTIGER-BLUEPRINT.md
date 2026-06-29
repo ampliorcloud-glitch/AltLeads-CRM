@@ -1,328 +1,525 @@
-# Vtiger CRM — Architecture & Feature Blueprint
+# Vtiger CRM — Architecture Teardown & Blueprint
 
-> **Purpose:** Read-only teardown of Vtiger CRM (open-source PHP edition) for AltLeads CRM reference.
-> All paths are relative to the Vtiger source root at `E:\reference code for crm\vtigercrm`.
-> Do NOT copy code — translate patterns only (different stack, different license).
+> Source read: `E:\reference code for crm\vtigercrm` (PHP MVC, vtiger CRM Open Source).
+> Written for an AltLeads team member who has never opened Vtiger source code.
+> Purpose: extract patterns, data models, and access-control designs worth reverse-engineering into our TS/React/Supabase stack.
+> Do NOT copy code — translate patterns only (different stack, vtiger CRM Public License).
 
 ---
 
 ## 1. Stack & Code Organization
 
-**Runtime:** PHP (legacy procedural + OOP hybrid). No modern framework — vtiger invented its own micro-MVC conventions on top of a SugarCRM-derived base.
+### Tech Stack
+- **Backend**: PHP (no modern framework — a home-grown MVC called "vtlib"). Entry point is `index.php`; dispatch happens via `?module=Leads&view=ListView&action=Save` URL conventions.
+- **Database**: MySQL; all tables are prefixed `vtiger_`. Raw SQL everywhere via `PearDatabase` (a thin PDO wrapper).
+- **Frontend**: Server-rendered HTML + jQuery + inline JS. Layouts live in `layouts/`. No SPA.
+- **Auth**: Session-based PHP sessions. `vtiger_users` table; passwords hashed.
+- **Cron**: `vtigercron.php` / `WorkFlowScheduler.php` for scheduled workflows.
 
-**MVC layout — per module:**
+### Module Layout
+Every feature is a self-contained directory under `modules/<ModuleName>/`:
 ```
-modules/<Module>/
-  <Module>.php          ← "entity" class (CRMEntity subclass) — DB queries, field lists, related-list methods
+modules/Leads/
+  Leads.php            — Legacy CRMEntity bean (table mapping, list/search field defs)
   models/
-    Module.php          ← Module-level model (metadata, field definitions, permissions checks)
-    Record.php          ← Record-level model (CRUD helpers, computed values)
-    ListView.php        ← List-view data model
-    DetailView.php      ← Detail-view data model
-  views/
-    Detail.php          ← Detail view controller (renders Smarty template)
-    Edit.php            ← Edit view controller
-    ConvertLead.php     ← Custom views for specific actions
-  actions/
-    Save.php            ← POST handler (save record)
-    TransferOwnership.php
-  handlers/
-    LeadHandler.php     ← Event hooks (before/after save, delete)
-  dashboards/           ← Dashboard widget classes
-  uitypes/              ← Custom field rendering overrides per module
+    Module.php         — Vtiger_Module_Model subclass (module-level operations)
+    Record.php         — Vtiger_Record_Model subclass (single record CRUD + business logic)
+    ListView.php       — List query + column config
+    DetailView.php     — Detail page data
+  views/               — PHP templates (ListView, DetailView, EditView, etc.)
+  actions/             — Form submit handlers (Save, Delete, MassEdit, etc.)
+  handlers/            — Event handlers (e.g. post-save hooks)
+```
+`modules/Settings/<Feature>/` follows the same pattern for admin settings (Roles, Profiles, SharingAccess, LayoutEditor, etc.).
+
+### Where Fields / Blocks / Picklists Live
+
+**`vtiger_field`** (central field registry):
+- `tabid` — which module this field belongs to (FK → `vtiger_tab.tabid`)
+- `fieldid` — PK (auto-increment)
+- `columnname` — actual DB column name
+- `tablename` — which vtiger_* table stores this column
+- `fieldname` — logical name used in code
+- `fieldlabel` — display label
+- `uitype` — UI widget type (text=1, picklist=15, relate=10, date=5, etc.)
+- `block` — FK → `vtiger_blocks.blockid` (groups fields into named sections)
+- `presence` / `displaytype` — controls visibility
+- `quickcreate` / `masseditable` — behavioral flags
+- `typeofdata` — validation string (e.g. `"V~O"` = Varchar Optional)
+
+**`vtiger_blocks`**: Named collapsible sections on a detail/edit view. Each field belongs to one block. Blocks belong to one module (via `tabid`). Block ordering is stored in `sequence`.
+
+**`vtiger_picklist`** + **`vtiger_picklistvalues`**: Picklist options are stored globally. `vtiger_role2picklist` maps which picklist values a role is allowed to see/use — picklists are role-scoped, not just globally shared.
+
+**`vtiger_tab`**: The module registry. One row per module; `tabid` is the universal module identifier used across nearly every permission/sharing/field table.
+
+### vtiger_* Schema Convention
+- Every CRM record has a row in **`vtiger_crmentity`** (the "entity table"): `crmid` (PK), `setype` (module name), `smownerid` (assigned user), `smcreatorid`, `createdtime`, `modifiedtime`, `deleted`.
+- Module-specific data lives in **additional tables** all sharing the same PK as `crmid`. Example for Leads:
+  - `vtiger_leaddetails` (core fields) — PK `leadid` = `crmid`
+  - `vtiger_leadsubdetails` (website, referral, etc.)
+  - `vtiger_leadaddress` (address block)
+  - `vtiger_leadscf` (custom fields — auto-generated extension table)
+- Custom fields always go into the `*scf` (custom field) table for that module.
+- Every module's legacy bean (`Leads.php`, `Accounts.php`) declares `$tab_name` and `$tab_name_index` arrays mapping table names to their join keys — this is how multi-table reads/writes are coordinated.
+
+---
+
+## 2. Core CRM Data Model
+
+### Lead (`vtiger_leaddetails` + `vtiger_leadsubdetails` + `vtiger_leadaddress` + `vtiger_leadscf`)
+Key fields: `firstname`, `lastname`, `company`, `email`, `phone`, `leadsource`, `leadstatus`, `industry`, `designation`, `annualrevenue`, `website`, `rating`, `secondaryemail`.
+- `converted` (int 0/1) — set to 1 when the Lead is converted; the original record is preserved (not deleted) but treated as read-only.
+- `vtiger_convertleadmapping` — stores field-to-field mapping for how lead fields copy to Contact/Account/Potential on conversion.
+- Leads are assigned to a user via `vtiger_crmentity.smownerid`.
+
+### Contact (`vtiger_contactdetails` + `vtiger_contactsubdetails` + `vtiger_contactaddress` + `vtiger_contactscf`)
+Key fields: `firstname`, `lastname`, `email`, `phone`, `mobile`, `department`, `title`, `accountid` (FK → `vtiger_account`), `reportsto` (self-referential contact hierarchy for org charts).
+- Portal access: `vtiger_portalinfo` and `vtiger_customerdetails` extend contacts for a customer self-service portal.
+- Many-to-many with Potentials via `vtiger_contpotentialrel`.
+
+### Account (`vtiger_account` + `vtiger_accountbillads` + `vtiger_accountshipads` + `vtiger_accountscf`)
+Key fields: `accountname`, `phone`, `website`, `industry`, `annualrevenue`, `employees`, `accounttype`, `rating`, `parentid` (self-referential — account hierarchies / parent companies).
+- Separate billing and shipping address tables.
+- Contacts, Potentials, Activities, Emails, Documents, and Cases (HelpDesk tickets) all relate back to an Account.
+
+### Potential / Opportunity (`vtiger_potential` + `vtiger_potentialscf`)
+Key fields: `potentialname`, `amount`, `closingdate`, `sales_stage` (picklist), `probability` (auto-calculated from stage picklist value), `forecastcategory`, `related_to` (Account name), `contact_id`.
+- `vtiger_potstagehistory` records every stage change with timestamp and amount — a built-in stage audit trail.
+- Many-to-many with Contacts via `vtiger_contpotentialrel`.
+- Can link to Quotes / SalesOrders (inventory modules).
+- `vtiger_potentialscf` is the custom-fields extension table.
+
+### Calendar / Activity (`vtiger_activity`)
+Vtiger uses a single `vtiger_activity` table for both Events (meetings/calls) and Tasks (to-dos), distinguished by `activitytype`:
+- `activitytype` values: `'Call'`, `'Meeting'`, `'Task'`, `'Emails'` (email is also stored as an activity type).
+- Key fields: `subject`, `activitytype`, `date_start`, `time_start`, `due_date`, `time_end`, `status`, `priority`, `visibility` (Public/Private), `description`, `duration_hours`, `duration_minutes`.
+- `vtiger_recurringevents` handles recurring appointments.
+- `vtiger_seactivityrel` — many-to-many between `vtiger_activity.activityid` and any CRM entity (`crmid`). This is how a meeting appears on both a Contact and an Account simultaneously.
+- `vtiger_cntactivityrel` — direct Contact-to-Activity relationship.
+- `vtiger_salesmanactivityrel` — User-to-Activity (invited attendees).
+- `vtiger_activitytype` — configurable activity type picklist.
+
+### Lead Conversion Flow
+1. User opens `?module=Leads&view=ConvertLead&record=<leadid>`.
+2. System prefills Contact, Account, and Potential create forms using `vtiger_convertleadmapping`.
+3. Admin can configure which lead field maps to which Contact/Account/Potential field.
+4. On save, three records are created (Contact, Account, Potential); `vtiger_leaddetails.converted` is set to 1.
+5. The original lead record is preserved but marked converted — it is not deleted.
+
+---
+
+## 3. Multi-Tenancy / Access Control
+
+Vtiger's access control is its most sophisticated engineering. It has **three independent but composing layers**: Role Hierarchy, Profiles, and Sharing Rules. Understanding all three together is essential.
+
+### Single-Tenant Architecture
+Vtiger is single-tenant: one database, one organization. There is no `org_id` column anywhere. All data isolation is within one company's users. This is fundamentally different from AltLeads where `project` acts as a tenant boundary.
+
+### Layer 1 — Role Hierarchy
+
+**Tables**: `vtiger_role`, `vtiger_user2role`
+
+```
+vtiger_role:
+  roleid       VARCHAR(255) PK  — e.g. "H1", "H2", "H5"
+  rolename     VARCHAR(200)
+  parentrole   VARCHAR(255)     — CRITICAL: stores full ancestry path as "H1::H2::H5"
+  depth        INT              — 0 = root (CEO/Admin), 1 = next level down, etc.
 ```
 
-**Base classes:**
-- `modules/Vtiger/CRMEntity.php` — the root entity base. Every module entity inherits from this. It owns `create_list_query`, `getNonAdminAccessControlQuery`, the join pattern against `vtiger_crmentity`.
-- `vtlib/Vtiger/Module.php` (class `Vtiger_Module`) — API for defining/modifying modules programmatically: `setRelatedList()`, relation types (`ONE_TO_MANY`, `MANY_TO_MANY`), field management.
-- `vtlib/Vtiger/Field.php` (class `Vtiger_Field`) — creates/manages fields, picklist values, role-picklist associations.
-- `vtlib/Vtiger/Profile.php` — profile-level capability management.
+The `parentrole` column is a **materialized path** (not an adjacency list). Every role stores its full ancestor chain separated by `::`. Example: a Sales Rep role at depth=2 might have `parentrole = "H1::H3::H7"`, meaning ancestry is root H1 → H3 → current role H7.
 
-**Database schema convention (`vtiger_*`):**
-- Every CRM entity has a row in `vtiger_crmentity` (the universal entity table: `crmid`, `setype`, `smownerid`, `smcreatorid`, `modifiedtime`, `createdtime`, `deleted`).
-- Entity data is **split across multiple physical tables** joined on the primary key:
-  - Leads: `vtiger_leaddetails` (core) + `vtiger_leadsubdetails` + `vtiger_leadaddress` + `vtiger_leadscf` (custom fields)
-  - Contacts: `vtiger_contactdetails` + `vtiger_contactaddress` + `vtiger_contactsubdetails` + `vtiger_contactscf` + `vtiger_customerdetails`
-  - Accounts: `vtiger_account` + `vtiger_accountbillads` + `vtiger_accountshipads` + `vtiger_accountscf`
-  - Potentials: `vtiger_potential` + `vtiger_potentialscf`
-- The `*scf` suffix = "custom fields" table — all admin-added custom fields land here in type-specific columns.
-- Fields metadata lives in `vtiger_field` (fieldname, uitype, columnname, tablename, block, presence, mandatory, quickcreate, etc.).
-- Module registry: `vtiger_tab` (tabid, name, presence, tabsequence).
+This design means:
+- Finding all descendants of role H3 = `WHERE parentrole LIKE 'H1::H3::%'` — a single SQL LIKE query, no recursion needed.
+- Finding a role's parent = split `parentrole` on `::` and take the second-to-last element (implemented in `Settings_Roles_Record_Model::getParent()`).
+- Moving a role subtree = string-replace the old path prefix with the new prefix across all affected rows (implemented in `moveTo()`).
 
-**Routing:** `index.php?module=Leads&view=ConvertLead&record=123` → dispatcher loads `modules/Leads/views/ConvertLead.php` → `Leads_ConvertLead_View::process()`.
+`vtiger_user2role`: one row per user mapping `userid → roleid`. A user has exactly one role.
 
-**Templating:** Smarty templates in `layouts/` (not studied in depth; views assign variables then call `$viewer->view('ConvertLead.tpl', $moduleName)`).
+**What role hierarchy controls**: By default, a manager (higher in the tree) can see and edit records owned by all users in their subtree. This is "see your subordinates' records" behavior. The `allowassignedrecordsto` field on the role controls whether the role-holder can also see peers' records.
 
----
+**Groups** (`vtiger_groups`): A named collection of users and/or roles. Records can be assigned to a group instead of an individual user. Group membership tables:
+- `vtiger_groups2users` — direct user members
+- `vtiger_group2role` — include all users in a role
+- `vtiger_group2rs` — include all users in a role and its subordinates ("rs" = role and subordinates)
+- `vtiger_group2grouprel` — nested groups (groups can contain groups)
 
-## 2. Core Data Model
+### Layer 2 — Profiles (Permission Templates)
 
-### Lead (`vtiger_leaddetails`)
-Primary fields: `leadid`, `salutation`, `firstname`, `lastname`, `company`, `email`, `phone`, `designation`, `leadsource`, `leadstatus`, `rating`, `industry`, `annualrevenue`, `website`, `converted` (0/1 flag).
-Sub-table `vtiger_leadsubdetails`: `website`, `fax`, `mobile`, `secondaryemail`, `referredby`, `campaign`.
-Address table `vtiger_leadaddress`: `leadaddressid`, `phone`, `mobile`, `fax`, `city`, `state`, `country`, `zip`.
-Sort fields: `lastname`, `firstname`, `email`, `phone`, `company`, `smownerid`, `website`.
+**Tables**: `vtiger_profile`, `vtiger_role2profile`, `vtiger_profile2tab`, `vtiger_profile2standardpermissions`, `vtiger_profile2field`, `vtiger_profile2globalpermissions`, `vtiger_profile2utility`
 
-Leads are **pre-conversion prospects**. The `converted=1` flag is set after Lead Conversion; converted leads are excluded from the default list view query (`vtiger_leaddetails.converted=0`).
+A **Profile** is a named permission template that defines:
+1. **Module Access** (`vtiger_profile2tab`): which modules the profile holder can access at all.
+2. **Standard Action Permissions** (`vtiger_profile2standardpermissions`): per module, per operation (Create, Edit, Delete, View, Import, Export) — each is a 0/1 flag.
+3. **Field-Level Permissions** (`vtiger_profile2field`): per field, `visible` (0/1) and `readonly` (0/1). A field can be hidden entirely or shown as read-only.
+4. **Global Permissions** (`vtiger_profile2globalpermissions`): "View All" and "Edit All" — if enabled, the user bypasses sharing rules and sees every record in the organization.
+5. **Utility Permissions** (`vtiger_profile2utility`): access to utilities like Import, Export, Reports, Dashboards.
 
-### Contact (`vtiger_contactdetails`)
-Primary fields: `contactid`, `salutation`, `firstname`, `lastname`, `title`, `department`, `email`, `phone`, `mobile`, `fax`, `accountid` (FK → `vtiger_account`).
-Sub-table `vtiger_contactsubdetails`: `assistant`, `otherphone`, `homephone`, `birthday`, `portal`, `portalpassword`.
-Address: `vtiger_contactaddress` (mailing + other address sets).
-Customer portal fields in `vtiger_customerdetails`.
+`vtiger_role2profile`: A role can have **multiple profiles** (M:N). A user's effective permissions are the union of all profiles attached to their role. One profile per role can be flagged `directly_related_to_role = 1` (the primary profile for that role).
 
-Contacts are **always linked to an Account** via `accountid`. They can relate to Potentials, Quotes, SalesOrders, Invoices, HelpDesk tickets, Campaigns, Assets, Calendar events, Documents, Products, Vendors.
+**Key insight**: Profiles answer "what CAN you do" (which modules, which fields, which operations). Role hierarchy answers "whose records can you SEE." Sharing rules (below) expand visibility beyond what hierarchy grants.
 
-### Account (`vtiger_account`)
-Primary fields: `accountid`, `accountname`, `phone`, `website`, `fax`, `email1`, `industry`, `account_type`, `rating`, `annualrevenue`, `employees`, `ownership`, `tickersymbol`, `parentid` (self-reference for account hierarchy).
-Addresses: `vtiger_accountbillads`, `vtiger_accountshipads` (billing + shipping).
-Relates to: Contacts, Potentials, Quotes, SalesOrders, Invoices, HelpDesk, Products, Calendar, Documents, Campaigns, Assets, Project, PurchaseOrder.
+### Layer 3 — Sharing Rules (Record-Level Visibility)
 
-The `parentid` self-join enables a **multi-level account hierarchy** exposed via `views/AccountHierarchy.php`.
+**Tables**: `vtiger_def_org_share`, `vtiger_datashare_module_rel`, and nine cross-product tables:
+`vtiger_datashare_grp2grp`, `vtiger_datashare_grp2role`, `vtiger_datashare_grp2rs`,
+`vtiger_datashare_role2group`, `vtiger_datashare_role2role`, `vtiger_datashare_role2rs`,
+`vtiger_datashare_rs2grp`, `vtiger_datashare_rs2role`, `vtiger_datashare_rs2rs`.
 
-### Potential / Opportunity (`vtiger_potential`)
-Primary fields: `potentialid`, `potentialname`, `related_to` (FK → `vtiger_account`), `contact_id` (FK → `vtiger_contactdetails`), `amount`, `closingdate`, `sales_stage`, `probability`, `campaign_id`, `leadsource`, `opportunity_type`.
-Sort fields: `potentialname`, `amount`, `closingdate`, `smownerid`, `accountname`.
+**Default Org Sharing** (`vtiger_def_org_share`): For each module (`tabid`), an administrator sets the default sharing level:
+- `0 = Read Only` — users can see all records but not edit others'
+- `1 = Read Create` — can read all and create; cannot edit others'
+- `2 = Public` — full read/write access to all records (most open)
+- `3 = Private` — can only see records assigned to themselves or their subordinates (most restrictive)
 
-Potentials always link to one Account and optionally one Contact. Sales Stage is a role-scoped picklist. Dashboard widgets include Forecast, Funnel, GroupedBySalesPerson, GroupedBySalesStage.
+When a module is set to **Private**, the system evaluates **Custom Sharing Rules** to expand visibility case-by-case.
 
-### Lead Conversion (Lead → Contact + Account + Potential)
-Class `Leads_ConvertLead_View` in `modules/Leads/views/ConvertLead.php` (GET renders form) + `modules/Leads/views/SaveConvertLead.php` (POST executes).
+**Custom Sharing Rules** (`vtiger_datashare_module_rel` + cross tables): An admin can create explicit rules like "Group A can read records owned by Role B" or "Role X and its subordinates can read+write records owned by Group Y."
 
-The conversion flow:
-1. Shows Lead fields mapped to Account fields + Contact fields (via `getConvertLeadFields()` / `getAccountFieldsForLeadConvert()`).
-2. Checks `Users_Privileges_Model::isPermitted('Accounts', 'CreateView')` — skips Account block if no permission.
-3. Maps Lead→Account and Lead→Contact fields using `getConvertLeadMappedField($fieldName, $moduleName)`.
-4. Optionally creates a linked Potential with `related_to` (Account) and `contact_id` (new Contact).
-5. Sets `vtiger_leaddetails.converted = 1` on the source Lead.
+A rule has:
+- `shareid` — rule PK
+- `tabid` — which module this rule applies to
+- `relationtype` — e.g. `"GRP::ROLE"` (source type :: target type), where types are `GRP` (Group), `ROLE` (Role), `RS` (Role and Subordinates)
+- `permission` — `0 = Read Only`, `1 = Read Write`
 
-This is the canonical "lead qualification" flow — a single atomic UI action that creates up to 3 records and links them.
+The actual source/target IDs live in the matching cross-product table (e.g. `vtiger_datashare_grp2role` if source is a Group and target is a Role).
 
----
+After any sharing rule change, `Settings_SharingAccess_Module_Model::recalculateSharingRules()` recomputes denormalized cache tables (`vtiger_tmp_read_group_sharing_per`, `vtiger_tmp_write_group_sharing_per`, etc.) that are joined at query time for performance.
 
-## 3. Multi-tenancy / Access Control
+**Role picklist restriction** (`vtiger_role2picklist`): Each role can be restricted to a subset of picklist values. A Sales Manager might see all deal stages; a junior agent might only see early-stage options.
 
-Vtiger is **single-tenant** (one org per install). Access control is achieved through a 3-layer system:
+### Access Check Flow (Effective Permission)
+At runtime, vtiger evaluates access as:
+1. Does the user's profile allow this module? (`vtiger_profile2tab`)
+2. Does the user's profile allow this operation? (`vtiger_profile2standardpermissions`)
+3. Is the specific record visible to this user?
+   - If module is Public → yes.
+   - If module is Private: is the user the owner, OR is the owner in the user's role subtree, OR does a custom sharing rule grant access?
+4. Does the user's profile allow this specific field? (`vtiger_profile2field` — visible + readonly)
+5. Does the user's profile have "View All" global permission? (bypasses step 3 entirely)
 
-### Roles (`vtiger_role`)
-- Table: `vtiger_role` (`roleid`, `rolename`, `parentid`, `depth`, `description`).
-- Roles form a **tree** (parent/child via `parentid`). Users inherit permissions from ancestor roles.
-- `modules/Settings/Roles/models/Module.php` — base table is `vtiger_role`.
-- Each role is linked to one or more Profiles.
+Permission calculations are cached in `user_privileges/<userid>.php` flat files (regenerated on role/profile/sharing changes) to avoid database hits on every page load.
 
-### Profiles (`vtiger_profile`, `vtiger_profile2tab`, `vtiger_profile2field`)
-- A Profile controls: which **modules** a role can access and which **actions** (View, Edit, Delete, Import, Export, Create) are allowed per module.
-- At the field level, `vtiger_profile2field` stores per-field permission: `INACTIVE=0`, `READONLY=1`, `READWRITE=2` (`Settings_Profiles_Record_Model` constants).
-- `vtiger_role2profile` maps roles → profiles (many-to-many; a user inherits the intersection).
+### Comparison to AltLeads (project-RLS model)
 
-### Sharing Access (`vtiger_def_org_share`, `vtiger_sharing_rules`)
-- `Settings_SharingAccess_Module_Model` wraps `vtiger_def_org_share` — the **default org-level sharing** per module.
-- Permission modes: `PUBLIC=2` (everyone can see all records), `READ_ONLY=0`, `READ_CREATE=1`, `PRIVATE=3` (owner-only).
-- When PRIVATE, additional **Sharing Rules** in `vtiger_sharing_rules` define exceptions: "Role X can read Role Y's records", "Group A can read/write Group B's records".
-- `RuleMember` model references `vtiger_role`, groups, and individual users as rule participants.
-
-### Runtime access enforcement
-`CRMEntity.getNonAdminAccessControlQuery()` injects SQL `WHERE` clauses based on cached privilege files per user (`user_privileges/user_privileges_<uid>.php`, `user_privileges/sharing_privileges_<uid>.php`). These flat PHP files are regenerated on role/profile changes — a pre-computed permission cache.
-
-### Groups
-`vtiger_groups` — named user groups. Records can be assigned to a group (smownerid = groupid). Sharing rules can target groups.
+| Dimension | Vtiger | AltLeads |
+|---|---|---|
+| Multi-tenancy | Single-tenant (one org per install) | Multi-tenant via `project` (one project = one client) |
+| Role hierarchy | Arbitrary tree, materialized-path, unlimited depth | Fixed flat roles: ADMIN/TL/AGENT/SALES_HEAD/SP/QC |
+| Data visibility rule | Private/Public + custom sharing rules between groups/roles | Postgres RLS policies keyed on `project_id` + `user_id` + `role` |
+| Field-level permissions | Profile → field → visible/readonly per field | Not yet implemented |
+| Picklist scoping | Per-role picklist value subsets | Global picklists (no per-role scoping) |
+| Group assignment | Records assignable to a named group (team) | Records assigned to individual users only |
+| "See subordinates" | Automatic from role tree depth | Not implemented (TL-sees-agent logic would need custom RLS) |
+| Permission cache | Flat PHP files regenerated on change | RLS evaluated at query time by Postgres |
 
 ---
 
 ## 4. Activity / Communication Model
 
-### Calendar / Activities (`vtiger_activity`)
-Module `Calendar` handles both **Tasks** and **Events** (differentiated by `activitytype` field: `Call`, `Meeting`, `Task`).
-- Table: `vtiger_activity` (`activityid`, `subject`, `activitytype`, `date_start`, `time_start`, `due_date`, `status`, `priority`, `visibility`, `duration_hours`, `location`, `recurringtype`).
-- Linked to parent CRM entities via `vtiger_seactivityrel` (`crmid` → any entity, `activityid`).
-- Linked to contacts via `vtiger_cntactivityrel` (`contactid`, `activityid`).
-- Repeat/recurring events handled by `RepeatEvents.php` with `recurringtype` picklist.
-- iCal import/export: `iCalExport.php`, `iCalImport.php`, full RFC 2445 support.
-- Activity reminder via cron (`SendReminder.bat` / `actions/ActivityReminder.php`).
+### Calendar (Events + Tasks)
+Module: `modules/Calendar`. Both Events (meetings/calls) and Tasks (to-dos) are stored in `vtiger_activity`; distinction is `activitytype`.
 
-### ModComments
-Separate module for **in-record comments** (threaded). Not deeply studied but present as a standalone module with its own `vtiger_modcomments` table — comments link to any crmid.
+- **Events** (`activitytype IN ('Call','Meeting')`): have `date_start`, `time_start`, `due_date`, `time_end`, `duration_hours/minutes`. Support recurring events via `vtiger_recurringevents` (stores repeat pattern: daily/weekly/monthly/yearly + end date).
+- **Tasks** (`activitytype = 'Task'`): have `date_start`, `due_date`, `status` (Not Started / In Progress / Completed / Waiting for Input / Deferred), `priority` (High/Medium/Low).
+- `vtiger_seactivityrel`: links any activity to any CRM entity (`crmid`). One activity can appear under multiple records simultaneously (e.g. a call logged on both a Contact and an Account).
+- Reminders: `vtiger_activity_reminder` + email reminders via cron.
+- iCal import/export: `modules/Calendar/iCalExport.php`, `iCalImport.php`.
+- Activity type list is user-configurable via `vtiger_calendar_user_activitytypes`.
 
-### Emails (`vtiger_activity` with type=Emails)
-Emails are stored as activity records (`activitytype='Emails'`) in `vtiger_activity`, linked via `vtiger_seactivityrel`. Module `Emails` handles compose, templates, and inbound parsing. `vtiger_emaildetails` stores email-specific metadata (from, to, cc, bcc, messageid). Supports IMAP/POP3 mailbox scanning.
+### ModComments (Internal Notes / Comments)
+General "add a comment" functionality on records is handled via the `ModComments` vtlib module (registered in `vtiger_tab`). Its data lands in a `vtiger_modcomments` table. Used on Potentials, Contacts, and Accounts for threaded internal notes — similar to a Chatter/comments timeline.
+
+HelpDesk tickets have their own comment table: `vtiger_ticketcomments`.
+
+### Emails
+Module: `modules/Emails`. Emails are stored as activities (`activitytype = 'Emails'`) in `vtiger_activity`, with extended data in `vtiger_emaildetails`:
+- `from_email`, `to_email` (and cc/bcc as delimited strings), `subject` stored in `vtiger_activity`.
+- Linked to CRM entities via `vtiger_seactivityrel`.
+- Attachments: `vtiger_attachments` + `vtiger_seattachmentsrel`.
+- **MailManager**: an inbox integration that reads IMAP/POP3 and lets users associate incoming emails with CRM records.
+- Email templates: `vtiger_emailtemplates` — stored with merge-field syntax `$leads_firstname$`.
+- Outbound sending via PHPMailer (`class.phpmailer.php`).
+- `vtiger_email_track` — open/click tracking.
+
+### Activity History (Tracker)
+`vtiger_tracker`: records recently visited records per user — used for the "Recently Viewed" sidebar widget. Not a field-change audit log.
+
+Field-change history is handled by **ModTracker** (a separate vtlib module that hooks into record saves and logs before/after values for tracked fields in its own tables).
 
 ---
 
-## 5. Automation / Workflow Engine
+## 5. Automation / Workflow
 
-Module: `modules/com_vtiger_workflow/`. Fully custom event-driven engine.
+Module: `modules/com_vtiger_workflow/`. This is Vtiger's rule engine.
 
-### Storage tables
-- `com_vtiger_workflows` — workflow definitions: `workflow_id`, `module_name`, `summary`, `test` (JSON condition array), `execution_condition`, `status`, `schtypeid`, `schtime`, `schdayofmonth`, `schdayofweek`, `schannualdates`, `nexttrigger_time`, `workflowname`.
-- `com_vtiger_workflowtasks` — tasks serialized as PHP objects: `task_id`, `workflow_id`, `summary`, `task` (serialized PHP).
-- `com_vtiger_workflowtask_queue` — execution queue for async task processing.
-
-### Execution triggers (`VTWorkflowManager`)
-- `ON_FIRST_SAVE = 1` — fires once on record creation.
-- `ONCE = 2` — fires once ever per record (even after edits).
-- `ON_EVERY_SAVE = 3` — fires on every save.
-- `ON_MODIFY = 4` — fires only when record changes.
-- `ON_SCHEDULE = 6` — time-based cron trigger (`WorkflowScheduler.inc` queries `nexttrigger_time`).
-- `MANUAL = 7` — user-triggered from UI.
+### Workflow Definition (`com_vtiger_workflows` table)
+Key columns:
+- `module_name` — which module this workflow applies to (e.g. `'Leads'`)
+- `execution_condition` — when to fire:
+  - `1 = ON_FIRST_SAVE` — only on record creation
+  - `2 = ONCE` — first time conditions are met (not on every save)
+  - `3 = ON_EVERY_SAVE` — every create or update
+  - `4 = ON_MODIFY` — only on update (not creation)
+  - `6 = ON_SCHEDULE` — cron-based, runs on records matching conditions at a scheduled time
+  - `7 = MANUAL` — triggered by a user action
+- `test` — JSON-encoded condition set (evaluated by `VTJsonCondition`)
+- `schtypeid` / `schtime` / `schdayofmonth` / `schdayofweek` / `schannualdates` — schedule definition for ON_SCHEDULE type
+- `nexttrigger_time` — next scheduled execution timestamp
+- `status` — 0=inactive, 1=active
 
 ### Conditions (`VTJsonCondition`)
-Conditions are stored as JSON arrays in `com_vtiger_workflows.test`. The `VTExpressionEvaluater` evaluates expression-language conditions against entity field values. `VTConditionalExpression` handles compound AND/OR logic.
+Conditions are stored as a JSON array in `com_vtiger_workflows.test`. Each condition object has:
+- `fieldname` — field to check (supports cross-module via syntax `referenceField : (Module) field`)
+- `operation` — comparator (equals, not equal, less than, greater than, contains, starts with, is empty, changed, etc.)
+- `value` — comparison value
+- `groupid` — conditions in the same group are ANDed; groups are ORed
 
-### Task types (`tasks/`)
-- `VTEmailTask` — send email using template + recipient expression. Has `executeImmediately=false` (always queued).
-- `VTUpdateFieldsTask` — update field values on the triggering record.
-- `VTCreateEntityTask` — create a new related entity (e.g., auto-create a Task when a Lead is saved).
-- `VTCreateEventTask` — create a Calendar event.
-- `VTCreateTodoTask` — create a Task activity.
-- `VTSendNotificationTask` — internal notification.
-- `VTSMSTask` — send SMS.
-- `VTEntityMethodTask` — call an arbitrary method on the entity.
+### Actions / Tasks (`com_vtiger_workflowtasks` table)
+After conditions pass, tasks execute in sequence. Task types (from `modules/com_vtiger_workflow/tasks/`):
+- **`VTEmailTask`** — send an email using an email template (supports merge fields)
+- **`VTUpdateFieldsTask`** — update one or more fields on the triggering record (supports expression engine)
+- **`VTCreateEntityTask`** — create a new record in any module
+- **`VTCreateEventTask`** — create a Calendar Event linked to the record
+- **`VTCreateTodoTask`** — create a Task (to-do) linked to the record
+- **`VTSendNotificationTask`** — internal CRM notification
+- **`VTSMSTask`** — send SMS
+- **`VTEntityMethodTask`** — call a custom PHP method on the entity
 
-Tasks are serialized with PHP `serialize()` and stored as blobs — tightly coupled to PHP class names.
+Tasks are stored in `com_vtiger_workflowtasks` with `task` column as JSON-serialized config. Execution history in `com_vtiger_workflow_activatedonce` (tracks which records have triggered a ONCE-type workflow).
+
+### Scheduled Workflows
+`WorkFlowScheduler.php` / `vtigercron.php` runs periodically. For ON_SCHEDULE workflows, it queries all records of the target module matching the workflow conditions and executes the task list on each matched record.
+
+### Expression Engine
+`modules/com_vtiger_workflow/expression_engine/` — a simple formula language for computed values used in VTUpdateFieldsTask (e.g. `add(field1, field2)`, `if(condition, value1, value2)`, `subtract`, `multiply`, `concat`).
 
 ---
 
 ## 6. Customization
 
-### Layout Editor (`modules/Settings/LayoutEditor`)
-Admin UI to rearrange fields within **Blocks** on Detail/Edit views. Vtiger organizes fields into named blocks (e.g., "Lead Information", "Address Details"). Block metadata: `vtiger_blocks` (`blockid`, `tabid`, `blocklabel`, `sequence`, `show_title`, `display_status`). Field-block assignment: `vtiger_field.block` (FK → `vtiger_blocks`).
+### LayoutEditor (Custom Fields + Block Re-ordering)
+Module: `modules/Settings/LayoutEditor/`. Admin UI at Settings → Layout Editor.
 
-### Custom Fields
-New fields added via admin → stored in `vtiger_field` and physically added as columns to the module's `*scf` custom-field table (`vtiger_leadscf`, `vtiger_accountscf`, etc.). Field types (`uitype` column): text, integer, date, datetime, picklist, multi-select, relate, url, email, phone, checkbox, currency, decimal, image. Module custom fields are schema-first — a real column is altered/added to the SCF table.
+**Custom Fields**: Added via `vtiger_field` (with `generatedtype = 2` to mark as admin-created custom). The actual column is added to the module's `*scf` table (e.g. `vtiger_leadscf`). Supported custom field types (via `uitype`): Text, Number, Date, DateTime, Picklist, Multi-select Picklist, Checkbox, URL, Email, Currency, Decimal, Percent, TextArea, Formula, Image.
 
-### Custom Views / Saved Filters (`CustomView` module)
-`vtiger_customview` (`cvid`, `viewname`, `setdefault`, `status`, `userid`, `module`) — per-user or system saved views. `vtiger_cvcolumnlist` stores which columns appear. `vtiger_cvadvfilter` stores advanced filter conditions. Filter operators: `e` (equals), `n` (not equal), `s` (starts with), `ew` (ends with), `c` (contains), `k` (does not contain), `l`/`g` (less/greater than), `b`/`a` (before/after date), `bw` (between). Views have an approval flow (`actions/Approve.php`, `actions/Deny.php`) — non-admin-created views require admin approval.
+**Blocks**: Admin can:
+- Create new named blocks (sections) → inserts into `vtiger_blocks`
+- Move fields between blocks → updates `vtiger_field.block`
+- Reorder fields within a block → updates `vtiger_field.sequence`
+- Show/hide blocks → updates `vtiger_blocks.show_title` / `isdisplaytype`
 
-### Picklists (`vtiger_picklist`, `vtiger_role2picklist`)
-Each picklist field has a dedicated table (`vtiger_leadstatus`, `vtiger_leadsource`, etc.) + a registry entry in `vtiger_picklist`. Values are **role-scoped** via `vtiger_role2picklist` (`roleid`, `picklistvalueid`, `picklistid`, `sortid`) — each role sees a (potentially different) subset of picklist options. `Vtiger_Field::setPicklistValues()` handles creation and role association.
+Custom fields and block layout changes take effect immediately (no deploy step) because the UI reads directly from `vtiger_field` and `vtiger_blocks` at render time.
+
+**Relationships**: LayoutEditor also defines module-to-module relationships (1:1, 1:N, N:1, N:N), stored in `vtiger_fieldmodulerel`.
+
+### CustomView (Saved List Views / Filters)
+Module: `modules/CustomView/`. Saved list-view configurations shown as tabs on list views.
+
+**Schema** (`vtiger_customview`):
+- `cvid` — PK
+- `viewname` — display name (e.g. "My Open Leads", "This Month's Deals")
+- `entitytype` — module name (FK → `vtiger_tab.name`)
+- `userid` — who created it
+- `status` — `0=Default` (system-level), `1=Private`, `2=Pending approval`, `3=Public`
+- `featured` — pin to top of the tab strip
+
+**Columns** (`vtiger_cvcolumnlist`): ordered list of fields shown in this view's list columns.
+
+**Standard Filters** (`vtiger_cvstdfilter`): date-range filters (e.g. "this week", "last month") on a specific date field.
+
+**Advanced Filters** (`vtiger_cvadvfilter`): field-level filter conditions. Each row: `cvid`, `columnindex`, `columnname`, `comparator`, `value`, `column_condition` (AND/OR).
+
+**Sharing**: A CustomView marked `status=3` (Public) is visible to all users. Private views (`status=1`) are visible only to the creator. Users can set a per-module default view (`vtiger_user_module_preferences.default_cvid`).
+
+### Picklist Management
+Module: `modules/Settings/Picklist/` and `modules/PickList/`. Picklist values are stored in `vtiger_picklistvalues`. Role-based picklist restriction via `vtiger_role2picklist` (which picklist values a given role is allowed to select). `vtiger_picklistdependency` supports dependent picklists (changing one picklist filters another).
 
 ---
 
 ## 7. Full Feature Inventory
 
-| Feature Area | Modules / Details |
-|---|---|
-| Core CRM | Leads, Contacts, Accounts, Potentials (Opportunities) |
-| Activities | Calendar (Tasks + Events), Emails, ModComments |
-| Sales pipeline | Potentials with sales_stage, probability, forecast dashboards |
-| Marketing | Campaigns — links to Contacts/Accounts; campaign source on Potentials |
-| Support | HelpDesk (Trouble Tickets), FAQ |
-| Inventory / ERP lite | Products, Pricebooks, Quotes, SalesOrder, Invoice, PurchaseOrder |
-| Service | Vendors, Services, ServiceContracts, Assets |
-| Project management | Project module (linked to Accounts/Contacts) |
-| Documents | Documents module with file attachments (`vtiger_senotesrel`) |
-| Reporting | Reports module: tabular, summary, matrix reports; chart widgets; export CSV/PDF |
-| Dashboards | Home dashboards with per-module widgets (Forecast, Funnel, TopPotentials, LeadsBySource) |
-| Customization | Layout Editor, Custom Fields (schema-first SCF tables), Picklist Editor |
-| Saved views | CustomView — per-user saved filters with advanced conditions + column picker |
-| Automation | com_vtiger_workflow — event-driven + scheduled; 7 task types |
-| Access control | Roles (tree) + Profiles (module+field permissions) + Sharing Rules |
-| Import / Export | Per-module CSV import/export; duplicate-check on import |
-| Duplicate detection | `handlers/CheckDuplicateHandler.php` — field-level duplicate check on save |
-| Lead conversion | Atomic Lead → Contact + Account + Potential with field mapping |
-| Account hierarchy | Parent account self-reference; `AccountHierarchy` view |
-| Portal | `Portal` module — customer self-service portal (HelpDesk + Contacts) |
-| RSS | Rss module — news feed widget |
-| iCal | Calendar iCal import/export (RFC 2445 compliant) |
-| OAuth2 | `Oauth2` module — API authentication |
-| REST API | `include/Webservices/` — full CRUD REST API for all modules |
-| PDF generation | `vtlib/Vtiger/PDF/` — PDF export for Quotes/Invoices using TCPDF |
-| Cron / Scheduler | `vtlib/Vtiger/Cron.php` — cron task registry; workflow scheduler runs on each cron tick |
-| Multi-language | `vtlib/Vtiger/Language.php` — full i18n, per-module language files |
-| Groups | Named user groups; records assignable to groups |
-| Audit trail | `vtiger_audit` — logs who changed what field (module-level opt-in) |
-| Merge / Dedup | Not studied in depth but `CheckDuplicateHandler` suggests field-match dedup |
+### Core CRM
+- Leads with lead conversion wizard (Lead → Contact + Account + Potential in one flow)
+- Contacts with portal access and customer self-service portal
+- Accounts with parent-child hierarchy (account tree / parent companies)
+- Potentials (Opportunities/Deals) with stage history audit trail, probability tracking, forecast categories
+- Activities (Calls, Meetings, Tasks) with recurring events, reminders, iCal import/export
+- Email send/receive (MailManager IMAP integration), email templates with merge fields, email open/click tracking
+- Documents (file attachments) with folder organization
+- Reports module with custom report builder (tabular, summary, matrix), scheduled email delivery of reports
+- Dashboards with configurable widgets (charts, top lists, pipelines, calendars)
+- Global search across all modules
+- Duplicate detection and merge for Contacts and Accounts
+- Mass actions (mass edit, mass delete, mass assign, mass email)
+- Import (CSV) with field mapping and de-dup rules
+- Export (CSV) from any list view or report
+- Tags (freeform tagging on any record)
+- Recently Viewed tracking
+
+### Sales / Pipeline
+- Potentials Kanban view (pipeline board by sales stage)
+- Forecast module
+- Price Books, Products, Services catalog
+- Quotes with line items, discounts, taxes, PDF generation
+- Sales Orders from Quotes
+- Purchase Orders
+- Invoices with PDF generation
+
+### Support
+- HelpDesk (Cases/Tickets) with ticket comments, status tracking, escalation
+- FAQ module
+- Customer self-service portal (Contact-based external login)
+
+### Marketing
+- Campaigns with Lead/Contact targeting, campaign ROI tracking
+- Email campaign tracking (send, open, click)
+- Lead source tracking
+
+### Admin / Settings
+- Role hierarchy editor (unlimited depth tree, drag-and-drop)
+- Profiles (permission templates) with module, action, and field-level control
+- Sharing Access (org-default + custom sharing rules between roles/groups)
+- Groups management (user groups with nested role membership)
+- LayoutEditor (custom fields, block reordering, module relationships)
+- CustomView management (shared saved filters)
+- Picklist editor with role-based value restriction and dependent picklists
+- Workflow editor (event-based + scheduled conditions + multi-step actions)
+- Email account configuration (SMTP + IMAP)
+- Currency management (multi-currency with exchange rates)
+- Tax configuration
+- Business Hours + Holidays (for SLA on HelpDesk)
+- Module Manager (enable/disable modules)
+- Menu Editor
 
 ---
 
 ## 8. UI/UX Patterns
 
-**List View (ListView):**
-- Column-sortable tabular list with pagination.
-- Column selector (customizable visible columns per user per module).
-- Saved filters (CustomView) shown in a dropdown; user can create/edit/delete own filters.
-- Mass actions: Mass Edit, Mass Delete, Mass Transfer Ownership, Export.
-- Alpha search bar (jump to records starting with a letter).
-- Quick Create from list view header (modal form with mandatory fields only).
+### List View
+- Top area: **CustomView tabs** (saved filters rendered as clickable tabs). Switching tab changes the active filter + column set.
+- Search bar: basic search (searches primary name field) + Advanced Search (per-field filter form, collapsible).
+- Column headers: clickable for sort (ASC/DESC toggle).
+- Bulk actions toolbar (appears when rows are checked): Mass Edit, Mass Delete, Mass Assign, Export, Send Email.
+- Pagination at bottom.
+- "Quick Create" button (opens a reduced form in a modal/panel with only mandatory + quickcreate-flagged fields — field-level `quickcreate` flag in `vtiger_field`).
 
-**Detail View:**
-- Read-only display organized into labelled Blocks (admin-configurable via Layout Editor).
-- Related lists at the bottom — each is a tab or section showing linked records from other modules (Contacts on Account, Activities on Lead, etc.).
-- Inline Edit on individual fields (double-click to edit without leaving the page).
-- "More Detail" toggle to show/hide extended blocks.
+### Detail / Edit View
+- Fields grouped into **collapsible Blocks** (named sections). Block collapse state is remembered per user.
+- Related Lists at the bottom of detail view: each is a mini-list of related records (e.g. Contacts on an Account, Activities on a Lead). Related lists are module-defined.
+- Inline edit: clicking a field value opens an in-place edit widget (no full page reload).
+- History panel / Activity History tab: all past calls, emails, meetings linked to this record.
+- Comments / Notes panel for internal threaded notes.
+- Tag support (freeform tags on any record).
 
-**Edit View:**
-- Same Block layout, editable.
-- Relate fields use popup selector windows (`Popup` action) for picking related records.
+### Inventory / Quote UI
+- Line-item editor on Quotes, SalesOrders, Invoices: a dynamic table with product lookup, qty, unit price, discount, tax. Subtotals and totals recalculate live in the browser.
+- PDF generation of Quotes/Invoices.
 
-**Kanban / Pipeline:**
-- No dedicated Kanban board found in source. Pipeline visualization is done via dashboard widgets (Funnel chart, GroupedBySalesStage) rather than drag-and-drop Kanban.
-
-**Dashboards (Home):**
-- Home module aggregates configurable widgets per user. Widgets are PHP classes in each module's `dashboards/` directory. They render charts and top-N lists. Drag-and-drop layout via JavaScript.
-
-**Quick Create:**
-- Every module has `views/QuickCreateAjax.php` — a minimal form rendered in a modal, submitting only mandatory fields. Allows fast record creation from anywhere without leaving the current page.
-
-**Popup Selector:**
-- `action=Popup` mode renders a stripped-down list view in a browser popup for selecting related records. Used by Relate fields in edit forms.
-
-**Search:**
-- Basic search: single text field against `def_basicsearch_col`.
-- Advanced Search: multi-field form, saved as CustomView.
-- Global search across all modules via `vtiger_crmentity.label` text index.
+### Reporting
+- Report builder wizard: choose module, choose columns, add grouping, add conditions, add charts.
+- Scheduled reports emailed on a cron schedule.
+- Report folders for organization.
 
 ---
 
-## 9. What AltLeads appears to be MISSING
+## 9. What AltLeads Appears to Be Missing
 
-Based on the Vtiger feature set vs. AltLeads's current state (TypeScript/React/Supabase; entities: company_master, contact_master, lead_master, lead_report, meeting_master, task, interaction; roles: ADMIN/TEAM_LEAD/AGENT/SALES_HEAD/SALES_PERSON/QC):
+Based on the Vtiger teardown, features present in Vtiger but not yet in AltLeads:
 
-| Gap | Vtiger Pattern | AltLeads Status |
-|---|---|---|
-| **Deals / Pipeline module** | `Potentials` with `sales_stage`, `amount`, `closingdate`, `probability`, campaign linkage, and full forecast dashboards | Building next — not yet live |
-| **Lead Conversion flow** | Atomic Leads→Contact+Account+Potential with admin-configurable field mapping UI | No equivalent — leads exist as lead_master+lead_report but no conversion action creates Company+Contact+Deal atomically |
-| **Account hierarchy** | `parentid` self-reference on `vtiger_account`; dedicated hierarchy view | `company_master` has no parent-child org hierarchy |
-| **Role-scoped picklist values** | Each role sees a custom subset of every picklist (`vtiger_role2picklist`) | Picklists are global — no role-based value visibility |
-| **Custom fields (schema-first)** | Admin can add any field type; physically added as column to SCF table | Planned (`custom fields/metadata` roadmap item) — not yet built |
-| **Layout Editor / Block customization** | Admin rearranges fields into blocks per module without code | No equivalent; layout is hardcoded in React components |
-| **Sharing Rules (record-level access)** | Per-module default (Public/Private) + exception rules between roles/groups | RLS is owner-based only (created_by or project scoping); no cross-role sharing rules |
-| **Workflow / Automation engine** | 7 trigger types, expression conditions, 8+ task types, scheduler | Planned as "automation event-spine" — nothing shipped |
-| **Campaigns / Marketing** | Full campaign module with contact/account membership, campaign source on Potentials | No marketing or campaign module |
-| **Reports engine** | Tabular/summary/matrix reports, chart widgets, PDF export, scheduled delivery | No reporting module; export is CSV only |
-| **HelpDesk / Support tickets** | Ticketing linked to Contacts/Accounts | No support/ticket module |
-| **Customer portal** | Self-service portal for contacts to view/create support tickets | Planned (client/sales portal) — shell only |
-| **Document management** | Attached files on any entity via `vtiger_senotesrel` | No document storage beyond interaction notes |
-| **Inventory / ERP** | Products, Pricebooks, Quotes, SalesOrder, Invoice, PurchaseOrder | Out of scope for AltLeads's outreach CRM focus |
-| **CustomView approval flow** | Non-admin saved views need admin approval before becoming available | AltLeads saved views (if built) have no approval mechanism |
-| **Activity reminders (cron)** | Scheduled email reminders for due activities via cron | No scheduled reminder engine |
-| **Audit trail** | Per-field change log | No field-level audit trail on records |
-| **Groups** | User groups as record owners; group-based sharing rules | No user groups — only individual user ownership |
-| **iCal integration** | Import/export RFC 2445 iCal from Calendar | No calendar sync |
-| **Global search (label index)** | `vtiger_crmentity.label` full-text search across all entities | Per-module search only |
+### Data Model / Relationships
+- Account parent-child hierarchy (`parentid` self-reference on company_master)
+- Contact → Account relationship (contacts belonging to a company; our contacts are currently independent)
+- Deal / Potentials module with amount, close date, stage, probability, forecast category
+- Stage history audit trail (every stage change timestamped with who changed it and the amount at the time)
+- Many-to-many Contact ↔ Deal associations
+- Lead Conversion wizard (Lead → Contact + Company + Deal in one atomic flow, with admin-configurable field mapping)
+
+### Access Control
+- Field-level permissions (hide or make read-only per field per role/profile)
+- Role hierarchy with "manager sees subordinates' records" as a first-class feature
+- Sharing rules (explicit "this group can see that role's records" beyond the default public/private setting)
+- Group assignment (assign records to a team/group, not just an individual user)
+- Per-role picklist value restriction (e.g. a junior agent cannot select "Won" as a deal stage)
+
+### Activity / Communication
+- Recurring events / appointments
+- iCal sync (export calendar to Google Calendar / Outlook)
+- MailManager (IMAP inbox integration — link incoming emails to CRM records)
+- Email open/click tracking
+- Email templates with merge fields (our notify-service sends one-off transactional emails; no user-authoring template system)
+- Reminders (time-based alerts before events)
+- ModComments (threaded internal notes per record with @mentions)
+
+### Automation
+- Workflow engine (event-based + scheduled: send email, update fields, create records, create tasks automatically on conditions met)
+- Formula/expression engine for computed field values
+- Escalation rules (time-based, e.g. ticket unresolved after N hours triggers reassignment)
+
+### Customization
+- Custom field creation by admin (no-code, for any module)
+- Block/section reordering in admin UI
+- Dependent picklists (one picklist filters another)
+- Admin-configurable N:N module relationships
+
+### Analytics / Reporting
+- Report builder with grouping, aggregation, charts
+- Scheduled report email delivery
+- Forecast module / pipeline revenue projections
+- Configurable dashboard widgets (charts, top lists, pipeline funnel)
+
+### Other
+- Document/file management with folder structure
+- Campaigns / email marketing module
+- Customer self-service portal (Contact-based external login for end customers)
+- Multi-currency support
+- Invoice / Quote / SalesOrder with line items and PDF generation
+- HelpDesk / support ticket system
 
 ---
 
-## 10. Reverse-engineering feasibility
+## 10. Reverse-Engineering Feasibility
 
-**Verdict: High feasibility for behavioral patterns; low feasibility for direct code reuse.**
+### What Maps Well to React / Supabase + RLS
 
-Vtiger's codebase is a PHP 5.x-era monolith forked from SugarCRM. The patterns are clear, the data model is well-documented by the code itself, and there are no obfuscated or encrypted sections. Everything relevant to our roadmap can be understood by reading the module PHP files — which this document now covers at sufficient depth.
+**CustomView saved filters with public/private sharing** → High feasibility, high ROI.
+The schema is clean: `vtiger_customview` (metadata) + `vtiger_cvcolumnlist` (displayed columns as an ordered list) + `vtiger_cvadvfilter` (filter conditions: field, comparator, value, AND/OR). This translates directly to a `saved_views` table in Postgres with a `columns JSONB` array and a `filters JSONB` array of `{field, operator, value, conjunction}` objects. A `status` field (private/public/default) enables team-shared views. Our existing saved views concept is on the right track — the key additions are the public/private sharing flag and a proper column-ordering model.
 
-**What translates directly to AltLeads (TypeScript/React/Supabase):**
+**Stage History Audit Trail** → High feasibility, high ROI.
+`vtiger_potstagehistory` is trivial to replicate: a `deal_stage_history` table with `(deal_id, stage, changed_at, changed_by, amount)`. Adding this from day one on our Deals module costs almost nothing and unlocks time-in-stage analytics later. One app-layer hook on deal update is sufficient.
 
-1. **Entity-table split pattern** — Vtiger's `vtiger_crmentity` + `vtiger_leaddetails` is analogous to AltLeads's `lead_master` + `lead_report`. The pattern of a universal entity spine table + per-module detail table is already in use; continue it for Deals.
+**Lead Conversion wizard** → Medium feasibility.
+The concept (Lead → Contact + Company + Deal in one transaction) is straightforward SQL wrapped in a Postgres transaction. The complexity is the admin-configurable field mapping table. We can hard-code the mapping first and add a config UI later.
 
-2. **Lead conversion UI flow** — The Leads→Contact+Account+Potential field-mapping form is the most borrowable single pattern. We can build a `ConvertLead`-style view that creates a Company+Contact+Deal from a lead_master record, mapping fields across entities, in one atomic Supabase transaction.
+**Workflow Engine** → Medium feasibility, high long-term ROI.
+The core pattern (trigger type + JSON conditions + ordered task list) is fully stack-agnostic. We would store workflows in Postgres (`workflows` table: `module`, `trigger_type`, `conditions JSONB`, `tasks JSONB[]`). Execution would be a Node.js event hook (on record save in the API) or a cron job (for scheduled). The condition evaluator is pure logic — VTJsonCondition translates cleanly to TypeScript. The hardest part is the no-code builder UI. A minimal first version (hardcoded "send email on lead status change") has immediate value.
 
-3. **CustomView filter schema** — `vtiger_cvadvfilter` operator set (`e`, `n`, `s`, `ew`, `c`, `l`, `g`, `b`, `a`, `bw`) maps cleanly to our advanced filter engine. The approval flow for non-admin views is worth considering for the Sales portal.
+**Dependent Picklists** → High feasibility, low effort.
+A `picklist_dependencies` table: `(parent_field, parent_value, child_field, allowed_values[])`. The React `<Select>` component filters options based on the parent field's current value.
 
-4. **Workflow trigger model** — The 7 execution conditions (`ON_FIRST_SAVE`, `ONCE`, `ON_EVERY_SAVE`, `ON_MODIFY`, `ON_SCHEDULE`, `MANUAL`) are the right abstraction for our planned automation event-spine. Model `com_vtiger_workflows.execution_condition` as an enum in our Postgres schema.
+### What is Vtiger-Specific / Hard to Translate Directly
 
-5. **Role-scoped picklist values** — The `vtiger_role2picklist` pattern (each role sees a subset of picklist values) is directly applicable when we add custom fields. Without this, agents in one team can set field values that others cannot.
+**Role hierarchy + sharing rules combined** → Conceptually right, but architectural mismatch.
+Vtiger's materialized-path hierarchy is elegant for a single-tenant app. In AltLeads, our `project` acts as the primary tenant boundary (RLS on `project_id`). Within a project, "TL sees agents" is achievable via a `role_hierarchy` table checked by RLS policies, but the full 9-table custom sharing matrix is overkill for our current 6-role flat structure. The pattern to borrow: store role ancestry as a materialized path string so "find all subordinates" is a single LIKE query rather than recursive CTE — this matters at scale. The "sharing rules" concept becomes relevant when we launch client-configurable roles for enterprise customers.
 
-**What NOT to replicate:**
-- The physical SCF column-per-custom-field approach is fine for PHP but wrong for Postgres/Supabase. Use a JSONB `custom_fields` column or a `entity_field_values` EAV table instead.
-- Task serialization as PHP `serialize()` blobs — use JSON.
-- Flat PHP privilege cache files — use Supabase RLS + JWT claims.
-- The popup-window relate-field selector — use autocomplete search inputs (already done in AltLeads).
+**Profile → field-level visibility** → Medium complexity, API-layer problem.
+In React, field visibility is trivial (conditional render). The complexity is persistence: a `profile_field_permissions` table with `(profile_id, module, field_name, visible, readonly)`. Supabase RLS is row-level, not column-level — field masking must happen in the API layer (the Express / PostgREST layer must strip disallowed columns before returning JSON). This is doable but requires deliberate column-stripping middleware.
+
+**Multi-table entity model** (vtiger_crmentity + 3-4 per-module tables) → Not worth copying.
+This was necessary for MySQL circa 2005 (ALTER TABLE was expensive; custom fields needed a separate table). In Postgres, `JSONB` columns handle custom fields elegantly. The lesson worth keeping: never add custom fields as real columns on the main entity table. Use a `custom_fields JSONB` column on each entity (e.g. `lead_master.custom_fields`) — this is the equivalent of Vtiger's `*scf` pattern without the multi-table complexity.
+
+**Per-user privilege file cache** (`user_privileges/<userid>.php`) → Not applicable.
+Vtiger regenerates flat PHP files to avoid DB hits on every page load. In Supabase, RLS policies run as compiled Postgres functions — they are set-based and fast. No equivalent file cache is needed at our scale.
+
+### Verdict + Highest-ROI Items for AltLeads
+
+**Overall verdict**: Vtiger's code is not portable (PHP, raw SQL, no types, no modern patterns). Its **data model and access-control architecture** are the real intellectual value. The three highest-ROI translations:
+
+1. **CustomView / Saved Filters (public + private)** — Directly needed now. Schema is simple: one `saved_views` table with JSONB for columns + filters + an `is_public` flag. Solves a real team collaboration need and is a one-sprint feature.
+
+2. **Deal module + stage history table** — We need a Deals entity anyway (in the roadmap). Adding `deal_stage_history` from day one is near-zero extra effort and enables time-in-stage reporting and pipeline forecasting from the start.
+
+3. **Workflow engine skeleton** — Even a minimal version (trigger: on-record-save; condition: field equals value; action: send email OR update a field) immediately differentiates AltLeads for outreach teams. Vtiger's `VTJsonCondition` JSON condition structure (`[{fieldname, operation, value, groupid}]`) is the right model — it maps cleanly to a TypeScript evaluator. Build the data model now; ship the UI in phases.
+
+After those three: the **role-hierarchy materialized-path pattern** is the right long-term investment for the Sales Portal (Sales Head seeing Sales Persons' records, TEAM_LEAD seeing Agents'). The flat 6-role RLS model is sufficient now but will hit limits when enterprise clients want custom role trees. The `parentrole` materialized-path design (`H1::H3::H7`) is the pattern to adopt when we add configurable hierarchies — it makes subordinate queries a single `LIKE` and avoids recursive CTEs at runtime.
