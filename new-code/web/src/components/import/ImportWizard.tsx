@@ -34,6 +34,11 @@ import {
   runImportChunked, undoImportBatch,
   type ImportEntity, type ImportRunResult,
 } from '../../data/importApi';
+import {
+  ENTITY_MATCH_KEYS, defaultMatchKey, getMatchKeyDef,
+  classifyRows, type DedupResult, type DedupClassifiedRow,
+} from '../../lib/importDedup';
+import { fetchExistingKeys } from '../../data/importDedup';
 
 type Step = 1 | 2 | 3 | 4;
 
@@ -94,6 +99,13 @@ export function ImportWizard({ onClose }: { onClose: () => void }) {
   const [parsing, setParsing] = useState(false);
   const [mappings, setMappings] = useState<ColumnMapping[]>([]);
   const [skippedOpen, setSkippedOpen] = useState(false);
+  const [matchKey, setMatchKey] = useState<string>(() => defaultMatchKey(ENTITY_CATALOGS[0].key));
+  const [dedup, setDedup] = useState<DedupResult | null>(null);
+  const [dedupLoading, setDedupLoading] = useState(false);
+  const [dedupWarning, setDedupWarning] = useState<string | null>(null);
+  const [newRowsOpen, setNewRowsOpen] = useState(false);
+  const [updateRowsOpen, setUpdateRowsOpen] = useState(false);
+  const [inFileDupRowsOpen, setInFileDupRowsOpen] = useState(false);
 
   // Write-engine state (DEC-14) — only active when gateway flag is ON
   const [importing, setImporting] = useState(false);
@@ -140,6 +152,9 @@ export function ImportWizard({ onClose }: { onClose: () => void }) {
   // Re-run auto-map if the entity changes after a file is already loaded.
   function onEntityChange(nextKey: string) {
     setEntityKey(nextKey);
+    setMatchKey(defaultMatchKey(nextKey));
+    setDedup(null);
+    setDedupWarning(null);
     if (parsed) {
       const def = getEntityDef(nextKey) ?? ENTITY_CATALOGS[0];
       setMappings(autoMap(parsed.headers, def));
@@ -157,6 +172,37 @@ export function ImportWizard({ onClose }: { onClose: () => void }) {
         return m;
       }),
     );
+  }
+
+  /* ── dedup computation (async, triggered on entering step 3) ───────── */
+  async function computeDedup(validRows: MappedRow[]) {
+    setDedup(null);
+    setDedupWarning(null);
+    setDedupLoading(true);
+    try {
+      const def = getMatchKeyDef(entityKey, matchKey);
+      const fieldKey = def?.fieldKey ?? matchKey;
+
+      // Extract raw key values from the valid rows (non-empty only for DB query).
+      const rawValues = validRows
+        .map((r) => (r[fieldKey] ?? '').trim())
+        .filter(Boolean);
+
+      const { existingNorms, ok, error } = await fetchExistingKeys(entityKey, matchKey, rawValues);
+      if (!ok) {
+        setDedupWarning(error ?? 'Could not check for existing records — dedup preview is estimate-only.');
+      }
+
+      const result = classifyRows(validRows, matchKey, entityKey, existingNorms);
+      setDedup(result);
+    } catch (e) {
+      setDedupWarning(e instanceof Error ? e.message : 'Dedup check failed — continuing without match preview.');
+      // Still classify in-file dups without DB data.
+      const result = classifyRows(validRows, matchKey, entityKey, new Set());
+      setDedup(result);
+    } finally {
+      setDedupLoading(false);
+    }
   }
 
   /* ── validation (memoised) ───────────────────────────────────────────── */
@@ -361,6 +407,33 @@ export function ImportWizard({ onClose }: { onClose: () => void }) {
               </tbody>
             </table>
           </div>
+
+          {/* Match-key selector (ALT-490) */}
+          {(ENTITY_MATCH_KEYS[entityKey]?.length ?? 0) > 0 && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 4, padding: '8px 10px', background: '#F8FAFC', border: '1px solid #e5e7eb', borderRadius: 8 }}>
+              <label style={{ fontSize: 12, fontWeight: 600, color: '#374151', whiteSpace: 'nowrap' }}>
+                Match existing records by:
+              </label>
+              <select
+                value={matchKey}
+                onChange={(e) => {
+                  setMatchKey(e.target.value);
+                  setDedup(null);
+                  setDedupWarning(null);
+                }}
+                style={{ ...selectStyle, width: 200 }}
+              >
+                {(ENTITY_MATCH_KEYS[entityKey] ?? []).map((def) => (
+                  <option key={def.key} value={def.key}>
+                    {def.label}{def.recommended ? ' (recommended)' : ''}
+                  </option>
+                ))}
+              </select>
+              <span style={{ fontSize: 11, color: '#9ca3af' }}>
+                Used to detect new vs existing records in the preview
+              </span>
+            </div>
+          )}
         </div>
       )}
 
@@ -373,6 +446,86 @@ export function ImportWizard({ onClose }: { onClose: () => void }) {
             <SummaryPill color="#b45309" bg="#FFFBEB" border="#FDE68A"
               label="will be skipped" value={validation.skipped.length} />
           </div>
+
+          {/* Dedup QC section (ALT-490) */}
+          {dedupLoading && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 12px', background: '#F8FAFC', border: '1px solid #e5e7eb', borderRadius: 8, fontSize: 12, color: '#6b7280' }}>
+              <Loader2 size={13} style={{ animation: 'spin 1s linear infinite', color: '#6b7280' }} />
+              Checking for existing records…
+            </div>
+          )}
+          {!dedupLoading && dedup && (
+            <div className="space-y-2">
+              {/* Match-key label */}
+              <p style={{ fontSize: 11, color: '#6b7280', marginBottom: 2 }}>
+                Records are matched on: <strong style={{ color: '#374151' }}>
+                  {getMatchKeyDef(entityKey, dedup.matchKey)?.label ?? dedup.matchKey}
+                </strong>
+              </p>
+
+              {/* Soft warning if DB match query failed */}
+              {dedupWarning && (
+                <div style={{ fontSize: 12, color: '#b45309', background: '#FFFBEB', border: '1px solid #FDE68A', borderRadius: 6, padding: '7px 10px' }}>
+                  <AlertTriangle size={13} style={{ display: 'inline', verticalAlign: '-2px', marginRight: 4 }} />
+                  {dedupWarning}
+                </div>
+              )}
+
+              <div style={{ display: 'flex', gap: 8 }}>
+                <DedupPill
+                  color="#1d4ed8" bg="#EFF6FF" border="#BFDBFE"
+                  label="new" value={dedup.newRows.length + dedup.emptyKeyRows.length}
+                  open={newRowsOpen}
+                  onToggle={() => setNewRowsOpen((o) => !o)}
+                />
+                <DedupPill
+                  color="#7c3aed" bg="#F5F3FF" border="#DDD6FE"
+                  label={`will update existing (matched by ${getMatchKeyDef(entityKey, dedup.matchKey)?.label ?? dedup.matchKey})`}
+                  value={dedup.updateRows.length}
+                  open={updateRowsOpen}
+                  onToggle={() => setUpdateRowsOpen((o) => !o)}
+                />
+                <DedupPill
+                  color="#b45309" bg="#FFFBEB" border="#FDE68A"
+                  label="in-file duplicates"
+                  value={dedup.inFileDupRows.length}
+                  open={inFileDupRowsOpen}
+                  onToggle={() => setInFileDupRowsOpen((o) => !o)}
+                />
+              </div>
+
+              {/* Expandable new rows list */}
+              {newRowsOpen && (dedup.newRows.length + dedup.emptyKeyRows.length) > 0 && (
+                <DedupExpandedList
+                  rows={[...dedup.newRows, ...dedup.emptyKeyRows]}
+                  fieldKey={dedup.fieldKey}
+                  matchKeyLabel={getMatchKeyDef(entityKey, dedup.matchKey)?.label ?? dedup.matchKey}
+                  colorScheme={{ bg: '#EFF6FF', border: '#BFDBFE', text: '#1d4ed8' }}
+                  emptyNote="(no key value — will be treated as new)"
+                />
+              )}
+
+              {/* Expandable update rows list */}
+              {updateRowsOpen && dedup.updateRows.length > 0 && (
+                <DedupExpandedList
+                  rows={dedup.updateRows}
+                  fieldKey={dedup.fieldKey}
+                  matchKeyLabel={getMatchKeyDef(entityKey, dedup.matchKey)?.label ?? dedup.matchKey}
+                  colorScheme={{ bg: '#F5F3FF', border: '#DDD6FE', text: '#7c3aed' }}
+                />
+              )}
+
+              {/* Expandable in-file dup rows list */}
+              {inFileDupRowsOpen && dedup.inFileDupRows.length > 0 && (
+                <DedupExpandedList
+                  rows={dedup.inFileDupRows}
+                  fieldKey={dedup.fieldKey}
+                  matchKeyLabel={getMatchKeyDef(entityKey, dedup.matchKey)?.label ?? dedup.matchKey}
+                  colorScheme={{ bg: '#FFFBEB', border: '#FDE68A', text: '#b45309' }}
+                />
+              )}
+            </div>
+          )}
 
           <div>
             <p className="text-zinc-500" style={{ fontSize: 12, marginBottom: 4 }}>
@@ -559,7 +712,14 @@ export function ImportWizard({ onClose }: { onClose: () => void }) {
             <button
               style={{ ...primaryBtn, opacity: (step === 1 ? !canLeaveStep1 : step === 2 ? !canLeaveStep2 : false) ? 0.5 : 1, cursor: (step === 1 ? !canLeaveStep1 : step === 2 ? !canLeaveStep2 : false) ? 'not-allowed' : 'pointer' }}
               disabled={step === 1 ? !canLeaveStep1 : step === 2 ? !canLeaveStep2 : false}
-              onClick={() => setStep((s) => (s + 1) as Step)}
+              onClick={() => {
+                const next = (step + 1) as Step;
+                setStep(next);
+                // Trigger dedup computation when entering the preview step.
+                if (next === 3 && validation) {
+                  void computeDedup(validation.validRows as MappedRow[]);
+                }
+              }}
             >
               Next <ArrowRight size={14} />
             </button>
@@ -645,6 +805,73 @@ function ResultCount({ label, value, color }: { label: string; value: number; co
     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', minWidth: 60 }}>
       <span style={{ fontSize: 18, fontWeight: 700, color }}>{value.toLocaleString()}</span>
       <span style={{ fontSize: 11, color: '#6b7280' }}>{label}</span>
+    </div>
+  );
+}
+
+/** Dedup stat pill with expand toggle (ALT-490). */
+function DedupPill({
+  label, value, color, bg, border, open, onToggle,
+}: {
+  label: string; value: number; color: string; bg: string; border: string;
+  open: boolean; onToggle: () => void;
+}) {
+  return (
+    <button
+      onClick={value > 0 ? onToggle : undefined}
+      disabled={value === 0}
+      style={{
+        flex: 1, background: bg, border: `1px solid ${border}`, borderRadius: 8,
+        padding: '8px 10px', textAlign: 'left', cursor: value > 0 ? 'pointer' : 'default',
+        display: 'flex', flexDirection: 'column', gap: 2,
+      }}
+    >
+      <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+        <span style={{ fontSize: 18, fontWeight: 700, color }}>{value.toLocaleString()}</span>
+        {value > 0 && (
+          open ? <ChevronDown size={13} style={{ color }} /> : <ChevronRight size={13} style={{ color }} />
+        )}
+      </div>
+      <div style={{ fontSize: 11, color, lineHeight: 1.3 }}>{label}</div>
+    </button>
+  );
+}
+
+const DEDUP_LIST_CAP = 200;
+
+/** Expandable list of dedup-classified rows (ALT-490). */
+function DedupExpandedList({
+  rows, fieldKey, matchKeyLabel, colorScheme, emptyNote,
+}: {
+  rows: DedupClassifiedRow[];
+  fieldKey: string;
+  matchKeyLabel: string;
+  colorScheme: { bg: string; border: string; text: string };
+  emptyNote?: string;
+}) {
+  const shown = rows.slice(0, DEDUP_LIST_CAP);
+  const overflow = rows.length - DEDUP_LIST_CAP;
+  return (
+    <div style={{ border: `1px solid ${colorScheme.border}`, borderRadius: 6, overflow: 'hidden', fontSize: 12 }}>
+      <div style={{ background: colorScheme.bg, padding: '4px 10px', fontSize: 11, fontWeight: 600, color: colorScheme.text, borderBottom: `1px solid ${colorScheme.border}` }}>
+        {matchKeyLabel} value
+      </div>
+      <div style={{ maxHeight: 180, overflowY: 'auto', background: '#fff' }}>
+        {shown.map((r) => (
+          <div key={r.rowIndex} style={{ padding: '4px 10px', borderBottom: '1px solid #f3f4f6', color: '#374151' }}>
+            <span style={{ fontWeight: 600, color: '#52525b', marginRight: 6 }}>Row {r.rowIndex + 2}:</span>
+            {r.keyValue
+              ? <span style={{ color: colorScheme.text }}>{r.keyValue}</span>
+              : <span style={{ color: '#9ca3af', fontStyle: 'italic' }}>{emptyNote ?? '(empty)'}</span>
+            }
+          </div>
+        ))}
+        {overflow > 0 && (
+          <div style={{ padding: '4px 10px', fontSize: 11, color: '#9ca3af' }}>
+            …and {overflow.toLocaleString()} more
+          </div>
+        )}
+      </div>
     </div>
   );
 }

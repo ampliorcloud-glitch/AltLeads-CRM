@@ -1,6 +1,34 @@
 # AltLeads CRM — Bulk Export → Edit → Import (Update) Spec
 *Engineering spec · 2026-06-18 · companies first, contacts in phase 2 · admin-only*
 
+---
+
+## ALT-490 — Import Dedup QC Preview ✅ IMPLEMENTED (2026-06-29)
+
+**Match-key selector** added to Step 2 of ImportWizard (below the column mapping table).
+Dropdown populated from `ENTITY_MATCH_KEYS[entityKey]` (lib/importDedup.ts); sensible
+default via `defaultMatchKey()` (email for contacts/leads, record_id for companies).
+Resets when the entity changes.
+
+**Dedup computation** triggers on entering Step 3 (clicking "Next" from Step 2):
+- Calls `fetchExistingKeys(entityKey, matchKey, rawValues)` — chunked READ-ONLY `.in()`
+  SELECT via the anon Supabase client; safe even when write gateway is off.
+- Calls `classifyRows(validRows, matchKey, entityKey, existingNorms)` (pure fn, no DB).
+- If the DB query fails, a soft amber warning is shown — wizard never blocked.
+
+**Preview UI (Step 3)** adds three new stat pills next to the existing valid/skipped pills:
+- **N new** — rows with no match in the DB (blue pill).
+- **M will update existing (matched by «key»)** — rows that matched a DB record (purple pill).
+- **K in-file duplicates** — second-or-later occurrence of the same key within the file (amber pill).
+Each pill is clickable and expands to a scrollable list capped at 200 rows, showing row
+number + key value. A one-liner "Records are matched on: «key»" appears above the pills
+(mirrors HubSpot/Zoho UX).
+
+**Files changed:** `src/components/import/ImportWizard.tsx` (wiring + UI).
+**Files read-only (helpers, not changed):** `src/lib/importDedup.ts`, `src/data/importDedup.ts`.
+
+---
+
 Goal: keep 500+ companies current **without the team doing data entry**. Admin exports to Excel, edits many rows, re-imports, and the system **updates existing records** (never creates duplicates), with a preview before anything saves. Modeled on HubSpot & Zoho.
 
 ---
