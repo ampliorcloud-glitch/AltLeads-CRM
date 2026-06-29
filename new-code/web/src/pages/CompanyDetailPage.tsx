@@ -724,6 +724,10 @@ function ContactRowPanel({
               <StatusBadge value={statusLite.contact_status} category="contact_status" />
             )}
           </div>
+          {/* SAFE_VIEW (ALT-492): contact email/phone masking — the record owner is
+              company_project_status.owner_user_id, held inside AccountPanel state and
+              not propagated here without a prop/fetch change. Masking is N/A at this
+              level; will be wired when ownership is unified (TODO ownership). */}
           <div className="flex items-center gap-3 mt-1 flex-wrap">
             {contact.email ? (
               <a href={`mailto:${contact.email}`} className="flex items-center gap-1 text-zinc-500 hover:text-blue-600" style={{ fontSize: 12 }}>
@@ -1507,6 +1511,9 @@ export function CompanyDetailPage() {
                 ) : '—'}
               </Detail>
               <Detail icon={<Mail size={14} />} label="Email">
+                {/* SAFE_VIEW (ALT-492): company.email is a business address, not a personal
+                    contact field. company_master has no owner_user_id (ownership TODO).
+                    Masking is N/A here — no owner field in scope without a new fetch. */}
                 {company.email ? (
                   <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, minWidth: 0 }}>
                     <a href={`mailto:${company.email}`} className="hover:underline" style={{ color: 'var(--color-brand)' }}>
