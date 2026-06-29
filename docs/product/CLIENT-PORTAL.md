@@ -1,6 +1,6 @@
 # Client Portal — Plan (v1, Phase 1)
 
-> **Status: PLAN / not built.** Owner: Mohit. Branding: **Amplior** (not AltLeads). Web-only. Source: CEO meeting transcript 2026-06-21 (captured in REBUILD_LOG cont. 9). This doc is the durable plan; it will evolve as the owner confirms the open decisions in §10.
+> **Status: PLAN / not built.** Owner: Ankit. Branding: **Amplior** (not AltLeads). Web-only. Source: CEO meeting transcript 2026-06-21 (captured in REBUILD_LOG cont. 9). This doc is the durable plan; it will evolve as the owner confirms the open decisions in §10.
 
 ## 1. What this is (and isn't)
 A **premium, Amplior-branded, client-facing web portal** — "Amplior's identity in front of the client," like Microsoft's `admin.microsoft.com`. One place where a client's **leadership** can see everything Amplior is doing for them: onboarding artifacts, lead reports, meetings + a dashboard, governance notes, updates, and invoices — instead of that being scattered across email/WhatsApp/calls.
@@ -188,3 +188,24 @@ There is **ONE database**. The portal keeps **no separate copy** — it reads th
 
 ### 13.7 Task Manager (separate CRM module — re-confirmed; ALT-160 / ALT-209)
 A **Task Manager** per CRM user (internal: agent/TL/etc.) — schedule or **1-click** create **Call / Meeting / general** tasks, associated to records, with **email + browser reminders** (so a "call this customer" ask isn't forgotten). HubSpot/Zoho-style. To be planned as its own module next.
+
+---
+## 14. v4 — BUILD-PATH correction (Ankit, 2026-06-29) — supersedes the snapshot/standalone build
+
+A prior session began a **standalone `new-code/portal` app + a `portal.*` snapshot schema** (denormalised meeting_snapshot + trigger). **Ankit corrected this — it is the wrong build path and is RETIRED.** The reasons + the locked corrected design:
+
+### 14.1 No snapshot, no separate tables — reuse the REAL CRM tables
+- The portal reads/writes the **same `public.*` CRM tables**. There is **no copy, no `portal.meeting_snapshot`, no trigger**.
+- **The lead is already the snapshot**: contact/company info is captured onto the lead at lead-creation time; later edits to company/contact do **not** retro-change the lead. So §13.5's isolation goal is already met by the existing data model — nothing extra to snapshot.
+- **Feedback & remarks** write to the **same CRM tables** (`feedback_answer`, `meeting_master.agent_feedback`) under RLS → they **reflect in the CRM automatically** (Amplior agents/TL/uplines see them). No separate feedback table.
+- Client write actions stay minimal: **feedback/remarks** + **request reschedule/cancel** (Amplior still schedules). No company/contact edits.
+
+### 14.2 Same codebase, separate domain (grow the /sales seed)
+- The existing in-CRM **`/sales` portal IS the seed** (`new-code/web`). We grow it into the **full** client portal (dashboard, lead reports, meetings, governance/review, ICP/docs, updates, invoices, wishlist, feedback) — **not** a sales-only slice.
+- Delivery: **one codebase, white-labeled per brand**, the **same web app served at a separate portal domain in a "portal-only" mode** (login → portal; internal CRM hidden). Not a second codebase to maintain. (Retire the standalone `new-code/portal` app + `portal.*` schema; foundation migration was applied but is unused — drop later with sign-off.)
+
+### 14.3 Scoping = assigned SALES user + downline, behind a per-client SETTING
+- Scope on **`lead_report.user_id`** (the **assigned sales user**) — explicitly **NOT** `created_by`/`agent_id` (the internal CRM owner).
+- **Sales Person** → own assigned only. **Sales Head** → own + **downline** (via new **`project_user.sales_head_user_id`**). **Company Admin** → all their company's projects.
+- **Per-client visibility SETTING (Ankit):** a toggle, **mirrored in CRM project settings AND portal client settings**, decides whether strict own+downline scoping is enforced (sensitive clients) or open within their projects (non-sensitive). Amplior chooses per client.
+- Enforcement: **RLS** on the CRM tables (helpers `current_user_id()`, `is_sales_head()`, `sales_downline_ids()` per SALES-PORTAL.md), **validated with throwaway SP/SH logins before prod** (ALT-229 discipline). Query-level scoping in the data layer is the first increment; RLS hardens it.

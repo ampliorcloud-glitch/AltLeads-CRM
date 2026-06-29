@@ -48,6 +48,16 @@ const CompanyDetailPage = lazy(() => import('./pages/CompanyDetailPage').then(m 
 const CompanyFormPage = lazy(() => import('./pages/CompanyFormPage').then(m => ({ default: m.CompanyFormPage })));
 const PortalRoutes = lazy(() => import('./portal/PortalRoutes').then(m => ({ default: m.PortalRoutes })));
 
+/**
+ * PORTAL-ONLY mode (ALT — Client Portal v4). When the build sets VITE_PORTAL_ONLY,
+ * this same app is served at the separate portal domain as the white-label client
+ * portal: only the portal (/sales/*) surface is reachable, the internal CRM routes
+ * are not mounted, and the root/login land on the portal login. Default (unset) =
+ * the normal full CRM — so the live CRM build is completely unaffected.
+ */
+const PORTAL_ONLY =
+  import.meta.env.VITE_PORTAL_ONLY === '1' || import.meta.env.VITE_PORTAL_ONLY === 'true';
+
 /** Shared full-screen loading spinner used while auth/roles hydrate. */
 function RouteLoader() {
   return (
@@ -139,6 +149,75 @@ function AppRoutes() {
 
   if (loading) {
     return <RouteLoader />;
+  }
+
+  // PORTAL-ONLY mode: mount ONLY the portal (/sales/*) surface. The internal CRM
+  // routes are intentionally not registered here, so on the portal domain a client
+  // can never reach a CRM page even by typing the URL. Same guards (SalesProtectedRoute)
+  // and same pages as the in-CRM sales shell — one codebase, white-labeled per domain.
+  if (PORTAL_ONLY) {
+    return (
+      <Suspense fallback={<RouteLoader />}>
+        <Routes>
+          {/* Self-service password recovery still works on the portal domain. */}
+          <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+          <Route path="/reset-password" element={<ResetPasswordPage />} />
+          {/* Portal login. Any non-portal login URL folds into it. */}
+          <Route path="/sales/login" element={<SalesLoginPage />} />
+          <Route path="/login" element={<Navigate to="/sales/login" replace />} />
+          <Route
+            path="/sales"
+            element={
+              <SalesProtectedRoute>
+                <LeadsPage />
+              </SalesProtectedRoute>
+            }
+          />
+          <Route
+            path="/sales/leads/:id"
+            element={
+              <SalesProtectedRoute>
+                <LeadDetailPage />
+              </SalesProtectedRoute>
+            }
+          />
+          <Route
+            path="/sales/meetings"
+            element={
+              <SalesProtectedRoute>
+                <MeetingsPage />
+              </SalesProtectedRoute>
+            }
+          />
+          <Route
+            path="/sales/meetings/:id"
+            element={
+              <SalesProtectedRoute>
+                <SalesMeetingDetailPage />
+              </SalesProtectedRoute>
+            }
+          />
+          <Route
+            path="/sales/wishlist"
+            element={
+              <SalesProtectedRoute>
+                <SalesWishlistPage />
+              </SalesProtectedRoute>
+            }
+          />
+          <Route
+            path="/sales/feedback"
+            element={
+              <SalesProtectedRoute>
+                <SalesPlaceholderPage title="Feedback" />
+              </SalesProtectedRoute>
+            }
+          />
+          {/* Everything else on the portal domain → portal home (guards/redirects as needed). */}
+          <Route path="*" element={<Navigate to="/sales" replace />} />
+        </Routes>
+      </Suspense>
+    );
   }
 
   return (
