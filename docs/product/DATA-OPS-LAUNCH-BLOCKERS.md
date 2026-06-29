@@ -34,7 +34,7 @@ Consensus across both researchers — the data-admin table-stakes (most already 
 - Data-quality command center: formatting auto-fix, fill-rate, dup-volume alerts, unused-property cleanup (ALT-408).
 - **Collaborators / secondary owners** + per-record share (design spec done — ALT-441) and **associations** across modules (design spec done — ALT-442).
 - Do-Not-Call / suppression list + unsubscribe handling, auto-remove from sequences (ALT-425/409).
-- Bulk-assign owner across a selection + "max per company" distribution cap + departure-reassignment (partly have; ALT-443).
+- Bulk-assign owner across a selection + "max per company" distribution cap + departure-reassignment — ✅ IMPLEMENTED (ALT-443): BulkReassignModal (multi-owner checkbox + optional cap input) wired into Leads/Meetings/Companies/Contacts bulk-reassign bars; distributeRecords() round-robin via bulkActions.ts; DepartingUserReassignTab in AdminPage → "Departing User" nav item; countOwnedRecords + fetchOwnedLeadIds/CompanyRows/ContactRows helpers added to assignment.ts.
 - Scheduled/ongoing enrichment + job-change tracking + data-health dashboard (post-launch; ALT-444).
 
 ## D. Customization gaps (UI review) — what users can't tailor but should

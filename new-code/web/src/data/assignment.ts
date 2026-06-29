@@ -578,3 +578,80 @@ export async function reassignContactsBulk(
   }
   return summarize(ok, failed, firstErr);
 }
+
+/* ── ALT-443: Record-count helpers + departing-user orchestration ──────────── */
+
+/**
+ * Count records owned by a user across all three modules.
+ * Leads: lead_report.user_id (active rows).
+ * Companies: company_project_status.owner_user_id (across all projects).
+ * Contacts: contact_project_status.owner_user_id (across all projects).
+ * Read-only; no RLS restriction on counts for admins.
+ */
+export async function countOwnedRecords(
+  userId: number,
+): Promise<{ leads: number; contacts: number; companies: number; error: string | null }> {
+  const [leadsRes, companiesRes, contactsRes] = await Promise.all([
+    supabase
+      .from('lead_report')
+      .select('report_id', { count: 'exact', head: true })
+      .eq('user_id', userId)
+      .is('deleted_date', null),
+    supabase
+      .from('company_project_status')
+      .select('company_id', { count: 'exact', head: true })
+      .eq('owner_user_id', userId),
+    supabase
+      .from('contact_project_status')
+      .select('contact_id', { count: 'exact', head: true })
+      .eq('owner_user_id', userId),
+  ]);
+
+  const firstErr =
+    leadsRes.error?.message ?? companiesRes.error?.message ?? contactsRes.error?.message ?? null;
+
+  return {
+    leads: leadsRes.count ?? 0,
+    companies: companiesRes.count ?? 0,
+    contacts: contactsRes.count ?? 0,
+    error: firstErr,
+  };
+}
+
+/**
+ * Fetch all lead IDs owned by a user (via lead_report.user_id, active rows).
+ */
+export async function fetchOwnedLeadIds(userId: number): Promise<number[]> {
+  const { data } = await supabase
+    .from('lead_report')
+    .select('lead_id')
+    .eq('user_id', userId)
+    .is('deleted_date', null);
+  return ((data ?? []) as { lead_id: number }[]).map((r) => r.lead_id);
+}
+
+/**
+ * Fetch all company_project_status rows owned by a user, returning {company_id, project_id}.
+ */
+export async function fetchOwnedCompanyRows(
+  userId: number,
+): Promise<{ company_id: number; project_id: number }[]> {
+  const { data } = await supabase
+    .from('company_project_status')
+    .select('company_id, project_id')
+    .eq('owner_user_id', userId);
+  return (data ?? []) as { company_id: number; project_id: number }[];
+}
+
+/**
+ * Fetch all contact_project_status rows owned by a user, returning {contact_id, project_id}.
+ */
+export async function fetchOwnedContactRows(
+  userId: number,
+): Promise<{ contact_id: number; project_id: number }[]> {
+  const { data } = await supabase
+    .from('contact_project_status')
+    .select('contact_id, project_id')
+    .eq('owner_user_id', userId);
+  return (data ?? []) as { contact_id: number; project_id: number }[];
+}

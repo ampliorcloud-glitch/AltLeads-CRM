@@ -66,8 +66,9 @@ import {
   Building2,
 } from 'lucide-react';
 import { EmptyState } from '../components/ui/EmptyState';
-import { ReassignModal } from '../components/common/ReassignModal';
+import { BulkReassignModal } from '../components/common/ReassignModal';
 import { reassignCompaniesBulk, fetchAssignableUsers } from '../data/assignment';
+import { distributeRecords } from '../data/bulkActions';
 import { fetchOptions, type DropdownOption } from '../data/dropdowns';
 import { BulkProjectModal } from '../components/common/BulkProjectModal';
 import { BulkStatusModal } from '../components/common/BulkStatusModal';
@@ -372,26 +373,45 @@ export function CompaniesPage() {
     setShowReassign(true);
     setReassignOwners(await fetchAssignableUsers(null));
   };
-  const handleBulkReassign = async (newUserId: number) => {
+  const handleBulkReassign = async (ownerIds: number[], maxPerCompany?: number) => {
     if (projectId == null) { setReassignError('Select a project first (top-bar selector).'); return; }
     const ids = [...sel.selectedIds].map(Number).filter((n) => !isNaN(n));
+    const actor = profile?.user_id != null ? String(profile.user_id) : '';
+    const records = ids.map((id) => ({ id, companyKey: id }));
+    const slices = distributeRecords(records, ownerIds, { maxPerCompany });
+    const totalCount = ids.length;
     setReassignSaving(true);
     setReassignError(null);
     const ac = new AbortController();
     bulkAbort.current = ac;
-    setBulkProgress({ done: 0, total: ids.length });
-    let res;
+    setBulkProgress({ done: 0, total: totalCount });
+
+    let totalOk = 0;
+    let totalFailed = 0;
+    let firstErr: string | null = null;
+
     try {
-      res = await reassignCompaniesBulk(ids, projectId, newUserId, profile?.user_id != null ? String(profile.user_id) : '', {
-        signal: ac.signal,
-        onProgress: (done, total) => setBulkProgress({ done, total }),
-      });
+      for (const [ownerId, companyIds] of slices) {
+        if (ac.signal.aborted) break;
+        if (companyIds.length === 0) continue;
+        const res = await reassignCompaniesBulk(companyIds, projectId, ownerId, actor, {
+          signal: ac.signal,
+          onProgress: () => setBulkProgress({ done: totalOk + totalFailed, total: totalCount }),
+        });
+        totalOk += res.ok;
+        totalFailed += res.failed;
+        if (!firstErr && res.error) firstErr = res.error;
+        setBulkProgress({ done: totalOk + totalFailed, total: totalCount });
+      }
     } finally {
       setReassignSaving(false);
       setBulkProgress(null);
       bulkAbort.current = null;
     }
-    if (res.ok === 0 && res.error) { setReassignError(humanizeWriteError(res.error)); return; }
+    if (totalOk === 0 && (firstErr || totalFailed > 0)) {
+      setReassignError(humanizeWriteError(firstErr ?? `${totalFailed} could not be reassigned.`));
+      return;
+    }
     setShowReassign(false);
     sel.clear();
     // Refresh the per-project owner/status for the reassigned rows so the Owner
@@ -399,9 +419,9 @@ export function CompaniesPage() {
     // reload). Reuses the same fetch the project effect uses.
     loadStatuses(projectId, ids);
     toast.success(
-      res.failed > 0
-        ? `Reassigned ${res.ok}; ${res.failed} skipped (no permission).`
-        : `Reassigned ${res.ok} compan${res.ok === 1 ? 'y' : 'ies'} — the new owner was notified.`,
+      totalFailed > 0
+        ? `Reassigned ${totalOk}; ${totalFailed} skipped (no permission).`
+        : `Reassigned ${totalOk} compan${totalOk === 1 ? 'y' : 'ies'} — the new owner(s) were notified.`,
     );
   };
   const handleAddToProject = async (targetProjectId: number) => {
@@ -1880,11 +1900,10 @@ export function CompaniesPage() {
       )}
 
       {showReassign && (
-        <ReassignModal
+        <BulkReassignModal
           entityLabel="Company"
           ownerLabel="Owner"
           count={sel.count}
-          currentOwnerId={null}
           owners={reassignOwners}
           saving={reassignSaving}
           error={reassignError}

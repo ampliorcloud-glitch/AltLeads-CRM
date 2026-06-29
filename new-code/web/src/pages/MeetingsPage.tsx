@@ -69,10 +69,11 @@ import {
   AlertCircle,
   UserCheck,
 } from 'lucide-react';
-import { ReassignModal } from '../components/common/ReassignModal';
+import { BulkReassignModal } from '../components/common/ReassignModal';
 import { RecordPreviewPanel } from '../components/common/RecordPreviewPanel';
 import { MeetingPreview } from '../components/meetings/MeetingPreview';
 import { reassignMeetingsBulk, fetchAssignableUsers } from '../data/assignment';
+import { distributeRecords } from '../data/bulkActions';
 import type { UserOption } from '../data/wishlist';
 import { useToast } from '../components/ui/Toast';
 
@@ -335,32 +336,48 @@ export function MeetingsPage() {
     setShowReassign(true);
     setReassignOwners(await fetchAssignableUsers(null));
   };
-  const handleBulkReassign = async (newUserId: number) => {
+  const handleBulkReassign = async (ownerIds: number[], maxPerCompany?: number) => {
     const ids = [...sel.selectedIds].map(Number).filter((n) => !isNaN(n));
+    const actor = profile?.user_id != null ? String(profile.user_id) : '';
+    const records = ids.map((id) => ({ id, companyKey: null }));
+    const slices = distributeRecords(records, ownerIds, { maxPerCompany });
+    const totalCount = ids.length;
     setReassignSaving(true);
     setReassignError(null);
     const ac = new AbortController();
     bulkAbort.current = ac;
-    setBulkProgress({ done: 0, total: ids.length });
-    let res;
+    setBulkProgress({ done: 0, total: totalCount });
+
+    let totalOk = 0;
+    let totalFailed = 0;
+    let firstErr: string | null = null;
+
     try {
-      res = await reassignMeetingsBulk(ids, newUserId, profile?.user_id != null ? String(profile.user_id) : '', {
-        signal: ac.signal,
-        onProgress: (done, total) => setBulkProgress({ done, total }),
-      });
+      for (const [ownerId, meetingIds] of slices) {
+        if (ac.signal.aborted) break;
+        if (meetingIds.length === 0) continue;
+        const res = await reassignMeetingsBulk(meetingIds, ownerId, actor, {
+          signal: ac.signal,
+          onProgress: () => setBulkProgress({ done: totalOk + totalFailed, total: totalCount }),
+        });
+        totalOk += res.ok;
+        totalFailed += res.failed;
+        if (!firstErr && res.error) firstErr = res.error;
+        setBulkProgress({ done: totalOk + totalFailed, total: totalCount });
+      }
     } finally {
       setReassignSaving(false);
       setBulkProgress(null);
       bulkAbort.current = null;
     }
-    if (res.ok === 0 && res.error) { setReassignError(humanizeWriteError(res.error)); return; }
+    if (totalOk === 0 && (firstErr || totalFailed > 0)) { setReassignError(humanizeWriteError(firstErr ?? `${totalFailed} could not be reassigned.`)); return; }
     setShowReassign(false);
     sel.clear();
     setReloadKey((k) => k + 1);
     toast.success(
-      res.failed > 0
-        ? `Reassigned ${res.ok}; ${res.failed} skipped.`
-        : `Reassigned ${res.ok} meeting${res.ok === 1 ? '' : 's'} — the new owner was notified.`,
+      totalFailed > 0
+        ? `Reassigned ${totalOk}; ${totalFailed} skipped.`
+        : `Reassigned ${totalOk} meeting${totalOk === 1 ? '' : 's'} — the new owner(s) were notified.`,
     );
   };
 
@@ -1481,11 +1498,10 @@ export function MeetingsPage() {
       )}
 
       {showReassign && (
-        <ReassignModal
+        <BulkReassignModal
           entityLabel="Meeting"
           ownerLabel="Salesperson"
           count={sel.count}
-          currentOwnerId={null}
           owners={reassignOwners}
           saving={reassignSaving}
           error={reassignError}

@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Loader2, ShieldAlert, Users, Briefcase, Building2, Tag, Layout, ListTree, HelpCircle, ShieldCheck, Activity, ToggleLeft } from 'lucide-react';
+import { Loader2, ShieldAlert, Users, Briefcase, Building2, Tag, Layout, ListTree, HelpCircle, ShieldCheck, Activity, ToggleLeft, UserX } from 'lucide-react';
 import { AppShell } from '../components/layout/AppShell';
 import { useAuth } from '../contexts/AuthContext';
 import { fetchLookups, type AdminLookups } from '../data/admin';
@@ -13,10 +13,11 @@ import { ProjectAccessTab } from '../components/admin/ProjectAccessTab';
 import { ActivityTimelineTab } from '../components/admin/ActivityTimelineTab';
 import { HbProjectSettingsTab } from '../components/admin/HbProjectSettingsTab';
 import { CollaboratorAccessTab } from '../components/admin/CollaboratorAccessTab';
+import { DepartingUserReassignTab } from '../components/admin/DepartingUserReassignTab';
 import { HUNGERBOX_FEATURES } from '../lib/hungerbox';
 import { COLLAB_ASSOC } from '../lib/collabAssoc';
 
-type TabKey = 'users' | 'projects' | 'clients' | 'reference' | 'dropdowns' | 'presales' | 'access' | 'activity' | 'hbsettings' | 'collabaccess';
+type TabKey = 'users' | 'projects' | 'clients' | 'reference' | 'dropdowns' | 'presales' | 'access' | 'activity' | 'hbsettings' | 'collabaccess' | 'departing';
 
 const BASE_NAV_ITEMS: { key: TabKey; label: string; icon: React.ReactNode }[] = [
   { key: 'users',     label: 'User',              icon: <Users size={15} strokeWidth={1.6} /> },
@@ -27,6 +28,7 @@ const BASE_NAV_ITEMS: { key: TabKey; label: string; icon: React.ReactNode }[] = 
   { key: 'dropdowns', label: 'Option Lists',      icon: <ListTree size={15} strokeWidth={1.6} /> },
   { key: 'presales',  label: 'Pre-Sales Questions', icon: <HelpCircle size={15} strokeWidth={1.6} /> },
   { key: 'activity',  label: 'Activity',           icon: <Activity size={15} strokeWidth={1.6} /> },
+  { key: 'departing', label: 'Departing User',    icon: <UserX size={15} strokeWidth={1.6} /> },
 ];
 
 // HungerBox-specific nav items — only shown when HUNGERBOX_FEATURES is on.
@@ -56,6 +58,7 @@ const TAB_TITLES: Record<TabKey, string> = {
   activity:     'Activity',
   hbsettings:   'HungerBox Settings',
   collabaccess: 'Collaborator Access',
+  departing:    'Departing User Reassign',
 };
 
 function Restricted() {
@@ -257,6 +260,7 @@ export default function AdminPage() {
               {tab === 'activity'   && <ActivityTimelineTab />}
               {tab === 'hbsettings' && <HbProjectSettingsTab actorId={actorId} />}
               {tab === 'collabaccess' && <CollaboratorAccessTab actorId={actorId} />}
+              {tab === 'departing' && <DepartingUserReassignTab actorId={actorId} />}
             </>
           )}
         </div>

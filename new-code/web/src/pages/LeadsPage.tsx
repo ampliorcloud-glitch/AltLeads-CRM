@@ -19,8 +19,9 @@ import { useProjectScope } from '../contexts/ProjectContext';
 import { useRowSelection } from '../components/ui/useRowSelection';
 import { useListKeyboardNav } from '../components/ui/useListKeyboardNav';
 import { ExportButton } from '../components/ui/ExportButton';
-import { ReassignModal } from '../components/common/ReassignModal';
+import { BulkReassignModal } from '../components/common/ReassignModal';
 import { reassignLeadsBulk, fetchAssignableUsers } from '../data/assignment';
+import { distributeRecords } from '../data/bulkActions';
 import { humanizeWriteError } from '../lib/writeError';
 import type { UserOption } from '../data/wishlist';
 import { useToast } from '../components/ui/Toast';
@@ -423,32 +424,58 @@ export function LeadsPage() {
     setShowReassign(true);
     setReassignOwners(await fetchAssignableUsers(null));
   };
-  const handleBulkReassign = async (newUserId: number) => {
-    const ids = [...sel.selectedIds].map(Number).filter((n) => !isNaN(n));
+  const handleBulkReassign = async (ownerIds: number[], maxPerCompany?: number) => {
+    const selectedLeads = allLeads.filter((l) => sel.selectedIds.has(l.id));
+    const records = selectedLeads.map((l) => ({ id: Number(l.id), companyKey: l.company || null }));
+    const actor = profile?.user_id != null ? String(profile.user_id) : '';
     setReassignSaving(true);
     setReassignError(null);
     const ac = new AbortController();
     bulkAbort.current = ac;
-    setBulkProgress({ done: 0, total: ids.length });
-    let res;
+
+    // Distribute across owners (round-robin + optional per-company cap).
+    const slices = distributeRecords(records, ownerIds, { maxPerCompany });
+    const totalCount = records.length;
+    setBulkProgress({ done: 0, total: totalCount });
+
+    let totalOk = 0;
+    let totalFailed = 0;
+    let firstErr: string | null = null;
+    let done = 0;
+
     try {
-      res = await reassignLeadsBulk(ids, newUserId, profile?.user_id != null ? String(profile.user_id) : '', {
-        signal: ac.signal,
-        onProgress: (done, total) => setBulkProgress({ done, total }),
-      });
+      for (const [ownerId, leadIds] of slices) {
+        if (ac.signal.aborted) break;
+        if (leadIds.length === 0) continue;
+        const res = await reassignLeadsBulk(leadIds, ownerId, actor, {
+          signal: ac.signal,
+          onProgress: (ownerDone) => {
+            done = done + ownerDone - (done - totalOk - totalFailed);
+            setBulkProgress({ done: totalOk + totalFailed + ownerDone, total: totalCount });
+          },
+        });
+        totalOk += res.ok;
+        totalFailed += res.failed;
+        if (!firstErr && res.error) firstErr = res.error;
+        done = totalOk + totalFailed;
+        setBulkProgress({ done, total: totalCount });
+      }
     } finally {
       setReassignSaving(false);
       setBulkProgress(null);
       bulkAbort.current = null;
     }
-    if (res.ok === 0 && res.error) { setReassignError(humanizeWriteError(res.error)); return; }
+    if (totalOk === 0 && (firstErr || totalFailed > 0)) {
+      setReassignError(humanizeWriteError(firstErr ?? `${totalFailed} could not be reassigned.`));
+      return;
+    }
     setShowReassign(false);
     sel.clear();
     setReloadKey((k) => k + 1);
     toast.success(
-      res.failed > 0
-        ? `Reassigned ${res.ok}; ${res.failed} skipped (no permission or no report row).`
-        : `Reassigned ${res.ok} lead${res.ok === 1 ? '' : 's'} — the new owner was notified.`,
+      totalFailed > 0
+        ? `Reassigned ${totalOk}; ${totalFailed} skipped (no permission or no report row).`
+        : `Reassigned ${totalOk} lead${totalOk === 1 ? '' : 's'} — the new owner(s) were notified.`,
     );
   };
 
@@ -1597,11 +1624,10 @@ export function LeadsPage() {
       )}
 
       {showReassign && (
-        <ReassignModal
+        <BulkReassignModal
           entityLabel="Lead"
           ownerLabel="Salesperson"
           count={sel.count}
-          currentOwnerId={null}
           owners={reassignOwners}
           saving={reassignSaving}
           error={reassignError}
