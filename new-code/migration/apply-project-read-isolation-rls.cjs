@@ -237,6 +237,13 @@ BEGIN;
 --   manages_project/view_scope_of). See FLAG-1 in file header before applying.
 DROP POLICY IF EXISTS "lead_master_select" ON public.lead_master;
 
+-- NOTE (coordination + DEPENDENCY): apply-assignment-ownership-rls-fix.cjs (the
+-- launch-critical fix) must be applied BEFORE this migration — it defines the
+-- public.is_lead_assignee(bigint) helper referenced below and fixes the
+-- interaction INSERT path (which this migration does NOT touch). We include the
+-- assignee branch here too so the agent read path survives regardless of apply
+-- order (covers an assignee who is not a project member). is_member already
+-- covers the common case; this is defensive.
 CREATE POLICY "lead_master_select_project_member"
   ON public.lead_master
   FOR SELECT
@@ -245,6 +252,7 @@ CREATE POLICY "lead_master_select_project_member"
     public.is_admin()
     OR public.is_qc()
     OR public.is_member(project_id)
+    OR public.is_lead_assignee(lead_id)
   );
 
 -- ── A2. interaction ──────────────────────────────────────────────────────────
