@@ -1259,3 +1259,10 @@ A real working feature over data you already have (81 meeting_reschedule rows si
 
 ### Parking lot (Ankit 2026-06-30) — ALT-494 Call-coaching Learning Module
 Parked future AI idea: a self-improving call-coaching loop (generate ~5 hooks → analyse the same call recordings in real time → score vs Persona/ICP → iterate + log every attempt/outcome → train on logs → recommend best approaches for lookalike personas). Hard deps: calling-tool integration (recording/transcript capture) + the AI/embeddings layer (AI-PGVECTOR-PLAN item H) + an outcome signal + a call_coaching_log spine. Captured in docs/product/AI-PGVECTOR-PLAN.md (Parking Lot) + tracker ALT-494 (On Hold). Do NOT start until both gates clear.
+
+### Session 2026-06-30 (cont.) — ALT-484-lite Cold-lead freshness badge (REAL data, NO migration)
+
+The top daily-driver signal for outreach: spot leads that have gone cold.
+- **LeadFreshnessInsight** badge on lead detail: "Last activity N days ago" — green (fresh) / amber (≥14d cooling off) / red (≥30d cold — needs a follow-up).
+- last_activity = most recent of lead_report.updated_date (already loaded) + meeting dates (report_id → meeting_schedule → meeting_master). Read-only; **no schema change** — flip `FRESHNESS_INSIGHT` to go live.
+- New: `lib/freshnessFlag.ts` (WARN_DAYS=14 / STALE_DAYS=30), `data/leadFreshness.ts`, `components/leadstate/LeadFreshnessInsight.tsx`. Build green. Tracker: ALT-484 → In Progress (lite; full SLA tracking still pending).

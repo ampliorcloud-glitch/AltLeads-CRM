@@ -66,6 +66,8 @@ import { STREAM_V1 } from '../lib/streamFlag';
 import { StreamPanel } from '../components/stream/StreamPanel';
 import { RESCHEDULE_INSIGHT } from '../lib/rescheduleFlag';
 import { RescheduleInsight } from '../components/leadstate/RescheduleInsight';
+import { FRESHNESS_INSIGHT } from '../lib/freshnessFlag';
+import { LeadFreshnessInsight } from '../components/leadstate/LeadFreshnessInsight';
 import type { SearchSelectOption } from '../components/ui/SearchSelect';
 import type { RecordType } from '../lib/collabAssoc';
 import { fetchAllContacts, fetchCompanyOptions } from '../data/contacts';
@@ -859,6 +861,10 @@ export function LeadDetailPage() {
               refreshSignal={callsRefresh}
               title="Call history"
             />
+            {/* Cold-lead / freshness signal (ALT-484-lite) — dark behind FRESHNESS_INSIGHT, no migration */}
+            {FRESHNESS_INSIGHT && (
+              <LeadFreshnessInsight reportId={lead.report_id} reportUpdatedDate={lead.updated_date} />
+            )}
             {/* Reschedule intelligence (ALT-480) — dark behind RESCHEDULE_INSIGHT, no migration */}
             {RESCHEDULE_INSIGHT && <RescheduleInsight reportId={lead.report_id} />}
             {/* In-record activity hub (ALT-466) — no-op while TASKS_V2 is off */}
