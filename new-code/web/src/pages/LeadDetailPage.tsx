@@ -60,6 +60,8 @@ import { isForeignRecord, maskContact } from '../lib/safeView';
 import { COLLAB_ASSOC } from '../lib/collabAssoc';
 import { CollaboratorsCard } from '../components/collab/CollaboratorsCard';
 import { AssociationsPanel } from '../components/collab/AssociationsPanel';
+import { LEAD_STATE_V2 } from '../lib/leadStateFlag';
+import { QualificationCard } from '../components/leadstate/QualificationCard';
 import type { SearchSelectOption } from '../components/ui/SearchSelect';
 import type { RecordType } from '../lib/collabAssoc';
 import { fetchAllContacts, fetchCompanyOptions } from '../data/contacts';
@@ -855,6 +857,22 @@ export function LeadDetailPage() {
             />
             {/* In-record activity hub (ALT-466) — no-op while TASKS_V2 is off */}
             <RecordActivityHub recordType="lead" recordId={lead.lead_id} />
+            {/* Qualification + lost-reason + UTM (ALT-470/471/472) — dark behind LEAD_STATE_V2 */}
+            {LEAD_STATE_V2 && (
+              <QualificationCard
+                reportId={lead.report_id}
+                leadId={lead.lead_id}
+                stageId={lead.stage_id}
+                actorUserId={profile?.user_id ?? null}
+                canQualify={isQC || isAdmin}
+                canEditLostReasons={
+                  isAdmin ||
+                  isQC ||
+                  (lead.salesperson_user_id != null &&
+                    lead.salesperson_user_id === profile?.user_id)
+                }
+              />
+            )}
             {/* Collaborators & Associations (ALT-441/442) — dark behind COLLAB_ASSOC */}
             {COLLAB_ASSOC && (
               <>

@@ -82,6 +82,10 @@ export const ENTITY_CATALOGS: EntityDef[] = [
       { key: 'source', label: 'Source', aliases: ['lead source', 'channel'] },
       { key: 'city', label: 'City', aliases: ['town', 'location'] },
       { key: 'notes', label: 'Notes', aliases: ['remark', 'remarks', 'comment', 'comments'] },
+      // ALT-470 — UTM / lead attribution. Maps onto lead_master.utm_* (staged migration).
+      { key: 'utm_source', label: 'UTM Source', aliases: ['utm source', 'utm_source', 'campaign source'] },
+      { key: 'utm_medium', label: 'UTM Medium', aliases: ['utm medium', 'utm_medium', 'campaign medium'] },
+      { key: 'utm_campaign', label: 'UTM Campaign', aliases: ['utm campaign', 'utm_campaign', 'campaign', 'campaign name'] },
     ],
   },
 ];

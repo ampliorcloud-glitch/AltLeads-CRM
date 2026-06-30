@@ -1198,3 +1198,25 @@ Ankit opened `Amp-Intranet/Amp PRD.md` (v1.0 "Amp — Amplior Employee Portal" �
 3. Flip `TASKS_V2 = true` in `new-code/web/src/lib/tasksFlags.ts` + redeploy
 4. Drop `<RecordActivityHub>` into Lead/Contact/Company detail pages (no-op until flag flipped)
 5. Verify RLS (`apply-task-rls.cjs`) on throwaway login before flag flip
+
+---
+
+## Session 2026-06-30 — Lead-state v2 cluster (ALT-470/471/472) + quick wins
+
+**Built dark behind `LEAD_STATE_V2`** (`new-code/web/src/lib/leadStateFlag.ts`). Prod byte-for-byte unchanged until flag flipped + migration applied. From the open-source CRM synthesis (ERPNext P1 gaps).
+
+Verified the real model first (read-only introspection, deleted after): this is a meeting-outreach CRM — `stage_master` holds only meeting-outcome stages, there is **no Qualified/Lost/Won concept**, and `status_master` is empty. So all three are genuine additive gaps that hang off `lead_report` (per-project state) / `lead_master` (identity).
+
+- **ALT-471 — Qualification status + audit.** `qualification_status` (CHECK: unqualified|in_process|qualified) + `qualified_by` (bigint, app user_id convention) + `qualified_on` on `lead_report`. QualificationCard: QC/Admin-editable segmented control + "set by user # on date" audit; everyone else a read-only badge.
+- **ALT-472 — Structured lost reasons.** `lost_reason` lookup (9 seeded generic reasons, admin-editable via is_active/sort_order) + `lead_lost_reason` junction (keyed `report_id`, soft-delete, unique-live index). Card shows a reason checklist only when the current stage is terminal/"lost" (stage_ids 6/10/13/14/15 = the Cancelled/Dropped stages); UI prompts ≥1 reason. DB-trigger enforcement deferred (kept additive).
+- **ALT-470 — UTM attribution.** `utm_source/utm_medium/utm_campaign` on `lead_master`; added to the **leads import catalog** (`importMapping.ts`) so they map at import; read-only attribution chips on lead detail.
+
+**New files:** `new-code/migration/apply-leadstate-qualification-lost-utm.cjs` (STAGED, additive+idempotent, guarded — only runs with `--apply`); `lib/leadStateFlag.ts`; `data/leadState.ts`; `components/leadstate/QualificationCard.tsx`. **Modified:** `lib/importMapping.ts` (UTM fields), `pages/LeadDetailPage.tsx` (mount card behind flag).
+
+**Quick wins:**
+- **NOTIFICATIONS.md** created (was claimed in a prior session but never written) — documents the ALT-489 bell/feed accurately against the real `in_app_notification` columns (note: `status`=title, `notif_descr`=body).
+- **FLAG-2 resolved (`lead_designation`):** it is a **master lookup of contact job-titles** (`lead_designation_id` PK + `designation_name`), referenced by `lead_master.lead_designation_id`. NOT a per-lead role/assignment table. (Note `lead_master` keeps BOTH a free-text `designation text` column AND the normalized `lead_designation_id` FK — a denormalization to be aware of.)
+
+**Build:** `npm run build` green (tsc -b + vite, noUnusedLocals on). Backlog tracker regenerated (ALT-470/471/472 → In Progress).
+
+**To enable (after sign-off):** `node new-code/migration/apply-leadstate-qualification-lost-utm.cjs --apply` → flip `LEAD_STATE_V2 = true` → rebuild. The new lead_report columns + lost_reason tables inherit the project-membership SELECT RLS when `apply-project-read-isolation-rls.cjs` applies.
