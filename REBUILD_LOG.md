@@ -1284,3 +1284,17 @@ Did a DB-grounded full-cycle audit (all roles) for internal beta. ROOT-CAUSE blo
 - Reconciled with `apply-project-read-isolation-rls.cjs`: that migration's lead_master SELECT rewrite (`is_member` = FLAG-1 "see all project leads") now ALSO carries the assignee branch; added explicit DEPENDENCY note (assignment-fix applies first; it also fixes interaction INSERT which read-isolation doesn't touch).
 
 **Beta blockers (deduped):** (1) assignment-ownership RLS fix [this] + validate; (2) bulk-provision logins — only 2 profiles exist; (3) full-cycle smoke test on a throwaway agent. NOT blockers: write gateway/imports (beta runs on the 600+ already-migrated leads). Estimate: ~3-5 working days, long pole = RLS fix + validation, logins provisioned in parallel.
+
+### Session 2026-06-30 (cont.) — Beta decisions LOCKED + agent journey proven code-complete
+
+**Ankit's beta decisions (2026-06-30):**
+1. Lead visibility = **own leads only** (the leads a rep is assigned via lead_report.user_id). NOTE: Ankit's mental model is "created_by = owned by them"; CORRECTION captured — after migration created_by = the importer (e.g. user 7), NOT the rep; real ownership = lead_report.user_id. The RLS fix keys on lead_report.user_id, so "their owned ones" works correctly. (Read-isolation/FLAG-1 "see all project leads masked" deferred to post-beta-1.)
+2. Agent edit scope = **status + meetings + calls + ALL pre-sales questions** (+ feedback). VERIFIED no extra RLS needed: pre_sales_answer / feedback_answer / meeting_question are all OPEN (USING true); only CREATING questions is admin-only (correct). lead identity-field edits NOT granted (outreach-only).
+3. Beta data = **fresh import first** → the write gateway is now ON the critical path (must enable + validate before importing clean data). Import MUST populate lead_report.user_id (assignment) so the RLS fix makes leads visible — validate at gateway-enable time.
+4. Cohort = **one team/project first.** Candidates by (leads, reps): project 3 (198,4) tightest pilot · project 6 (155,22) fuller team test · project 11 (94,17).
+
+**PROOF the RLS fix works (read-only dry-run vs prod):** agent user_id=8 is assigned 128 leads; under CURRENT policy they can see 0 (all 128 have created_by=7, the importer); the is_lead_assignee branch unblocks all 128. Definitive.
+
+**Agent journey = CODE-COMPLETE** pending the staged RLS fix apply: leads list builds from lead_master (RLS-scoped → own leads only, no UI filter needed); detail visible for own; calls log via interaction (assignee branch); status/meetings/pre-sales/feedback already open. No further app code required for the core outreach cycle.
+
+**Remaining to beta (all need Ankit's action):** (a) sign-off to apply apply-assignment-ownership-rls-fix.cjs after a smoke test with the first provisioned login; (b) enable+validate the write gateway (Q3 fresh import) — set VITE_USE_WRITE_GATEWAY=true on crm-test or authorize me via Dokploy; (c) bulk-provision logins for the cohort (only 2 profiles exist); (d) full-cycle smoke test.
