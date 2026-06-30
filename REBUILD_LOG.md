@@ -1220,3 +1220,11 @@ Verified the real model first (read-only introspection, deleted after): this is 
 **Build:** `npm run build` green (tsc -b + vite, noUnusedLocals on). Backlog tracker regenerated (ALT-470/471/472 → In Progress).
 
 **To enable (after sign-off):** `node new-code/migration/apply-leadstate-qualification-lost-utm.cjs --apply` → flip `LEAD_STATE_V2 = true` → rebuild. The new lead_report columns + lost_reason tables inherit the project-membership SELECT RLS when `apply-project-read-isolation-rls.cjs` applies.
+
+### Session 2026-06-30 (cont.) — ALT-469 Account hierarchy (dark behind COMPANY_HIERARCHY)
+
+Parent / subsidiary accounts for enterprise groups (SuiteCRM member_accounts / Vtiger parentid pattern).
+- **Migration** `apply-company-hierarchy.cjs` (STAGED, additive): `company_master.parent_company_id` self-ref FK + partial index. Guarded (`--apply` only). Verified company_master already has updated_by/updated_date for the audit stamp.
+- **CompanyHierarchyCard** (self-contained, lazy-load): parent breadcrumb (linked) + Subsidiaries list (linked) + admin/TL parent picker (`canEditCompanyContact` gate; self excluded; clear-parent). Mounted in CompanyDetailPage behind `COMPANY_HIERARCHY`.
+- New: `lib/companyHierarchyFlag.ts`, `data/companyHierarchy.ts`, `components/company/CompanyHierarchyCard.tsx`. Build green. Tracker: ALT-469 → In Progress.
+- **To enable:** `node apply-company-hierarchy.cjs --apply` → flip `COMPANY_HIERARCHY` → rebuild.

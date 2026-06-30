@@ -76,6 +76,8 @@ import { COLLAB_ASSOC } from '../lib/collabAssoc';
 import { CollaboratorsCard } from '../components/collab/CollaboratorsCard';
 import { AssociationsPanel } from '../components/collab/AssociationsPanel';
 import type { RecordType } from '../lib/collabAssoc';
+import { COMPANY_HIERARCHY } from '../lib/companyHierarchyFlag';
+import { CompanyHierarchyCard } from '../components/company/CompanyHierarchyCard';
 import { fetchCompanyOptions } from '../data/contacts';
 
 /* ------------------------------------------------------------------
@@ -1645,6 +1647,17 @@ export function CompanyDetailPage() {
 
       {/* In-record activity hub (ALT-466) — no-op while TASKS_V2 is off */}
       <RecordActivityHub recordType="company" recordId={companyId} />
+
+      {/* Account hierarchy (ALT-469) — dark behind COMPANY_HIERARCHY */}
+      {COMPANY_HIERARCHY && (
+        <div className="mt-4">
+          <CompanyHierarchyCard
+            companyId={companyId}
+            actorUserId={profile?.user_id ?? null}
+            canEdit={canEditCompanyContact}
+          />
+        </div>
+      )}
 
       {/* Collaborators & Associations (ALT-441/442) — dark behind COLLAB_ASSOC */}
       {COLLAB_ASSOC && (

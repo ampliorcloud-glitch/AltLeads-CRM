@@ -2724,8 +2724,8 @@ const TICKETS = [
         'MyTasksPage bulk-select + bulk update status/due/assignee/priority, reusing bulkActions.ts pattern. Ankit 2026-06-28.'),
 
       // ── OSS-synthesis gaps: ALT-469..488 (added 2026-06-29) ──────────────────
-      V('ALT-469','Parent company / account hierarchy (self-ref FK + Subsidiaries panel)','Feature','P1','Backlog',
-        'Add parent_company_id (nullable self-ref) to company_master. Render breadcrumb on company detail + Subsidiaries sub-panel. Enable filter-by-parent. CENSUS (SuiteCRM member_accounts + Vtiger parentid): critical for enterprise subsidiary accounts. Source: reference-blueprints synthesis.'),
+      V('ALT-469','Parent company / account hierarchy (self-ref FK + Subsidiaries panel)','Feature','P1','In Progress',
+        'BUILT DARK (COMPANY_HIERARCHY). parent_company_id self-ref FK + index staged on company_master (apply-company-hierarchy.cjs). CompanyHierarchyCard: parent breadcrumb (linked) + Subsidiaries list (linked) + admin/TL parent picker (self excluded, clear-parent). Mounted in CompanyDetailPage behind flag. Filter-by-parent = follow-up. CENSUS (SuiteCRM member_accounts + Vtiger parentid).'),
       V('ALT-470','UTM / lead attribution fields (utm_source, utm_medium, utm_campaign)','Feature','P1','In Progress',
         'BUILT DARK (LEAD_STATE_V2). utm_source/utm_medium/utm_campaign columns staged on lead_master (apply-leadstate-qualification-lost-utm.cjs); import mapping added to leads catalog (importMapping.ts); read-only chips on lead detail (QualificationCard). Filter = follow-up. CENSUS (ERPNext UTM funnel).'),
       V('ALT-471','Qualification status field (Unqualified/In Process/Qualified) with QC audit trail','Feature','P1','In Progress',
