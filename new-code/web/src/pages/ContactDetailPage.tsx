@@ -69,6 +69,8 @@ import { gated } from '../lib/roleGating';
 import { isForeignRecord, maskContact } from '../lib/safeView';
 import { COLLAB_ASSOC } from '../lib/collabAssoc';
 import { CollaboratorsCard } from '../components/collab/CollaboratorsCard';
+import { STREAM_V1 } from '../lib/streamFlag';
+import { StreamPanel } from '../components/stream/StreamPanel';
 import { AssociationsPanel } from '../components/collab/AssociationsPanel';
 import type { RecordType } from '../lib/collabAssoc';
 
@@ -1209,6 +1211,20 @@ export function ContactDetailPage() {
 
         {/* In-record activity hub (ALT-466) — no-op while TASKS_V2 is off */}
         {contactId != null && <RecordActivityHub recordType="contact" recordId={contactId} />}
+
+        {/* Record stream / chatter (ALT-476) — dark behind STREAM_V1 */}
+        {STREAM_V1 && contactId != null && (
+          <div className="mt-4">
+            <StreamPanel
+              recordType="contact"
+              recordId={contactId}
+              recordLabel={contact.full_name || `Contact #${contactId}`}
+              actorUserId={profile?.user_id ?? null}
+              actorName={profile?.full_name ?? null}
+              canPost={profile?.user_id != null}
+            />
+          </div>
+        )}
 
         {/* Collaborators & Associations (ALT-441/442) — dark behind COLLAB_ASSOC */}
         {COLLAB_ASSOC && contactId != null && (

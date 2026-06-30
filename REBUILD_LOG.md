@@ -1228,3 +1228,13 @@ Parent / subsidiary accounts for enterprise groups (SuiteCRM member_accounts / V
 - **CompanyHierarchyCard** (self-contained, lazy-load): parent breadcrumb (linked) + Subsidiaries list (linked) + admin/TL parent picker (`canEditCompanyContact` gate; self excluded; clear-parent). Mounted in CompanyDetailPage behind `COMPANY_HIERARCHY`.
 - New: `lib/companyHierarchyFlag.ts`, `data/companyHierarchy.ts`, `components/company/CompanyHierarchyCard.tsx`. Build green. Tracker: ALT-469 → In Progress.
 - **To enable:** `node apply-company-hierarchy.cjs --apply` → flip `COMPANY_HIERARCHY` → rebuild.
+
+### Session 2026-06-30 (cont.) — ALT-476 Record stream / chatter (dark behind STREAM_V1)
+
+The collaboration layer all 4 reference CRMs have and we lacked (EspoCRM Stream / ERPNext Comments / Vtiger ModComments). Agents previously buried context in interaction notes mislogged as calls.
+- **Migration** `apply-record-stream.cjs` (STAGED, additive): `stream_note` (polymorphic entity_type+entity_id, content, mention_ids bigint[]) + `record_follow` (unique live per record+user). Guarded (`--apply` only).
+- **StreamPanel** (self-contained, lazy-load): post a note + "Notify people" picker (structured @mention via chips) + Follow/Unfollow toggle + author-delete. On post, fans out `createNotification` to mentioned + followers (minus author, deduped) — **no-op unless NOTIFICATIONS flag is also on** (graceful degradation; ties into ALT-489).
+- Mounted on **Lead + Contact + Company** detail pages behind `STREAM_V1`.
+- New: `lib/streamFlag.ts` (+ recordRouteBase helper), `data/stream.ts`, `components/stream/StreamPanel.tsx`. Build green. Tracker: ALT-476 → In Progress.
+- **Follow-up:** inline @-autocomplete in the textarea (current MVP uses an explicit notify-picker, which is functionally equivalent and more robust); meeting-record mount; RLS for the two new tables when read-isolation applies.
+- **To enable:** `node apply-record-stream.cjs --apply` → flip `STREAM_V1` (+ `NOTIFICATIONS` for the alerts) → rebuild.

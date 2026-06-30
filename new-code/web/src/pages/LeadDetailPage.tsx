@@ -62,6 +62,8 @@ import { CollaboratorsCard } from '../components/collab/CollaboratorsCard';
 import { AssociationsPanel } from '../components/collab/AssociationsPanel';
 import { LEAD_STATE_V2 } from '../lib/leadStateFlag';
 import { QualificationCard } from '../components/leadstate/QualificationCard';
+import { STREAM_V1 } from '../lib/streamFlag';
+import { StreamPanel } from '../components/stream/StreamPanel';
 import type { SearchSelectOption } from '../components/ui/SearchSelect';
 import type { RecordType } from '../lib/collabAssoc';
 import { fetchAllContacts, fetchCompanyOptions } from '../data/contacts';
@@ -871,6 +873,17 @@ export function LeadDetailPage() {
                   (lead.salesperson_user_id != null &&
                     lead.salesperson_user_id === profile?.user_id)
                 }
+              />
+            )}
+            {/* Record stream / chatter (ALT-476) — dark behind STREAM_V1 */}
+            {STREAM_V1 && (
+              <StreamPanel
+                recordType="lead"
+                recordId={lead.lead_id}
+                recordLabel={lead.lead_name ?? `Lead #${lead.lead_id}`}
+                actorUserId={profile?.user_id ?? null}
+                actorName={profile?.full_name ?? null}
+                canPost={profile?.user_id != null}
               />
             )}
             {/* Collaborators & Associations (ALT-441/442) — dark behind COLLAB_ASSOC */}

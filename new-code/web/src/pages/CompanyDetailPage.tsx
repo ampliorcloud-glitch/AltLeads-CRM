@@ -78,6 +78,8 @@ import { AssociationsPanel } from '../components/collab/AssociationsPanel';
 import type { RecordType } from '../lib/collabAssoc';
 import { COMPANY_HIERARCHY } from '../lib/companyHierarchyFlag';
 import { CompanyHierarchyCard } from '../components/company/CompanyHierarchyCard';
+import { STREAM_V1 } from '../lib/streamFlag';
+import { StreamPanel } from '../components/stream/StreamPanel';
 import { fetchCompanyOptions } from '../data/contacts';
 
 /* ------------------------------------------------------------------
@@ -1655,6 +1657,20 @@ export function CompanyDetailPage() {
             companyId={companyId}
             actorUserId={profile?.user_id ?? null}
             canEdit={canEditCompanyContact}
+          />
+        </div>
+      )}
+
+      {/* Record stream / chatter (ALT-476) — dark behind STREAM_V1 */}
+      {STREAM_V1 && (
+        <div className="mt-4">
+          <StreamPanel
+            recordType="company"
+            recordId={companyId}
+            recordLabel={company?.name ?? `Company #${companyId}`}
+            actorUserId={profile?.user_id ?? null}
+            actorName={profile?.full_name ?? null}
+            canPost={profile?.user_id != null}
           />
         </div>
       )}
