@@ -1247,3 +1247,12 @@ Tag a lead with the incumbent vendor(s) we're displacing (ERPNext Competitor Doc
 - **QualificationCard** Competitors section: selected chips (removable) + known-competitor quick-add buttons + inline "Add a competitor…" input (Enter or Add → upsert + link). Editable by owner/QC/admin.
 - Build green. Tracker: ALT-473 → In Progress.
 - **Note:** skipped ALT-486 (notActualOptions) as NOT-APPLICABLE — this CRM's cancelled/dropped stages are legitimately agent-set outcomes, not automation-only terminals, so suppressing them would break real workflow. ALT-480 (reschedule counter) largely covered: meeting_reschedule already logs events + MeetingPreview shows history; only a marginal count-badge gap remains.
+
+### Session 2026-06-30 (cont.) — ALT-480 Reschedule intelligence (REAL data, NO migration)
+
+A real working feature over data you already have (81 meeting_reschedule rows sitting unused).
+- **RescheduleInsight** banner on the lead detail: "Rescheduled N times · last: <reason>" — neutral for 1, amber warning for ≥2 — so a rep/TL instantly sees a prospect who keeps postponing.
+- Read-only; computed live via report_id → meeting_schedule → meeting_reschedule. **No schema change** — flipping `RESCHEDULE_INSIGHT` makes it live immediately.
+- Re-scoped from the synthesis's original "add reschedule_count columns" plan because the reschedule EVENTS already exist; only the at-a-glance rollup was missing (verify-before-building).
+- New: `lib/rescheduleFlag.ts`, `data/reschedule.ts`, `components/leadstate/RescheduleInsight.tsx`. Build green. Tracker: ALT-480 → In Progress.
+- Follow-up: a reschedule count column/sort on the meetings LIST (the triage surface).
