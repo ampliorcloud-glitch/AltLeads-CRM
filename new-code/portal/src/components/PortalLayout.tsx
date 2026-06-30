@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { NavLink, Outlet, useNavigate } from 'react-router-dom'
 import {
-  Home, LayoutDashboard, Calendar, FileText, ListPlus, CalendarCheck,
+  Home, LayoutDashboard, Calendar, ListPlus, CalendarCheck,
   FolderOpen, Megaphone, Receipt, Bell, User, LogOut, Menu, X,
 } from 'lucide-react'
 import { usePortalAuth } from '../hooks/usePortalAuth'
@@ -17,7 +17,6 @@ const sections: NavSection[] = [
   ] },
   { heading: 'Engagement', items: [
     { label: 'Meetings', to: '/meetings', icon: <Calendar size={17} /> },
-    { label: 'Lead Reports', to: '/lead-reports', icon: <FileText size={17} /> },
     { label: 'Wishlist', to: '/wishlist', icon: <ListPlus size={17} /> },
   ] },
   { heading: 'Governance', items: [

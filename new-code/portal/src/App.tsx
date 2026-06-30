@@ -10,7 +10,6 @@ import Notifications from './pages/Notifications'
 import Profile from './pages/Profile'
 import Feedback from './pages/Feedback'
 import Wishlist from './pages/Wishlist'
-import LeadReports from './pages/LeadReports'
 import Governance from './pages/Governance'
 import Documents from './pages/Documents'
 import Invoices from './pages/Invoices'
@@ -30,7 +29,6 @@ export default function App() {
             <Route path="meetings" element={<Meetings />} />
             <Route path="meetings/:meetingId" element={<MeetingDetail />} />
             <Route path="meetings/:meetingId/feedback" element={<Feedback />} />
-            <Route path="lead-reports" element={<LeadReports />} />
             <Route path="governance" element={<Governance />} />
             <Route path="documents" element={<Documents />} />
             <Route path="invoices" element={<Invoices />} />
