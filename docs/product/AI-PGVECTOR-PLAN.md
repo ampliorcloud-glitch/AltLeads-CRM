@@ -269,3 +269,30 @@ Build the retrieval machine once, then light up features in order of value and d
 ### Referenced files
 - Node service (embedding + generation runtime): `c:\Users\pc\OneDrive - Amplior\Desktop\AL\new-code\notify-service\server.js`
 - Migration scripts (sibling location for the backfill script): `c:\Users\pc\OneDrive - Amplior\Desktop\AL\new-code\migration\`
+
+---
+
+## Parking Lot — Future AI ideas (captured, NOT scheduled)
+
+> Captured from Ankit 2026-06-30. These are **parked** — they depend on (a) the AI layer (this doc) being live and (b) the **calling tool being integrated** so we ingest call recordings + transcripts. Do not start until both gates are cleared. Tracked as **ALT-494**.
+
+### ALT-494 — Call-coaching Learning Module (closed-loop, self-improving)
+**One-liner:** A learning loop that listens to real calls, scores them against the persona/ICP, generates better opening "hooks," logs every attempt + outcome, and over time recommends the best-performing approach for *lookalike* personas.
+
+**The loop Ankit described:**
+1. **Generate N hooks** (≈5) — candidate opening lines / angles for a call.
+2. **Analyse the same call recordings in real time** against those hooks — what landed, what didn't.
+3. **Score against the Persona / ICP** — was the approach right for *this* type of buyer (industry, role, size, prior signals)?
+4. **Iterate** — "give again": produce refined hooks, and **log every attempt + result every time** (the training signal).
+5. **Train** — as logs accumulate, the model learns which hooks/approaches convert for which persona.
+6. **Generalise** — start surfacing the best approaches automatically for **lookalike personas** (similar ICP profiles).
+
+**What it needs first (hard dependencies):**
+- **Calling-tool integration** → call recordings + transcripts flowing into the CRM (recording URL already exists on `meeting_master.call_recording`; need live capture + transcription).
+- **AI layer live** (embeddings + RAG from this doc) → persona/ICP vectors + semantic matching of "lookalike" personas.
+- **An outcome signal** → tie each call/hook to a result (meeting booked / qualified / won) so the loop has something to optimise toward.
+- **A logging spine** → every hook shown, chosen, and its outcome stored (the "save every log & learn every time" requirement) — likely a `call_coaching_log` table + the activity/interaction history.
+
+**Shape (rough, for when it's scheduled):** ICP/persona model → hook generator (Claude) → real-time call analysis (transcript + recording) → ICP-fit + hook-effectiveness scoring → `call_coaching_log` → periodic training/aggregation → "recommended hooks for this persona" surfaced to the rep before/during the call. A reinforcement-style feedback loop, grounded in the team's own call history.
+
+**Why parked:** No value (and no training data) until calls are actually captured and the AI layer exists. Revisit when the calling tool is integrated.

@@ -1256,3 +1256,6 @@ A real working feature over data you already have (81 meeting_reschedule rows si
 - Re-scoped from the synthesis's original "add reschedule_count columns" plan because the reschedule EVENTS already exist; only the at-a-glance rollup was missing (verify-before-building).
 - New: `lib/rescheduleFlag.ts`, `data/reschedule.ts`, `components/leadstate/RescheduleInsight.tsx`. Build green. Tracker: ALT-480 → In Progress.
 - Follow-up: a reschedule count column/sort on the meetings LIST (the triage surface).
+
+### Parking lot (Ankit 2026-06-30) — ALT-494 Call-coaching Learning Module
+Parked future AI idea: a self-improving call-coaching loop (generate ~5 hooks → analyse the same call recordings in real time → score vs Persona/ICP → iterate + log every attempt/outcome → train on logs → recommend best approaches for lookalike personas). Hard deps: calling-tool integration (recording/transcript capture) + the AI/embeddings layer (AI-PGVECTOR-PLAN item H) + an outcome signal + a call_coaching_log spine. Captured in docs/product/AI-PGVECTOR-PLAN.md (Parking Lot) + tracker ALT-494 (On Hold). Do NOT start until both gates clear.

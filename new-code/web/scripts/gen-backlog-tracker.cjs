@@ -2774,6 +2774,8 @@ const TICKETS = [
         'INTERNAL-LAUNCH (Ankit FLAG-1 2026-06-29): within a project all members see all records (rows), but records you do not own show a SAFE VIEW with contact info (email/phone) masked. Extends existing partial-mask + click-reveal. Ownership = lead_report.user_id / company_project_status.owner_user_id / contact_project_status.owner_user_id. Admin/TL/QC bypass. Pairs with ALT-493.'),
       V('ALT-493','Grey/dull non-owned records in lists + detail (focus UX)','Feature','P2','In Progress',
         'INTERNAL-LAUNCH UX (Ankit FLAG-1 2026-06-29): render records the user does not own in a dull/grey style across list + detail so reps focus on their own. Pairs with ALT-492 (safe-view masking).'),
+      V('ALT-494','Call-coaching Learning Module (closed-loop, self-improving) — PARKED','Feature','P3','On Hold',
+        'PARKED (Ankit 2026-06-30) until the calling tool is integrated + AI layer is live. Loop: generate ~5 call hooks -> analyse the same call recordings in real time -> score vs Persona/ICP -> iterate ("give again") + log every attempt+outcome every time -> train on logs -> recommend best-performing approaches for lookalike personas. Hard deps: call recording/transcript capture (calling-tool integration), AI/embeddings layer (AI-PGVECTOR-PLAN item H), an outcome signal, and a call_coaching_log spine. Detail in AI-PGVECTOR-PLAN.md Parking Lot.'),
     ];
   })()),
 
