@@ -1238,3 +1238,12 @@ The collaboration layer all 4 reference CRMs have and we lacked (EspoCRM Stream 
 - New: `lib/streamFlag.ts` (+ recordRouteBase helper), `data/stream.ts`, `components/stream/StreamPanel.tsx`. Build green. Tracker: ALT-476 → In Progress.
 - **Follow-up:** inline @-autocomplete in the textarea (current MVP uses an explicit notify-picker, which is functionally equivalent and more robust); meeting-record mount; RLS for the two new tables when read-isolation applies.
 - **To enable:** `node apply-record-stream.cjs --apply` → flip `STREAM_V1` (+ `NOTIFICATIONS` for the alerts) → rebuild.
+
+### Session 2026-06-30 (cont.) — ALT-473 Competitor tracking (dark behind LEAD_STATE_V2)
+
+Tag a lead with the incumbent vendor(s) we're displacing (ERPNext Competitor DocType pattern). Folded into the lead-intelligence card (same LEAD_STATE_V2 flag as qualification/lost-reason).
+- **Migration** `apply-competitor-tracking.cjs` (STAGED, additive): `competitor` lookup (case-insensitive live-unique on name; grows via inline-add) + `lead_competitor` junction (keyed report_id, soft-delete, unique-live). No seed (competitors are account-specific). Guarded (`--apply` only).
+- **leadState.ts** extended: fetchCompetitorOptions / fetchSelectedCompetitors / ensureCompetitor (upsert-by-name) / setCompetitors (reconcile).
+- **QualificationCard** Competitors section: selected chips (removable) + known-competitor quick-add buttons + inline "Add a competitor…" input (Enter or Add → upsert + link). Editable by owner/QC/admin.
+- Build green. Tracker: ALT-473 → In Progress.
+- **Note:** skipped ALT-486 (notActualOptions) as NOT-APPLICABLE — this CRM's cancelled/dropped stages are legitimately agent-set outcomes, not automation-only terminals, so suppressing them would break real workflow. ALT-480 (reschedule counter) largely covered: meeting_reschedule already logs events + MeetingPreview shows history; only a marginal count-badge gap remains.

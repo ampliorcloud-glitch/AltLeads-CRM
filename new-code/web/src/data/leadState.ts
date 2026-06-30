@@ -122,6 +122,91 @@ export async function setLostReasons(
   return { ok: true };
 }
 
+// ── Competitor tracking (ALT-473) ─────────────────────────────────────────────
+
+export interface Competitor {
+  competitor_id: number;
+  name: string;
+}
+
+/** Active competitor lookup options, alphabetical. */
+export async function fetchCompetitorOptions(): Promise<Competitor[]> {
+  const { data, error } = await supabase
+    .from('competitor')
+    .select('competitor_id, name')
+    .is('deleted_date', null)
+    .eq('is_active', true)
+    .order('name', { ascending: true });
+  if (error || !data) return [];
+  return data as Competitor[];
+}
+
+/** competitor_ids currently linked to a report (live junction rows). */
+export async function fetchSelectedCompetitors(reportId: number): Promise<number[]> {
+  const { data, error } = await supabase
+    .from('lead_competitor')
+    .select('competitor_id')
+    .eq('report_id', reportId)
+    .is('deleted_date', null);
+  if (error || !data) return [];
+  return (data as { competitor_id: number }[]).map((r) => r.competitor_id);
+}
+
+/**
+ * Inline-add a competitor by name (case-insensitive). Returns the existing id if
+ * a live competitor already matches, else inserts and returns the new id.
+ */
+export async function ensureCompetitor(
+  name: string,
+  actor: string,
+): Promise<{ ok: true; competitor_id: number } | { ok: false; error: string }> {
+  const trimmed = name.trim();
+  if (!trimmed) return { ok: false, error: 'Name required' };
+  const { data: existing } = await supabase
+    .from('competitor')
+    .select('competitor_id, name')
+    .is('deleted_date', null)
+    .ilike('name', trimmed)
+    .limit(1);
+  const hit = (existing ?? [])[0] as { competitor_id: number } | undefined;
+  if (hit) return { ok: true, competitor_id: hit.competitor_id };
+  const { data, error } = await supabase
+    .from('competitor')
+    .insert({ name: trimmed, created_by: actor })
+    .select('competitor_id')
+    .single();
+  if (error || !data) return { ok: false, error: error?.message ?? 'Insert failed' };
+  return { ok: true, competitor_id: (data as { competitor_id: number }).competitor_id };
+}
+
+/** Reconcile linked competitors for a report (soft-delete removed, insert added). */
+export async function setCompetitors(
+  reportId: number,
+  desiredIds: number[],
+  actor: string,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const current = await fetchSelectedCompetitors(reportId);
+  const desired = new Set(desiredIds);
+  const toRemove = current.filter((id) => !desired.has(id));
+  const toAdd = desiredIds.filter((id) => !current.includes(id));
+
+  if (toRemove.length > 0) {
+    const { error } = await supabase
+      .from('lead_competitor')
+      .update({ deleted_date: new Date().toISOString(), deleted_by: actor })
+      .eq('report_id', reportId)
+      .in('competitor_id', toRemove)
+      .is('deleted_date', null);
+    if (error) return { ok: false, error: error.message };
+  }
+  if (toAdd.length > 0) {
+    const rows = toAdd.map((competitor_id) => ({ report_id: reportId, competitor_id, created_by: actor }));
+    const { error } = await supabase.from('lead_competitor').insert(rows);
+    if (error) return { ok: false, error: error.message };
+  }
+  return { ok: true };
+}
+
 // ── UTM attribution (ALT-470) ─────────────────────────────────────────────────
 
 export interface UtmState {
