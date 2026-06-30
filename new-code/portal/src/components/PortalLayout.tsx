@@ -6,6 +6,8 @@ import {
 } from 'lucide-react'
 import { usePortalAuth } from '../hooks/usePortalAuth'
 import { DEMO, demoClient } from '../demo/demoData'
+import { ProjectScopeProvider } from '../contexts/ProjectScope'
+import ProjectFilter from './ProjectFilter'
 
 interface NavItem { label: string; to: string; icon: React.ReactNode }
 interface NavSection { heading?: string; items: NavItem[] }
@@ -115,6 +117,7 @@ export default function PortalLayout() {
   )
 
   return (
+    <ProjectScopeProvider>
     <div className="flex h-screen overflow-hidden bg-canvas">
       {/* Desktop sidebar */}
       <aside className="hidden md:flex flex-col w-64 flex-shrink-0 border-r border-line">
@@ -136,10 +139,16 @@ export default function PortalLayout() {
 
       {/* Main */}
       <div className="flex-1 flex flex-col overflow-hidden">
+        {/* Desktop top bar — global project scope (mirrors CRM global select) */}
+        <header className="hidden md:flex items-center justify-between px-8 h-14 bg-surface border-b border-line flex-shrink-0">
+          <span className="text-xs font-semibold text-ink-faint uppercase tracking-widest">Scope</span>
+          <ProjectFilter />
+        </header>
+
         {/* Mobile topbar */}
         <header className="md:hidden flex items-center justify-between px-4 h-14 bg-surface border-b border-line flex-shrink-0">
           <button onClick={() => setSidebarOpen(true)} className="text-ink-soft"><Menu size={22} /></button>
-          <span className="font-extrabold text-ink">Amplior</span>
+          <ProjectFilter />
           <NavLink to="/notifications" className="text-ink-soft"><Bell size={20} /></NavLink>
         </header>
 
@@ -148,5 +157,6 @@ export default function PortalLayout() {
         </main>
       </div>
     </div>
+    </ProjectScopeProvider>
   )
 }

@@ -2,6 +2,7 @@ import { useEffect, useState, useMemo } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { Search, CalendarOff } from 'lucide-react'
 import { usePortalAuth } from '../hooks/usePortalAuth'
+import { useProjectScope } from '../contexts/ProjectScope'
 import { PortalMeeting } from '../types/portal'
 import { fetchRealMeetings } from '../data/crm'
 import { PageHeader, PageBody, EmptyState } from '../components/ui'
@@ -27,6 +28,7 @@ function statusToTab(status: string | null): TabLabel {
 
 export default function Meetings() {
   const { account, scope } = usePortalAuth()
+  const { inScope, selectedIds } = useProjectScope()
   const navigate = useNavigate()
   const [searchParams, setSearchParams] = useSearchParams()
 
@@ -53,6 +55,8 @@ export default function Meetings() {
   // Board view groups by status itself, so the status tab filter only applies to list/calendar.
   const filtered = useMemo(() => {
     let list = meetings
+    // Global project scope (empty selection = all projects).
+    if (selectedIds.length) list = list.filter((m) => inScope(m.project_id))
     if (view !== 'board') {
       const statuses = tabToStatus(activeTab)
       if (statuses.length) list = list.filter((m) => statuses.includes(m.meeting_status ?? ''))
@@ -67,7 +71,8 @@ export default function Meetings() {
     if (dateFrom) list = list.filter((m) => m.meeting_date && m.meeting_date >= dateFrom)
     if (dateTo) list = list.filter((m) => m.meeting_date && m.meeting_date <= dateTo)
     return list
-  }, [meetings, view, activeTab, searchQuery, dateFrom, dateTo])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [meetings, view, activeTab, searchQuery, dateFrom, dateTo, selectedIds])
 
   const open = (id: number) => navigate(`/meetings/${id}`)
 
