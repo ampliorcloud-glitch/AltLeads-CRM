@@ -1357,3 +1357,11 @@ Created throwaway login rls-smoke-agent@altleads-test.local linked to user_id 8 
 - c) NON-assigned lead visible: **0 ← isolation intact** (fix won't leak)
 - d) log-a-call (interaction INSERT): **DENIED** — "new row violates row-level security policy" ← agent cannot log calls
 Utility: `new-code/migration/rls-smoke-test.cjs` (idempotent; rerun post-apply for the after-proof; `--cleanup` removes the login). Insert probe auto-deletes if it lands. NEXT: Ankit's explicit "go" → `node apply-assignment-ownership-rls-fix.cjs --apply` → rerun smoke (expect b=5/5, c=0, d=ALLOWED) → cleanup.
+
+### 2026-07-02 — ★ LAUNCH BLOCKER #1 CLOSED ★ assignment-ownership RLS APPLIED TO PROD (Ankit explicit yes)
+`apply-assignment-ownership-rls-fix.cjs --apply` executed against prod after Ankit's explicit confirmation. Post-fix smoke test (same throwaway agent, user_id 8):
+- b) ASSIGNED lead_master visible: **5 of 5 ← was 0 of 5** (agents can now OPEN their leads; leads list will populate)
+- c) NON-assigned lead visible: **0 ← isolation intact, no leak**
+- d) log-a-call interaction INSERT: **ALLOWED ← was DENIED** (probe row auto-deleted)
+Throwaway login removed (--cleanup). The agent core cycle (see own leads → log call → status → meeting → pre-sales → feedback) is now FULLY UNBLOCKED in prod. Remaining beta gates: gateway enable + import validation (authorized, next), cohort logins (Ankit), import file (Ankit).
+NOTE: apply-project-read-isolation-rls.cjs (post-beta) already carries the is_lead_assignee branch + dependency note — no re-break risk.
