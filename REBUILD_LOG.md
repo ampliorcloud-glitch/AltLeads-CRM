@@ -1298,3 +1298,18 @@ Did a DB-grounded full-cycle audit (all roles) for internal beta. ROOT-CAUSE blo
 **Agent journey = CODE-COMPLETE** pending the staged RLS fix apply: leads list builds from lead_master (RLS-scoped → own leads only, no UI filter needed); detail visible for own; calls log via interaction (assignee branch); status/meetings/pre-sales/feedback already open. No further app code required for the core outreach cycle.
 
 **Remaining to beta (all need Ankit's action):** (a) sign-off to apply apply-assignment-ownership-rls-fix.cjs after a smoke test with the first provisioned login; (b) enable+validate the write gateway (Q3 fresh import) — set VITE_USE_WRITE_GATEWAY=true on crm-test or authorize me via Dokploy; (c) bulk-provision logins for the cohort (only 2 profiles exist); (d) full-cycle smoke test.
+
+### Session 2026-07-02 — Capture-audit findings (store-every-data goal) + rollout review
+
+DB-verified capture-store census: lead_activity 2,682 (vendor-era, last 6/17) · lead_status_history 477 (last 6/11 = migration-era, app does NOT write it) · pre_sales_answer 2,754 · feedback_answer 1,435 · in_app_notification 1,386 (LIVE, last 6/28) · task 3 (dark) · interaction ~18 (new store, empty because only 2 logins + RLS block). lead_report unassigned = 0 (every migrated lead has an owner).
+
+**Capture GAPS found (week-2 hardening list, none block beta):**
+1. Email sends NOT logged — notify-service sendMail is fire-and-forget, no email_log table (server.js:319/560/742). Fix: small email_log table + insert after send.
+2. Field-edit audit write-dead — pre_sales_answer_audit etc. exist but information_schema shows ZERO audit triggers (4 triggers total in public). ALT-407 (old→new history) still needed.
+3. **import_batch / import_row tables DO NOT EXIST in prod** — importEngine.js handles missing tables with console.warn and skips batch audit silently. MUST create them before first gateway import or imports won't be undoable/audited.
+4. Assignment changes: email+in-app fired but no durable reassignment journal (old owner→new owner).
+5. Exports not logged (who exported what, when).
+6. Status changes overwrite lead_report in place; interaction history mirror is best-effort/swallowed.
+7. Prospect-facing communication (actual calls/emails to leads) happens off-platform — CRM stores outcomes only; meeting_master.call_recording never written by app. Ecosystem play (extension/calling tool) = the long-term fix.
+
+Note: the 8-agent capture workflow was killed twice by host restarts; closed the load-bearing unknowns in foreground instead.
