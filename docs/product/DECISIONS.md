@@ -280,3 +280,8 @@ The numbering (ADR-01, ADR-02 …) is just an index; it is not a priority order.
 | ADR-21 | Launch role/access: create=admin-only-by-default (settings-configurable), agents edit ASSIGNED records, manual deploy | Accepted |
 | ADR-22 | Contact masking = partial mask + click-to-reveal (first/last 3 visible, reveal until refresh) | Accepted |
 | ADR-23 | Sales = web portal (two logins, one app); amends ADR-11; mobile deferred | Accepted |
+| ADR-24 | Internal-beta model (2026-06-30): agents see OWN leads only (ownership = lead_report.user_id, NOT created_by — they diverged at migration); agent edits = status/meetings/calls/pre-sales/feedback (not lead identity fields); fresh import BEFORE beta; one cohort first | Accepted |
+| ADR-25 | Beta cohort = HungerBox: project 3 "Hungerbox" + project 16 "HungerBox India - Calling"; Ankit provides import file(s) WITH an Assigned To column | Accepted |
+| ADR-26 | Rollout authorizations (2026-07-02): Claude may set VITE_USE_WRITE_GATEWAY=true on crm-test via Dokploy; RLS-fix sequence = throwaway agent login → smoke proof → prod apply ONLY on Ankit's explicit final go | Accepted |
+| ADR-27 | Integrations get a FIRST-PARTY CRM API (crm.altleads.com/api/v1, domain objects, admin-issued API keys, writes via the write-gateway) — NEVER raw Supabase URLs/keys; MCP server wraps the CRM API (spec: CRM-API.md) | Accepted |
+| ADR-28 | Capture-everything posture: email_log + reassignment_log + import_batch/row (staged apply-comms-capture.cjs) now; status-change journal (ALT-501) + field history (ALT-407) + export history 30-day re-download (ALT-497) + push notifications (ALT-495) = week-2 hardening | Accepted |

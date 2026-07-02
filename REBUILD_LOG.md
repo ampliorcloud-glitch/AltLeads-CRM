@@ -1345,3 +1345,7 @@ Answering Ankit's "any issue with importing companies & contacts?" by VERIFYING 
 4. No-match-key rows now proceed as NEW inserts (dedup preview ALT-490 + batch undo are the duplicate guards); contact requiredNew=['full_name'].
 5. importDedup fieldKeys aligned to the new catalog keys.
 Tracker: +ALT-500 (P0 bug, In Progress — pending crm-test end-to-end validation at gateway enable).
+
+### 2026-07-02 (cont.) — CRM-API reframe + docs-hygiene pass (Ankit ask: "is all good?")
+- **ALT-491 REFRAMED (Ankit correction):** connectors ask for the CRM API, not Supabase. New spec of record `docs/product/CRM-API.md`: first-party versioned REST on our domain, domain objects, admin-issued API keys (acts-as user), writes reuse the write-gateway, request log; MCP = thin client of that API. Ticket → P1.
+- **Hygiene gaps found + fixed:** (1) DECISIONS.md was stale at ADR-23 — appended ADR-24..28 (beta model, HungerBox cohort, rollout authorizations, CRM-API posture, capture-everything roadmap). (2) Status-change journal had NO ticket — added ALT-501 (P1). (3) Confirmed captured: ALT-494 parked AI module, 495 push, 496 email_log (In Progress), 497 export history, 498 reassign journal (In Progress), 499 import-assignment (In Progress), 500 import key fix (In Progress), 407 field history (Backlog, owner-approved), GATEWAY-ENABLEMENT + CLIENT-PORTAL-HANDOFF + NOTIFICATIONS + PROJECT-READ-ISOLATION docs current.
