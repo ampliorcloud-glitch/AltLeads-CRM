@@ -402,7 +402,9 @@ async function processRow(admin, entity, cfg, rawRow, actor) {
         ...writeData,
         created_by:   actorStr,
         created_date: now,
-        is_demo:      false,
+        // lead_master has NO is_demo column (verified 2026-07-02) — stamping it
+        // there errors the whole insert. company/contact keep it.
+        ...(entity !== 'lead' ? { is_demo: false } : {}),
       };
 
       // New-lead enrichment (fresh-import path): lead_master has NOT-NULL columns
