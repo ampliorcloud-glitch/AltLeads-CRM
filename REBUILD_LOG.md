@@ -1365,3 +1365,6 @@ Utility: `new-code/migration/rls-smoke-test.cjs` (idempotent; rerun post-apply f
 - d) log-a-call interaction INSERT: **ALLOWED ← was DENIED** (probe row auto-deleted)
 Throwaway login removed (--cleanup). The agent core cycle (see own leads → log call → status → meeting → pre-sales → feedback) is now FULLY UNBLOCKED in prod. Remaining beta gates: gateway enable + import validation (authorized, next), cohort logins (Ankit), import file (Ankit).
 NOTE: apply-project-read-isolation-rls.cjs (post-beta) already carries the is_lead_assignee branch + dependency note — no re-break risk.
+
+### 2026-07-02 — ★ GATE #2 IN FLIGHT ★ write gateway ENABLED on crm-test (Dokploy)
+Per Ankit's authorization: set VITE_USE_WRITE_GATEWAY=true on the Dokploy "crm" app (crm-test.altleads.com, id jY3fTpUnFXZfiWUD8vuxN) via application.saveEnvironment (11 existing env lines preserved + flag appended, verified persisted) and queued application.deploy (build-time var → rebuild). Watching build. NEXT once built: run the GATEWAY-ENABLEMENT.md validation checklist on crm-test — import end-to-end (company+contact+lead CSV with Assigned To → rows land + lead_report seeded + batch undo works after apply-comms-capture.cjs), agent 403 on lead.reassign, forged-actor ignored. NOTE: crm-test shares the PROD database — validation uses a tiny CSV and importUndo.
