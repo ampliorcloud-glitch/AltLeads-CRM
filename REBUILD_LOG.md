@@ -1349,3 +1349,11 @@ Tracker: +ALT-500 (P0 bug, In Progress — pending crm-test end-to-end validatio
 ### 2026-07-02 (cont.) — CRM-API reframe + docs-hygiene pass (Ankit ask: "is all good?")
 - **ALT-491 REFRAMED (Ankit correction):** connectors ask for the CRM API, not Supabase. New spec of record `docs/product/CRM-API.md`: first-party versioned REST on our domain, domain objects, admin-issued API keys (acts-as user), writes reuse the write-gateway, request log; MCP = thin client of that API. Ticket → P1.
 - **Hygiene gaps found + fixed:** (1) DECISIONS.md was stale at ADR-23 — appended ADR-24..28 (beta model, HungerBox cohort, rollout authorizations, CRM-API posture, capture-everything roadmap). (2) Status-change journal had NO ticket — added ALT-501 (P1). (3) Confirmed captured: ALT-494 parked AI module, 495 push, 496 email_log (In Progress), 497 export history, 498 reassign journal (In Progress), 499 import-assignment (In Progress), 500 import key fix (In Progress), 407 field history (Backlog, owner-approved), GATEWAY-ENABLEMENT + CLIENT-PORTAL-HANDOFF + NOTIFICATIONS + PROJECT-READ-ISOLATION docs current.
+
+### 2026-07-02 (cont.) — RLS smoke test EXECUTED (pre-fix proof, live prod, throwaway agent)
+Created throwaway login rls-smoke-agent@altleads-test.local linked to user_id 8 (real agent, 128 assigned leads) per Ankit's authorization. Results UNDER RLS as that agent:
+- a) own lead_report rows visible: **128** (baseline OK)
+- b) ASSIGNED lead_master visible: **0 of 5 ← THE BUG confirmed live**
+- c) NON-assigned lead visible: **0 ← isolation intact** (fix won't leak)
+- d) log-a-call (interaction INSERT): **DENIED** — "new row violates row-level security policy" ← agent cannot log calls
+Utility: `new-code/migration/rls-smoke-test.cjs` (idempotent; rerun post-apply for the after-proof; `--cleanup` removes the login). Insert probe auto-deletes if it lands. NEXT: Ankit's explicit "go" → `node apply-assignment-ownership-rls-fix.cjs --apply` → rerun smoke (expect b=5/5, c=0, d=ALLOWED) → cleanup.
