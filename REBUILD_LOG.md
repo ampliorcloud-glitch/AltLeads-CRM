@@ -1323,3 +1323,10 @@ Host restarts killed all 4 background builders (7 kills total this session) — 
 - **Staged migration `apply-comms-capture.cjs`:** email_log + **import_batch/import_row (VERIFIED MISSING in prod — must apply before first real import)** + reassignment_log. Columns match importEngine exactly.
 - Tracker: +ALT-495 (push notifications — Ankit wants ALERTS not silent bell; queued) / 496 / 497 (export history 30d re-download; queued) / 498 / 499. Builds green (web + node -c all).
 - Still queued: ALT-495 push build, ALT-497 export-history build, field-history (ALT-407, approved).
+
+### 2026-07-02 — Rollout authorizations LOCKED (Ankit)
+1. **Gateway:** authorized me to set VITE_USE_WRITE_GATEWAY=true on crm-test via Dokploy API (token in .credentials) + rebuild + validate imports there. Prod untouched.
+2. **RLS fix sequence:** authorized — provision ONE throwaway agent login → smoke-test (sees only own leads, can log a call) → show proof → prod apply on his final explicit "go".
+3. **Beta cohort = HungerBox:** project 3 "Hungerbox" (198 leads) + project 16 "HungerBox India - Calling" (the flagged HungerBox-launch project). Provision logins for these projects' members.
+4. **Fresh import data:** Ankit will provide the file(s) — must include an "Assigned To" column (email or name per rep; resolver = ALT-499).
+Execution order: Dokploy gateway env → throwaway smoke test → proof → prod RLS apply → cohort logins → import validation on crm-test → beta.
