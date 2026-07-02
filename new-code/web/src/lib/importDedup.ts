@@ -41,13 +41,14 @@ export interface MatchKeyDef {
 export const ENTITY_MATCH_KEYS: Record<string, MatchKeyDef[]> = {
   companies: [
     { key: 'record_id', label: 'Record ID',   fieldKey: 'record_id' },
-    { key: 'website',   label: 'Website / domain', fieldKey: 'website' },
-    { key: 'name',      label: 'Company name', fieldKey: 'name',    recommended: false },
+    // fieldKeys track ENTITY_CATALOGS keys, which are now REAL DB columns (2026-07-02).
+    { key: 'website',   label: 'Website / domain', fieldKey: 'company_web_url' },
+    { key: 'name',      label: 'Company name', fieldKey: 'company_name',    recommended: false },
   ],
   contacts: [
     { key: 'record_id', label: 'Record ID',   fieldKey: 'record_id' },
     { key: 'email',     label: 'Email',        fieldKey: 'email',  recommended: true  },
-    { key: 'phone',     label: 'Phone',        fieldKey: 'phone'  },
+    { key: 'phone',     label: 'Phone',        fieldKey: 'mobile_no'  },
   ],
   leads: [
     { key: 'record_id', label: 'Record ID',   fieldKey: 'record_id' },

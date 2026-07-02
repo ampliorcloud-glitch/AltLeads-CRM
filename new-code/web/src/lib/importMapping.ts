@@ -38,50 +38,54 @@ export interface EntityDef {
 }
 
 /** PLACEHOLDER catalogs — see file header. Keep fields obvious + easy to extend. */
+// FIELD KEYS = REAL DB COLUMNS (fixed 2026-07-02). The import engine whitelists
+// by actual column name (importEngine.js WRITABLE_COLUMNS) and silently drops
+// anything else — the earlier friendly keys ('name', 'phone', 'website') never
+// reached the DB. Keys below are the writable columns; labels stay friendly.
+// Special NON-COLUMN keys resolved server-side by the engine:
+//   company     → company_id   (bulk name match; unresolved = warning)
+//   project     → project_id   (leads; bulk project_name match; REQUIRED for new leads)
+//   assigned_to → lead_report.user_id (ALT-499; user id | email | full name)
 export const ENTITY_CATALOGS: EntityDef[] = [
   {
     key: 'companies',
     label: 'Companies',
     fields: [
-      { key: 'name', label: 'Company name', required: true, aliases: ['company', 'company name', 'organisation', 'organization', 'account'] },
-      { key: 'website', label: 'Website', validate: 'url', aliases: ['url', 'site', 'web'] },
-      { key: 'industry', label: 'Industry', aliases: ['sector', 'vertical'] },
-      { key: 'phone', label: 'Phone', validate: 'phone', aliases: ['telephone', 'contact number', 'mobile'] },
+      { key: 'company_name', label: 'Company name', required: true, aliases: ['name', 'company', 'company name', 'organisation', 'organization', 'account'] },
+      { key: 'company_web_url', label: 'Website', validate: 'url', aliases: ['website', 'url', 'site', 'web'] },
+      { key: 'domain_clean', label: 'Domain', aliases: ['domain'] },
       { key: 'email', label: 'Email', validate: 'email', aliases: ['email address'] },
-      { key: 'city', label: 'City', aliases: ['town'] },
-      { key: 'state', label: 'State', aliases: ['region', 'province'] },
-      { key: 'country', label: 'Country' },
-      { key: 'employee_count', label: 'Employees', aliases: ['headcount', 'size', 'employee count'] },
+      { key: 'linkedin_url', label: 'LinkedIn URL', validate: 'url', aliases: ['linkedin', 'linkedin page'] },
+      { key: 'company_size', label: 'Employees', aliases: ['headcount', 'size', 'employee count', 'employees'] },
+      { key: 'cin_number', label: 'CIN number', aliases: ['cin'] },
+      { key: 'description', label: 'Description', aliases: ['about', 'notes'] },
     ],
   },
   {
     key: 'contacts',
     label: 'Contacts',
     fields: [
-      { key: 'full_name', label: 'Full name', required: true, aliases: ['name', 'contact', 'contact name', 'person'] },
-      { key: 'first_name', label: 'First name', aliases: ['firstname', 'given name'] },
-      { key: 'last_name', label: 'Last name', aliases: ['lastname', 'surname', 'family name'] },
+      { key: 'full_name', label: 'Full name', required: true, aliases: ['name', 'contact', 'contact name', 'person', 'first name', 'last name'] },
       { key: 'email', label: 'Email', validate: 'email', aliases: ['email address', 'e-mail'] },
-      { key: 'phone', label: 'Phone', validate: 'phone', aliases: ['mobile', 'telephone', 'contact number'] },
-      { key: 'company', label: 'Company', aliases: ['company name', 'organisation', 'organization', 'account'] },
+      { key: 'mobile_no', label: 'Phone', validate: 'phone', aliases: ['phone', 'mobile', 'telephone', 'contact number'] },
+      { key: 'alt_mobile_no', label: 'Alt phone', validate: 'phone', aliases: ['alt mobile', 'alternate phone', 'phone 2'] },
+      { key: 'company', label: 'Company (name → linked)', aliases: ['company name', 'organisation', 'organization', 'account'] },
       { key: 'designation', label: 'Designation', aliases: ['title', 'job title', 'role', 'position'] },
       { key: 'linkedin_url', label: 'LinkedIn URL', validate: 'url', aliases: ['linkedin', 'linkedin profile'] },
-      { key: 'city', label: 'City', aliases: ['town', 'location'] },
     ],
   },
   {
     key: 'leads',
     label: 'Leads',
     fields: [
-      { key: 'company', label: 'Company', required: true, aliases: ['company name', 'organisation', 'organization', 'account'] },
-      { key: 'contact_name', label: 'Contact name', aliases: ['name', 'contact', 'person', 'prospect'] },
+      { key: 'lead_name', label: 'Lead / contact name', required: true, aliases: ['name', 'contact', 'contact name', 'person', 'prospect', 'lead'] },
+      { key: 'project', label: 'Project (name → linked)', aliases: ['project name', 'client project', 'campaign project'] },
+      { key: 'company', label: 'Company (name → linked)', aliases: ['company name', 'organisation', 'organization', 'account'] },
       { key: 'email', label: 'Email', validate: 'email', aliases: ['email address', 'e-mail'] },
-      { key: 'phone', label: 'Phone', validate: 'phone', aliases: ['mobile', 'telephone', 'contact number'] },
+      { key: 'mobile_no', label: 'Phone', validate: 'phone', aliases: ['phone', 'mobile', 'telephone', 'contact number'] },
       { key: 'designation', label: 'Designation', aliases: ['title', 'job title', 'role'] },
-      { key: 'status', label: 'Status', aliases: ['stage', 'lead status'] },
-      { key: 'source', label: 'Source', aliases: ['lead source', 'channel'] },
-      { key: 'city', label: 'City', aliases: ['town', 'location'] },
-      { key: 'notes', label: 'Notes', aliases: ['remark', 'remarks', 'comment', 'comments'] },
+      { key: 'stage', label: 'Stage', aliases: ['status', 'lead status'] },
+      { key: 'description', label: 'Notes', aliases: ['notes', 'remark', 'remarks', 'comment', 'comments'] },
       // ALT-470 — UTM / lead attribution. Maps onto lead_master.utm_* (staged migration).
       { key: 'utm_source', label: 'UTM Source', aliases: ['utm source', 'utm_source', 'campaign source'] },
       { key: 'utm_medium', label: 'UTM Medium', aliases: ['utm medium', 'utm_medium', 'campaign medium'] },

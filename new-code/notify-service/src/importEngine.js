@@ -103,7 +103,7 @@ const ENTITY_CONFIG = {
     table:       'contact_master',
     pk:          'contact_id',
     fallbackKey: 'email',
-    requiredNew: [],
+    requiredNew: ['full_name'],
   },
   lead: {
     table:       'lead_master',
@@ -179,6 +179,77 @@ async function resolveAssignees(admin, rawValues) {
   return map;
 }
 
+/* ── Bulk name→id resolvers (company / project), same pattern as assignees ──
+ * Mapped columns `company` and `project` hold NAMES; resolve to company_id /
+ * project_id in bulk per chunk. Exact case-insensitive match on live rows;
+ * unresolved values leave the field unset (row gets a warning where relevant). */
+async function resolveByName(admin, table, idCol, nameCol, rawValues) {
+  const map = new Map();
+  const wanted = [...new Set(rawValues.map(normAssignee).filter(Boolean))];
+  if (wanted.length === 0) return map;
+  const { data } = await admin
+    .from(table)
+    .select(`${idCol}, ${nameCol}`)
+    .is('deleted_date', null);
+  const byName = new Map();
+  for (const r of data ?? []) {
+    const n = normAssignee(r[nameCol]);
+    if (n && !byName.has(n)) byName.set(n, r[idCol]); // first-wins on dupes
+  }
+  for (const w of wanted) {
+    if (byName.has(w)) map.set(w, byName.get(w));
+  }
+  return map;
+}
+
+/* ── New-lead enrichment (fresh-import path, 2026-07-02) ────────────────────
+ * lead_master INSERTs need NOT-NULL columns the CSV can't supply. Mirror the
+ * proven wishlist-conversion recipe (data/wishlist.ts convertWishlistToLead):
+ *   lead_number     — generated 'ALT<n>' sequential (max existing + 1)
+ *   client_assoc_id — precedent of existing leads in the SAME project, else the
+ *                     project row's own client link if present, else row error
+ *   source_id       — 8 = 'Datalist' (the import source per prod source_master)
+ *   address_id      — 1 placeholder (same caveat as wishlist ensureAddress)
+ *   designation/email/mobile_no — 'Unknown'/'' fallbacks like wishlist        */
+const IMPORT_SOURCE_ID = 8; // source_master: 'Datalist'
+
+async function nextLeadNumberBase(admin) {
+  // lead_number format is 'ALT####' — find the max numeric suffix once per chunk.
+  const { data } = await admin
+    .from('lead_master')
+    .select('lead_number')
+    .like('lead_number', 'ALT%')
+    .order('lead_id', { ascending: false })
+    .limit(200);
+  let max = 0;
+  for (const r of data ?? []) {
+    const m = /^ALT(\d+)$/.exec(r.lead_number ?? '');
+    if (m) max = Math.max(max, Number(m[1]));
+  }
+  return max;
+}
+
+async function clientAssocForProject(admin, projectId) {
+  const { data } = await admin
+    .from('lead_master')
+    .select('client_assoc_id')
+    .eq('project_id', projectId)
+    .is('deleted_date', null)
+    .not('client_assoc_id', 'is', null)
+    .limit(1);
+  if (data && data.length > 0) return data[0].client_assoc_id;
+  // Empty project (e.g. a brand-new calling project): try the project row itself.
+  try {
+    const { data: proj } = await admin
+      .from('project')
+      .select('*')
+      .eq('project_id', projectId)
+      .maybeSingle();
+    if (proj && proj.client_assoc_id != null) return proj.client_assoc_id;
+  } catch { /* project table shape may vary — fall through */ }
+  return null;
+}
+
 /* ── Whitelist filter: drop any key not in the writable set ──────────────── */
 function filterWritable(entity, rowObj) {
   const allowed = WRITABLE_COLUMNS[entity];
@@ -216,18 +287,19 @@ async function processRow(admin, entity, cfg, rawRow, actor) {
       writeData.domain_clean = cleanDomain(writeData.company_web_url);
     }
 
+    // Merge pre-resolved relational ids (runImport bulk resolution): the mapped
+    // `company` / `project` NAME columns resolve to company_id / project_id.
+    if (rawRow.__company_id != null) writeData.company_id = rawRow.__company_id;
+    if (entity === 'lead' && rawRow.__project_id != null) writeData.project_id = rawRow.__project_id;
+
     // 2. Determine the match key
     const recordId = rawRow.record_id ? Number(rawRow.record_id) : null;
     const fallbackValue = cfg.fallbackKey ? (rawRow[cfg.fallbackKey] || null) : null;
 
-    if (!recordId && !fallbackValue) {
-      return {
-        status: 'skipped',
-        recordId: null,
-        undoPayload: null,
-        errorMsg: `No match key: need record_id or ${cfg.fallbackKey ?? 'record_id'}`,
-      };
-    }
+    // No match key → this is a NEW record (fresh-import path, 2026-07-02).
+    // Previously such rows were skipped, which made fresh imports impossible —
+    // a brand-new CSV has no record_id. Duplicate protection = the wizard's
+    // dedup preview (ALT-490) + batch undo; requiredNew still gates inserts.
 
     // 3. Look up existing record
     let existingRow = null;
@@ -332,6 +404,32 @@ async function processRow(admin, entity, cfg, rawRow, actor) {
         created_date: now,
         is_demo:      false,
       };
+
+      // New-lead enrichment (fresh-import path): lead_master has NOT-NULL columns
+      // a CSV can't carry. Mirror wishlist conversion's proven recipe.
+      if (entity === 'lead') {
+        if (!insertData.lead_name) {
+          return { status: 'skipped', recordId: null, undoPayload: null,
+            errorMsg: 'lead_name is required to create a new lead' };
+        }
+        if (insertData.project_id == null) {
+          return { status: 'skipped', recordId: null, undoPayload: null,
+            errorMsg: `project ${rawRow.project ? `"${String(rawRow.project).trim()}" not found` : 'missing'} — new leads need a valid Project column` };
+        }
+        const clientAssocId = await clientAssocForProject(admin, insertData.project_id);
+        if (clientAssocId == null) {
+          return { status: 'skipped', recordId: null, undoPayload: null,
+            errorMsg: 'could not derive client for this project (no existing leads to copy from) — seed one lead manually first' };
+        }
+        insertData.lead_number     = rawRow.__lead_number ?? `ALT${Date.now()}`;
+        insertData.client_assoc_id = clientAssocId;
+        insertData.source_id       = IMPORT_SOURCE_ID;      // 'Datalist'
+        insertData.address_id      = 1;                     // placeholder (wishlist caveat)
+        insertData.designation     = insertData.designation || 'Unknown';
+        insertData.email           = insertData.email || '';
+        insertData.mobile_no       = insertData.mobile_no || '';
+        insertData.is_closed       = false;
+      }
 
       const { data: inserted, error: insertError } = await admin
         .from(cfg.table)
@@ -563,14 +661,34 @@ async function runImport(admin, actor, payload) {
   const cfg = ENTITY_CONFIG[entity];
   const rowResults = [];
 
-  // ALT-499: leads only — bulk-resolve the mapped `assigned_to` values (numeric
-  // user_id | email | full name) into user_ids ONCE per chunk, then stash the
-  // resolved id on each row for processRow to seed lead_report with.
-  if (entity === 'lead') {
-    const assigneeMap = await resolveAssignees(admin, rows.map((r) => r.assigned_to));
+  // Bulk pre-resolution (ONCE per chunk, never per row):
+  //   contacts + leads: `company` name → company_id
+  //   leads:            `project` name → project_id, `assigned_to` → user_id (ALT-499)
+  if (entity === 'contact' || entity === 'lead') {
+    const companyMap = await resolveByName(admin, 'company_master', 'company_id', 'company_name',
+      rows.map((r) => r.company));
     for (const row of rows) {
-      const key = normAssignee(row.assigned_to);
-      row.__assigned_user_id = key ? (assigneeMap.get(key) ?? null) : null;
+      const key = normAssignee(row.company);
+      row.__company_id = key ? (companyMap.get(key) ?? null) : null;
+    }
+  }
+  if (entity === 'lead') {
+    const [assigneeMap, projectMap] = await Promise.all([
+      resolveAssignees(admin, rows.map((r) => r.assigned_to)),
+      resolveByName(admin, 'project', 'project_id', 'project_name', rows.map((r) => r.project)),
+    ]);
+    for (const row of rows) {
+      const aKey = normAssignee(row.assigned_to);
+      row.__assigned_user_id = aKey ? (assigneeMap.get(aKey) ?? null) : null;
+      const pKey = normAssignee(row.project);
+      row.__project_id = pKey ? (projectMap.get(pKey) ?? null) : null;
+    }
+    // New-lead numbering: pre-reserve a sequential ALT#### per row (rows that
+    // turn out to be UPDATEs simply don't use theirs; gaps are harmless).
+    let numBase = await nextLeadNumberBase(admin);
+    for (const row of rows) {
+      numBase += 1;
+      row.__lead_number = `ALT${numBase}`;
     }
   }
 

@@ -1330,3 +1330,18 @@ Host restarts killed all 4 background builders (7 kills total this session) — 
 3. **Beta cohort = HungerBox:** project 3 "Hungerbox" (198 leads) + project 16 "HungerBox India - Calling" (the flagged HungerBox-launch project). Provision logins for these projects' members.
 4. **Fresh import data:** Ankit will provide the file(s) — must include an "Assigned To" column (email or name per rep; resolver = ALT-499).
 Execution order: Dokploy gateway env → throwaway smoke test → proof → prod RLS apply → cohort logins → import validation on crm-test → beta.
+
+### Session 2026-07-02 (cont.) — ALT-500: import was silently broken for ALL entities (found + fixed)
+
+Answering Ankit's "any issue with importing companies & contacts?" by VERIFYING instead of assuming — and yes, badly:
+- **The wizard's field keys ('name','phone','website'…) never matched the DB columns the engine whitelists ('company_name','mobile_no','company_web_url'…), and there was NO translation layer.** Net effect had we enabled the gateway: company imports would have SKIPPED EVERY ROW (required company_name never arrived); contacts lost phone + company link; leads lost name/stage/notes. Silent, because filterWritable drops unknown keys by design.
+- **Fresh rows without a match key were skipped entirely** ("record_id is the ONLY match key" for leads) — fresh imports were structurally impossible.
+- **New-lead inserts were impossible** (NOT NULL lead_number/client_assoc_id/source_id/address_id never provided).
+
+**FIXES (all built, builds green):**
+1. importMapping.ts catalogs now use REAL writable DB columns as keys (labels stay friendly); unmappable fields removed (state/country/industry/city — relational or nonexistent); added domain/CIN/description/alt-phone.
+2. importEngine: mapped `company` + `project` NAME columns bulk-resolve to company_id/project_id (resolveByName, once per chunk); merged into writeData for insert AND update.
+3. New-lead enrichment mirrors the proven wishlist recipe: generated sequential ALT#### lead_number (pre-reserved per row), client_assoc_id derived from the project's existing leads (fallback: project row; else clear row error), source_id=8 'Datalist', address_id=1 placeholder, Unknown/'' fallbacks; is_closed=false. Clear row-level errors when lead_name/project missing (proj 16 'HungerBox India - Calling' is EMPTY → first lead must be seeded manually or client_assoc provided — flagged).
+4. No-match-key rows now proceed as NEW inserts (dedup preview ALT-490 + batch undo are the duplicate guards); contact requiredNew=['full_name'].
+5. importDedup fieldKeys aligned to the new catalog keys.
+Tracker: +ALT-500 (P0 bug, In Progress — pending crm-test end-to-end validation at gateway enable).

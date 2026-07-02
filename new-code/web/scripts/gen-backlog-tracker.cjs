@@ -2786,6 +2786,8 @@ const TICKETS = [
         'BUILT (tolerant writer live in writeLeadOwner - the single choke point for single+bulk lead reassigns; captures old owner(s) pre-update; table staged in apply-comms-capture.cjs). Sources tagged single/bulk/departing.'),
       V('ALT-499','Import creates lead_report + assignment (assigned_to column)','Bug','P0','In Progress',
         'LAUNCH-CRITICAL fresh-import fix, BUILT: importEngine now seeds a lead_report (stage 1 Warm, report_id DB default) per imported lead with user_id resolved from assigned_to (numeric/email/full-name, bulk per chunk); unresolved imports UNASSIGNED with row warning; undo removes the report. importMapping leads catalog got assigned_to. Validate on crm-test at gateway enable. Prereq: apply-comms-capture.cjs (import_batch/import_row missing in prod).'),
+      V('ALT-500','Import wizard field keys did not match DB columns - most mapped data silently dropped','Bug','P0','In Progress',
+        'FOUND BY VERIFICATION 2026-07-02: ENTITY_CATALOGS used friendly keys (name/phone/website) but importEngine whitelists REAL columns (company_name/mobile_no/company_web_url) with NO translation layer - company imports would skip ALL rows (required company_name never arrived); contacts lost phone/company-link; leads lost name/notes/stage. FIXED: catalog keys are now real DB columns; company+project NAME columns bulk-resolve to company_id/project_id server-side; NEW leads get wishlist-recipe enrichment (generated ALT#### lead_number, client_assoc derived from project precedent, source=Datalist, address placeholder); no-match-key rows now INSERT (fresh-import semantics) instead of skipping; dedup fieldKeys aligned. Validate end-to-end on crm-test at gateway enable.'),
     ];
   })()),
 
