@@ -125,6 +125,60 @@ function cleanDomain(website) {
   }
 }
 
+/* ── ALT-499: assignee resolution for lead imports ─────────────────────────
+ * `assigned_to` (mapped column) may hold a numeric user_id, a login email, or
+ * a full name. Resolved in BULK per chunk (2 queries max), never per row.
+ * Unresolvable values import the lead UNASSIGNED with a row-level warning.  */
+function normAssignee(v) {
+  if (v == null) return null;
+  const s = String(v).trim().toLowerCase();
+  return s === '' ? null : s;
+}
+
+async function resolveAssignees(admin, rawValues) {
+  const map = new Map(); // normalized value -> user_id
+  const wanted = [...new Set(rawValues.map(normAssignee).filter(Boolean))];
+  if (wanted.length === 0) return map;
+
+  // 1. Numeric values resolve directly.
+  const nonNumeric = [];
+  for (const w of wanted) {
+    if (/^\d+$/.test(w)) map.set(w, Number(w));
+    else nonNumeric.push(w);
+  }
+  if (nonNumeric.length === 0) return map;
+
+  // 2. Emails → profiles.email (login email holds the user_id link).
+  const emails = nonNumeric.filter((w) => w.includes('@'));
+  if (emails.length > 0) {
+    const { data } = await admin
+      .from('profiles')
+      .select('email, user_id')
+      .in('email', emails);
+    for (const p of data ?? []) {
+      if (p.user_id != null && p.email) map.set(String(p.email).toLowerCase(), p.user_id);
+    }
+  }
+
+  // 3. Remaining → case-insensitive full_name match on user_master.
+  const names = nonNumeric.filter((w) => !map.has(w));
+  if (names.length > 0) {
+    const { data } = await admin
+      .from('user_master')
+      .select('user_id, full_name')
+      .is('deleted_date', null);
+    const byName = new Map();
+    for (const u of data ?? []) {
+      const n = normAssignee(u.full_name);
+      if (n) byName.set(n, u.user_id); // last-wins; ambiguity acceptable for names
+    }
+    for (const w of names) {
+      if (byName.has(w)) map.set(w, byName.get(w));
+    }
+  }
+  return map;
+}
+
 /* ── Whitelist filter: drop any key not in the writable set ──────────────── */
 function filterWritable(entity, rowObj) {
   const allowed = WRITABLE_COLUMNS[entity];
@@ -291,6 +345,42 @@ async function processRow(admin, entity, cfg, rawRow, actor) {
 
       // TODO(event-spine): emitEvent({ type: `${entity}.import.inserted`, aggregateType: entity, aggregateId: newId, actor })
 
+      // ALT-499: leads must be born ASSIGNABLE. Ownership/visibility = the
+      // lead_report row (lead_report.user_id), so a lead_master row alone is
+      // invisible to every agent. Seed a report the way wishlist conversion
+      // does (report_id has a DB default; stage 1 = "Warm").
+      if (entity === 'lead' && newId != null) {
+        const assignedUserId = rawRow.__assigned_user_id ?? null;
+        const undoPayload = { inserted: true, [cfg.pk]: newId };
+        let warn = null;
+
+        if (assignedUserId != null) {
+          const { data: rep, error: repErr } = await admin
+            .from('lead_report')
+            .insert({
+              lead_id: newId,
+              user_id: assignedUserId,
+              stage_id: 1,
+              report_status: 'Warm',
+              created_by: actorStr,
+              created_date: now,
+            })
+            .select('report_id')
+            .single();
+          if (repErr) {
+            warn = `lead imported but assignment failed (${repErr.message}) — assign manually`;
+          } else if (rep?.report_id != null) {
+            undoPayload.report_id = rep.report_id; // undo must remove the report too
+          }
+        } else if (normAssignee(rawRow.assigned_to)) {
+          warn = `assigned_to "${String(rawRow.assigned_to).trim()}" did not match any user — imported UNASSIGNED`;
+        } else {
+          warn = 'no assigned_to given — imported UNASSIGNED (invisible to agents until assigned)';
+        }
+
+        return { status: 'inserted', recordId: newId, undoPayload, errorMsg: warn };
+      }
+
       return {
         status: 'inserted',
         recordId: newId,
@@ -407,6 +497,14 @@ async function undoBatch(admin, batchId, actor) {
           .update({ deleted_by: actorStr, deleted_date: now })
           .eq(cfg.pk, row.record_id);
         if (error) throw new Error(error.message);
+        // ALT-499: an imported lead also seeded a lead_report — remove it too.
+        if (row.undo_payload?.report_id != null) {
+          const { error: repErr } = await admin
+            .from('lead_report')
+            .update({ deleted_by: actorStr, deleted_date: now })
+            .eq('report_id', row.undo_payload.report_id);
+          if (repErr) throw new Error(`lead_report undo: ${repErr.message}`);
+        }
       } else if (row.status === 'updated' && row.undo_payload?._before) {
         // Undo update = restore prior values
         const restore = {
@@ -464,6 +562,17 @@ async function runImport(admin, actor, payload) {
 
   const cfg = ENTITY_CONFIG[entity];
   const rowResults = [];
+
+  // ALT-499: leads only — bulk-resolve the mapped `assigned_to` values (numeric
+  // user_id | email | full name) into user_ids ONCE per chunk, then stash the
+  // resolved id on each row for processRow to seed lead_report with.
+  if (entity === 'lead') {
+    const assigneeMap = await resolveAssignees(admin, rows.map((r) => r.assigned_to));
+    for (const row of rows) {
+      const key = normAssignee(row.assigned_to);
+      row.__assigned_user_id = key ? (assigneeMap.get(key) ?? null) : null;
+    }
+  }
 
   // Process rows sequentially to avoid hammering DB with parallel requests
   // (for 100k-contact file the UI will call this endpoint many times in chunks)

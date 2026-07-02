@@ -86,6 +86,9 @@ export const ENTITY_CATALOGS: EntityDef[] = [
       { key: 'utm_source', label: 'UTM Source', aliases: ['utm source', 'utm_source', 'campaign source'] },
       { key: 'utm_medium', label: 'UTM Medium', aliases: ['utm medium', 'utm_medium', 'campaign medium'] },
       { key: 'utm_campaign', label: 'UTM Campaign', aliases: ['utm campaign', 'utm_campaign', 'campaign', 'campaign name'] },
+      // ALT-499 — assignment at import. Server resolves user_id | email | full name
+      // to lead_report.user_id; unresolved values import UNASSIGNED with a warning.
+      { key: 'assigned_to', label: 'Assigned To', aliases: ['owner', 'assigned to', 'salesperson', 'agent', 'agent email', 'assignee', 'rep'] },
     ],
   },
 ];

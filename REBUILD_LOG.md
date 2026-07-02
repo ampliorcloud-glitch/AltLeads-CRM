@@ -1313,3 +1313,13 @@ DB-verified capture-store census: lead_activity 2,682 (vendor-era, last 6/17) ·
 7. Prospect-facing communication (actual calls/emails to leads) happens off-platform — CRM stores outcomes only; meeting_master.call_recording never written by app. Ecosystem play (extension/calling tool) = the long-term fix.
 
 Note: the 8-agent capture workflow was killed twice by host restarts; closed the load-bearing unknowns in foreground instead.
+
+### Session 2026-07-02 (cont.) — Capture hardening BUILT foreground (background agents died again)
+
+Host restarts killed all 4 background builders (7 kills total this session) — built the launch-critical core FOREGROUND instead:
+- **ALT-499 (P0, fresh-import blocker):** importEngine seeds a `lead_report` per imported lead (stage 1 Warm; report_id has DB default — proven by wishlist.ts) with `user_id` from new `assigned_to` mapped column (bulk resolution: numeric → email via profiles → full name via user_master); unresolved → UNASSIGNED + row warning in import_row.error_msg; undo soft-deletes the seeded report. importMapping got `assigned_to`. GATEWAY-ENABLEMENT.md updated.
+- **ALT-496:** notify-service `logEmail()` records success+failure at ALL 3 sendMail paths (task_reminder / daily_digest / notify events) — tolerant (warn if table missing).
+- **ALT-498:** `writeLeadOwner` (single choke point, single+bulk) captures old owner(s) pre-update → `reassignment_log` (tolerant).
+- **Staged migration `apply-comms-capture.cjs`:** email_log + **import_batch/import_row (VERIFIED MISSING in prod — must apply before first real import)** + reassignment_log. Columns match importEngine exactly.
+- Tracker: +ALT-495 (push notifications — Ankit wants ALERTS not silent bell; queued) / 496 / 497 (export history 30d re-download; queued) / 498 / 499. Builds green (web + node -c all).
+- Still queued: ALT-495 push build, ALT-497 export-history build, field-history (ALT-407, approved).

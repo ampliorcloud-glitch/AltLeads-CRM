@@ -2776,6 +2776,16 @@ const TICKETS = [
         'INTERNAL-LAUNCH UX (Ankit FLAG-1 2026-06-29): render records the user does not own in a dull/grey style across list + detail so reps focus on their own. Pairs with ALT-492 (safe-view masking).'),
       V('ALT-494','Call-coaching Learning Module (closed-loop, self-improving) — PARKED','Feature','P3','On Hold',
         'PARKED (Ankit 2026-06-30) until the calling tool is integrated + AI layer is live. Loop: generate ~5 call hooks -> analyse the same call recordings in real time -> score vs Persona/ICP -> iterate ("give again") + log every attempt+outcome every time -> train on logs -> recommend best-performing approaches for lookalike personas. Hard deps: call recording/transcript capture (calling-tool integration), AI/embeddings layer (AI-PGVECTOR-PLAN item H), an outcome signal, and a call_coaching_log spine. Detail in AI-PGVECTOR-PLAN.md Parking Lot.'),
+      V('ALT-495','Push notifications (browser Web Push - user is ALERTED, not just silent in-app bell)','Feature','P1','Backlog',
+        'Ankit 2026-07-02: in-app bell is silent; users must SEE alerts. Web Push: service worker + VAPID keys + push_subscription table + notify-service sender endpoint. Dark behind PUSH_NOTIFICATIONS. Complements ALT-489.'),
+      V('ALT-496','email_log - durable record of every outbound email','Feature','P1','In Progress',
+        'BUILT (tolerant writer live, table staged in apply-comms-capture.cjs). notify-service logEmail() records every sendMail success+failure (to, type, subject, status, error, message id, lead/report/meeting ids) at all 3 send paths (task_reminder, daily_digest, notify events). No-op warn until migration applies.'),
+      V('ALT-497','Export history - every export logged + file stored 30 days + re-downloadable','Feature','P2','Backlog',
+        'Ankit 2026-07-02: record who/what/when/rows per export; keep the exported file 30 days; re-download from a history view. Interpretation (confirm): exports do not mutate data so undo/redo = history + re-download. export_log + Supabase Storage bucket. Dark behind EXPORT_HISTORY.'),
+      V('ALT-498','Reassignment journal - durable old-owner to new-owner log on every lead reassign','Feature','P1','In Progress',
+        'BUILT (tolerant writer live in writeLeadOwner - the single choke point for single+bulk lead reassigns; captures old owner(s) pre-update; table staged in apply-comms-capture.cjs). Sources tagged single/bulk/departing.'),
+      V('ALT-499','Import creates lead_report + assignment (assigned_to column)','Bug','P0','In Progress',
+        'LAUNCH-CRITICAL fresh-import fix, BUILT: importEngine now seeds a lead_report (stage 1 Warm, report_id DB default) per imported lead with user_id resolved from assigned_to (numeric/email/full-name, bulk per chunk); unresolved imports UNASSIGNED with row warning; undo removes the report. importMapping leads catalog got assigned_to. Validate on crm-test at gateway enable. Prereq: apply-comms-capture.cjs (import_batch/import_row missing in prod).'),
     ];
   })()),
 

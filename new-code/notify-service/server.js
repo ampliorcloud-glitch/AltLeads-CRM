@@ -52,6 +52,32 @@ function getSupabaseAdmin() {
   return supabaseAdmin;
 }
 
+/* ── ALT-496: durable email log ──────────────────────────────────────
+ * Records every outbound email (success + failure) in email_log.
+ * TOLERANT by design: if the table is missing (migration apply-comms-capture.cjs
+ * not applied yet) or the insert fails, warn and continue — never break a send. */
+async function logEmail(entry) {
+  try {
+    const admin = getSupabaseAdmin();
+    if (!admin) return;
+    const { error } = await admin.from('email_log').insert({
+      sent_to:    entry.to ?? null,
+      email_type: entry.type ?? null,
+      subject:    entry.subject ?? null,
+      status:     entry.status,                  // 'sent' | 'failed'
+      error:      entry.error ?? null,
+      message_id: entry.messageId ?? null,
+      lead_id:    entry.leadId ?? null,
+      report_id:  entry.reportId ?? null,
+      meeting_id: entry.meetingId ?? null,
+      actor:      entry.actor ?? 'system',
+    });
+    if (error) console.warn('[email_log] skipped:', error.message);
+  } catch (e) {
+    console.warn('[email_log] skipped:', e.message);
+  }
+}
+
 /* ── User-management helpers ─────────────────────────────────────── */
 
 /** Generate a strong 12-char temp password (guaranteed mixed character classes). */
@@ -323,9 +349,11 @@ async function sendTaskReminderEmail(task, ownerEmail, ownerName) {
       html,
     });
     console.log(`[scanner] reminder email sent for task ${task.task_id} -> ${ownerEmail} (messageId ${info.messageId})`);
+    logEmail({ to: ownerEmail, type: 'task_reminder', subject, status: 'sent', messageId: info.messageId });
     return true;
   } catch (e) {
     console.error(`[scanner] reminder email FAILED for task ${task.task_id} -> ${ownerEmail}:`, e.message);
+    logEmail({ to: ownerEmail, type: 'task_reminder', status: 'failed', error: e.message });
     return false;
   }
 }
@@ -564,8 +592,10 @@ async function runDailyDigest() {
         html,
       });
       console.log(`[digest] sent to ${email} (${items.length} task(s), messageId ${info.messageId})`);
+      logEmail({ to: email, type: 'daily_digest', subject, status: 'sent', messageId: info.messageId });
     } catch (uErr) {
       console.error(`[digest] error for user ${pref.user_id}:`, uErr.message);
+      logEmail({ type: 'daily_digest', status: 'failed', error: uErr.message });
     }
   }
 }
@@ -747,11 +777,14 @@ app.post('/notify', requireAuth, async (req, res) => {
     });
 
     console.log(`[notify] Sent ${event} to ${recipient} — messageId: ${info.messageId}`);
+    logEmail({ to: recipient, type: event, subject, status: 'sent', messageId: info.messageId,
+               leadId: data?.lead_id ?? null, reportId: data?.report_id ?? null, meetingId: data?.meeting_id ?? null });
     return res.json({ ok: true, id: info.messageId });
 
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     console.error(`[notify] Failed to send ${event} to ${recipient}:`, msg);
+    logEmail({ to: recipient, type: event, status: 'failed', error: msg });
     // Don't expose internal SMTP errors to the caller in production
     return res.status(500).json({ ok: false, error: 'Email send failed' });
   }

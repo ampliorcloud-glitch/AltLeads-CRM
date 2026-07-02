@@ -155,8 +155,17 @@ async function writeLeadOwner(
   leadId: number,
   newUserId: number,
   actor: string,
+  source: 'single' | 'bulk' | 'departing' = 'single',
 ): Promise<{ error?: string; affected: number }> {
   const now = new Date().toISOString();
+
+  // ALT-498: capture the OLD owner(s) before overwriting, for the journal below.
+  const { data: before } = await supabase
+    .from('lead_report')
+    .select('report_id, user_id')
+    .eq('lead_id', leadId)
+    .is('deleted_date', null);
+
   const { data, error } = await supabase
     .from('lead_report')
     .update({ user_id: newUserId, updated_by: actor, updated_date: now })
@@ -164,7 +173,29 @@ async function writeLeadOwner(
     .is('deleted_date', null)
     .select('report_id');
   if (error) return { error: mapWriteError(error), affected: 0 };
-  return { affected: (data as unknown[] | null)?.length ?? 0 };
+  const affected = (data as unknown[] | null)?.length ?? 0;
+
+  // ALT-498: durable old→new journal. Tolerant until apply-comms-capture.cjs
+  // creates reassignment_log — a missing table must never fail the reassign.
+  if (affected > 0) {
+    try {
+      const rows = ((before ?? []) as { report_id: number; user_id: number | null }[]).map((b) => ({
+        report_id: b.report_id,
+        lead_id: leadId,
+        old_user_id: b.user_id,
+        new_user_id: newUserId,
+        actor,
+        source,
+      }));
+      if (rows.length > 0) {
+        const { error: jErr } = await supabase.from('reassignment_log').insert(rows);
+        if (jErr) console.warn('[assignment] reassignment_log skipped:', jErr.message);
+      }
+    } catch (e) {
+      console.warn('[assignment] reassignment_log skipped:', e instanceof Error ? e.message : e);
+    }
+  }
+  return { affected };
 }
 
 export async function reassignLead(input: {
@@ -283,7 +314,7 @@ export async function reassignLeadsBulk(
   const total = leadIds.length;
   for (const id of leadIds) {
     if (opts?.signal?.aborted) break;
-    const res = await writeLeadOwner(id, newUserId, actor);
+    const res = await writeLeadOwner(id, newUserId, actor, 'bulk');
     if (res.error || res.affected === 0) {
       failed += 1;
       if (!firstErr) firstErr = res.error ?? null;

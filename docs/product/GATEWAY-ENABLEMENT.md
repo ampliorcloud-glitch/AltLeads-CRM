@@ -38,5 +38,8 @@ Setting `VITE_USE_WRITE_GATEWAY=true` is a **deploy/config action** (build-time 
 - **(b)** Owner authorizes me to set it via the Dokploy API on `crm-test` (token in `.credentials/`).
 Then I run the validation checklist and report; on sign-off we flip prod.
 
+## Import → assignment (ALT-499, added 2026-07-02)
+Leads import now creates the **lead_report row** (the per-project state that makes a lead visible/assignable — report_id has a DB default, stage seeded 1/Warm like wishlist conversion) with user_id resolved from a new **assigned_to** mapped column. Resolution order (bulk per chunk, 2 queries max): numeric → user_id · email → profiles.email · name → user_master.full_name (case-insensitive). Unresolvable/absent → lead imports **UNASSIGNED with a row-level warning** (stored in import_row.error_msg). Undo also soft-deletes the seeded report (undo_payload.report_id). **Prereq: apply-comms-capture.cjs must be applied first** — it creates import_batch/import_row (verified missing in prod 2026-07-02; without them imports are not undoable/audited). Validate on crm-test at gateway-enable time.
+
 ## Relationship to launch
 Enabling the gateway is effectively **"turn on real imports"** + harden reassign. It's independent of the RLS read-isolation work (different mechanism). Sequence: validate gateway on test → flip prod → bulk-import the real data → (separately) sequence + validate the RLS isolation with the portal team.
